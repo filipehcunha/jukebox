@@ -1,39 +1,40 @@
-Atue como Desenvolvedor Web Senior e Especialista em Design de Áudio Interativo, WebRTC e Acessibilidade. Crie um projeto web completo (HTML, CSS e JavaScript) em arquivo único (ou modular utilizando Tone.js, PeerJS e QRCode.js via CDN) chamado "A Sinfonia da Terra: Earth Jukebox Multissensorial".
+Atue como Desenvolvedor Web Senior e Especialista em Design de Áudio Interativo, WebRTC e Acessibilidade. Crie uma aplicação web completa (HTML, CSS e JavaScript em arquivo único ou modular via CDN com Tone.js, PeerJS e QRCode.js) chamada "A Sinfonia da Terra: Earth Jukebox Multissensorial".
 
-O objetivo da aplicação é traduzir imagens de dados terrestres (da NASA ou enviadas pelo próprio usuário) em uma experiência de sonificação instrumental, altamente inclusiva, relaxante e interativa em tempo real.
+O objetivo é converter dados e imagens terrestres da NASA (e de pastas locais enviadas pelo usuário) em uma paisagem sonora instrumental imersiva, acessível e personalizável.
 
 Requisitos Obrigatórios do Projeto:
 
-1. CARREGAMENTO DE PASTA LOCAL DE IMAGENS (GALERIA):
-- Implemente um leitor de pasta local (utilizando `<input type="file" webkitdirectory directory multiple>` ou seletor múltiplo de arquivos de imagem JPG, PNG e WebP).
-- Crie uma Galeria de Escolha onde todas as imagens carregadas da pasta do computador são exibidas em miniaturas clicáveis com o nome do arquivo.
-- Mantenha 2 imagens de dados da NASA pré-carregadas por padrão (Temperatura dos Oceanos ECCO2 e Altura das Florestas GEDI) para uso imediato caso o usuário não selecione uma pasta local.
+1. ARQUITETURA DE CÓDIGO E CONSTANTES DE MAPEAMENTO (DEVS-FRIENDLY):
+- Defina no topo do código um objeto global de configuração com Constantes de Mapeamento claras para facilitar alterações futuras pelo desenvolvedor:
+  const MAPPING_CONFIG = {
+    TEMPERATURE: 'CELLO',       // Águas frias a quentes
+    HUMIDITY: 'FLUTE',          // Nuvens e Umidade Atmosférica
+    VEGETATION_DENSITY: 'MARIMBA', // Altura do Dossel (GEDI)
+    OCEAN_CURRENTS: 'HARP',     // Velocidade e Fluxo de Água
+    ALTITUDE_ELEVATION: 'PIANO' // Relevo
+  };
+- Inclua um dicionário completo de amostras e sintetizadores (SAMPLE_SET) contendo TODOS os instrumentos disponíveis para testes rápidos no código:
+  ['CELLO', 'DOUBLE_BASS', 'GRAND_PIANO', 'MARIMBA', 'FLUTE', 'HARP', 'VIOLIN', 'CLARINET', 'SYNTH_PAD', 'STEEL_DRUM'].
 
-2. TELA DE LEGENDA AUDITIVA E SENSORIAL (ONBOARDING PRÉVIO):
-- Antes de iniciar a navegação na imagem selecionada, apresente obrigatoriamente uma Tela de Legenda Explicativa (Modal / Card de Preparação Sensorial).
-- Esta tela deve mostrar qual característica ambiental/cor cada instrumento representa e conter botões de teste áudio para o usuário ouvir e aprender cada som individualmente antes de explorar:
-  * Violoncelo / Contrabasso (Grave): Representa Águas Frias / Baixas Temperaturas / Regiões Polares.
-  * Piano de Cauda / Marimba (Médio): Representa Temperaturas Amenas e Vegetação Moderada.
-  * Flauta / Sopros de Madeira (Agudo): Representa Alta Umidade, Nuvens ou Dossel Florestal Elevado.
-  * Harpa / Percussão Leve (Arpejos/Rhythm): Representa a Intensidade de Correntes Marítimas ou Ventos Fortes.
-- Inclua o botão "Iniciar Experiência Multissensorial" ao final da legenda para carregar o canvas interativo.
+2. LEGENDA INTERATIVA AMPLIADA COM PRÉ-ESCUTA NO HOVER:
+- Exiba uma Tela/Modal de Legenda Ampliada (interface de grande dimensão e alto contraste) antes de carregar a exploração gráfica.
+- A legenda deve explicar o significado de cada cor/dado, qual constante está associada e qual instrumento está tocando.
+- INTERAÇÃO NO HOVER: Ao passar o mouse sobre cada card da legenda (evento `mouseenter`), o áudio do instrumento correspondente deve tocar imediatamente em pré-visualização (sem necessidade de clicar em botões).
 
-3. SONIFICAÇÃO INSTRUMENTAL CONTÍNUA EM TEMPO REAL (HOVER):
-- O som NÃO deve ser estático por imagem. À medida que o mouse transita pelos pixels da imagem, os instrumentos e suas notas se alteram continuamente e em tempo real.
-- Polifonia por Camadas Instrumentais (Tone.js / Web Audio API):
-  * Eixo X (Panning Estéreo): Posição horizontal do mouse direciona o som suavemente entre os canais Esquerdo e Direito.
-  * Matiz da Cor / Temperatura: Mapeie a cor sob o cursor para a nota do instrumento principal (quantizada na Escala Pentatônica Maior de Dó ou Sol para garantir uma sonoridade extremamente agradável e musical).
-  * Brilho / Umidade / Densidade: Ative camadas secundárias (ex: arpejos de harpa ou soprano de flauta) conforme a intensidade dos pixels aumenta.
-- Suavização de Áudio (Interpolção/Glide): Aplique rampas suaves de transição (rampTo) para eliminar estalos, ruídos secos ou mudanças bruscas de volume.
+3. SONIFICAÇÃO INSTRUMENTAL E AUDIO DUCKING (VOZ SOBRESSAI AO SOM):
+- Sonificação Contínua em tempo real à medida que o cursor percorre os pixels do Canvas.
+- As frequências devem ser quantizadas na Escala Pentatônica Maior para manter harmonia agradável.
+- REQUISITO DE AUDIO DUCKING (Voz Prioritária):
+  * Quando a síntese de voz (Web Speech API / ARIA Live) estiver ativa para ler dados de acessibilidade para o usuário, diminua automaticamente o volume geral dos instrumentos (ex: redução de -12dB a -18dB ou 20% do volume original).
+  * Assim que a voz terminar de falar, restaure suavemente (via rampTo) o volume dos instrumentos ao nível normal.
 
-4. SINCRONIZAÇÃO HÁPTICA COM O SMARTPHONE (VIBRAÇÃO VIA QR CODE):
-- Na interface principal do computador, inclua um painel "Conectar Smartphone (Vibração Tátil)".
-- Ao clicar, gere um QR Code único utilizando PeerJS (conexão WebRTC Peer-to-Peer nativa sem necessidade de servidor backend dedicado).
-- Ao escanear o QR Code com a câmera do celular, o smartphone abre uma página receptora leve.
-- Conforme o usuário move o mouse sobre a imagem no computador, o computador envia pacotes de dados via WebRTC em tempo real para o celular, acionando a Vibration API (`navigator.vibrate`) com padrões e frequências de vibração variáveis conforme o mouse cruza zonas de transição térmica ou de alta densidade.
+4. SINCRONIZAÇÃO HÁPTICA PROPORCIONAL COM SMARTPHONE (WEB RPTC / PEERJS):
+- Painel para gerar QR Code de conexão P2P via PeerJS.
+- O celular conectado funcionará como receptor hápico em tempo real.
+- VIBRAÇÃO PROPORCIONAL À COR:
+  * A frequência e a intensidade da vibração enviada ao smartphone (`navigator.vibrate`) devem ser estritamente proporcionais ao valor numérico/matiz da cor do pixel sob o cursor (ex: tons de vermelho/temperaturas altas = vibrações curtas e de alta frequência; tons de azul/frio = vibrações longas e pulsantes de baixa frequência).
 
-5. ACESSIBILIDADE E CONFORTO SENSORIAL:
-- Modo de Baixa Sensibilidade (Low-Sensory Mode): Botão para ativar limitador de volume e suavização extrema de frequências para usuários neurodivergentes ou com hipersensibilidade auditiva.
-- Navegação Completa por Teclado: Teclas direcionais movimentam um cursor focal virtual pela imagem.
-- Síntese de Voz / ARIA Live: Anúncia verbalmente para leitores de tela os dados sob o cursor (ex: "Zona Atlântica: Violoncelo e Piano - Temperatura 22°C").
-- Layout responsivo, elegante e limpo com suporte a modos de alto contraste e filtros de cor para daltonismo.
+5. GALERIA LOCAL E ACESSIBILIDADE INTEGRADA:
+- Suporte para carregar pasta local de imagens do computador (`<input type="file" webkitdirectory>`) mantendo miniaturas clicáveis, além dos datasets padrão da NASA (ECCO2, GEDI, Atmospheric River).
+- Controle sensorial (Low-Sensory Mode para limitar volumes e altas frequências).
+- Navegação 100% via Teclado com cursor focal em grade e filtros para daltonismo.
