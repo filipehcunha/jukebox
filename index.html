@@ -16,6 +16,7 @@
 <body>
   <a class="skip-link" href="#main">Pular para o conteúdo principal</a>
   <a class="skip-link" href="#tutorialPanel" id="tutorialSkipLink">Iniciar o tutorial em áudio, recomendado para pessoas cegas</a>
+  <a class="skip-link" href="#helpDialog" id="helpSkipLink">Abrir a ajuda e os atalhos de teclado</a>
 
   <header class="topbar">
     <a class="brand" href="#" id="brandLink" aria-label="A Sinfonia da Terra, voltar à galeria">
@@ -33,8 +34,12 @@
         <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 13a8 8 0 0 1 16 0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><rect x="3" y="13" width="4.5" height="7" rx="1.6" fill="currentColor"/><rect x="16.5" y="13" width="4.5" height="7" rx="1.6" fill="currentColor"/></svg>
         <span>Tutorial em áudio</span>
       </button>
+      <button class="button button--ghost" id="helpOpen" type="button" aria-haspopup="dialog" aria-controls="helpDialog" aria-keyshortcuts="F1">
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.6 2.2c-.7.4-1.1.9-1.1 1.8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="17" r="1.2" fill="currentColor"/></svg>
+        <span>Ajuda e atalhos</span>
+      </button>
       <span class="live-pill" id="livePill"><span class="live-pill__dot" aria-hidden="true"></span><span id="liveText">Áudio desligado</span></span>
-      <button class="button button--ghost" id="quickLowSensory" type="button" aria-pressed="false" title="Modo de baixa sensibilidade">
+      <button class="button button--ghost" id="quickLowSensory" type="button" aria-pressed="false" aria-label="Modo de baixa sensibilidade" title="Modo de baixa sensibilidade">
         <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h3l4-4v8l-4-4H4Z" fill="currentColor"/><path d="M15 9.5c1 .8 1 4.2 0 5" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round"/></svg>
         <span>Baixa sensibilidade</span>
       </button>
@@ -52,7 +57,7 @@
       <div class="hero">
         <div class="hero__text">
           <p class="kicker">Galeria de escolha</p>
-          <h1 id="galleryHeading">Ouça o planeta, pixel a pixel</h1>
+          <h1 id="galleryHeading" tabindex="-1">Ouça o planeta, pixel a pixel</h1>
           <p class="lead">Escolha um mapa da NASA ou carregue uma pasta do seu computador. Cada cor é convertida no valor físico da legenda oficial e tocada por violoncelo, piano, flauta e harpa, com vibração no seu celular.</p>
         </div>
         <div class="upload" id="dropzone">
@@ -122,7 +127,7 @@
             </button>
             <div class="timeline__track">
               <label class="sr-only" for="frameSlider">Quadro da sequência</label>
-              <input type="range" id="frameSlider" min="0" max="0" value="0" step="1">
+              <input type="range" id="frameSlider" min="0" max="0" value="0" step="1" data-no-echo>
               <div class="timeline__labels"><span id="frameLabel">—</span><span id="frameTime">—</span></div>
             </div>
             <label class="compact-field compact-field--small">
@@ -145,7 +150,7 @@
             </div>
             <div class="legend-bar__ticks" id="legendTicks" aria-hidden="true"></div>
             <div class="legend-bar__ends" id="legendEnds" aria-hidden="true"></div>
-            <p class="legend-bar__hint">Passe o mouse sobre a escala para ouvir cada valor.</p>
+            <p class="legend-bar__hint">Passe o mouse sobre a escala, ou use as setas com ela em foco, para ouvir cada valor.</p>
           </div>
 
           <div class="reading-grid" aria-label="Leitura atual">
@@ -172,8 +177,9 @@
 
           <p class="canvas-help" id="canvasHelp">
             Mova o mouse, toque ou use as setas do teclado com o mapa em foco. <kbd>Shift</kbd> + setas move mais rápido,
-            <kbd>Enter</kbd> repete a leitura, <kbd>Espaço</kbd> liga ou pausa o som, <kbd>[</kbd> e <kbd>]</kbd> trocam a hora,
-            <kbd>P</kbd> reproduz a linha do tempo e <kbd>L</kbd> abre a legenda.
+            <kbd>Enter</kbd> lê o lugar, <kbd>O</kbd> dá a visão geral do mapa, <kbd>C</kbd> diz a posição, <kbd>1</kbd> a <kbd>9</kbd> saltam entre nove regiões,
+            <kbd>Espaço</kbd> liga ou pausa o som, <kbd>N</kbd> liga ou desliga a narração, <kbd>[</kbd> e <kbd>]</kbd> trocam a hora,
+            <kbd>P</kbd> reproduz a linha do tempo, <kbd>L</kbd> abre a legenda e <kbd>H</kbd> abre a ajuda com todos os atalhos.
           </p>
         </div>
 
@@ -187,7 +193,7 @@
             <canvas class="scope" id="scopeCanvas" width="300" height="72" aria-hidden="true"></canvas>
             <label class="field">
               <span class="field__label">Volume <output id="volumeOut">0 dB</output></span>
-              <input type="range" id="volumeSlider" min="-30" max="6" step="1" value="0">
+              <input type="range" id="volumeSlider" min="-30" max="6" step="1" value="0" aria-valuetext="0 decibéis">
             </label>
             <label class="field">
               <span class="field__label">Escala musical</span>
@@ -232,6 +238,8 @@
               <p class="qr-warn" id="qrWarn" role="alert" hidden></p>
               <div class="qr" id="qrBox"></div>
               <code class="qr-url" id="qrUrl"></code>
+              <button class="button button--ghost button--block" id="copyReceiver" type="button" aria-describedby="copyReceiverHelp">Copiar o link do receptor</button>
+              <small class="help" id="copyReceiverHelp">Sem enxergar o QR Code, copie o link e envie para o celular (mensagem ou e-mail).</small>
               <p class="panel__status" id="phoneStatus" role="status">—</p>
               <details class="help-details phone-help">
                 <summary>O celular não conecta?</summary>
@@ -254,14 +262,22 @@
               <span class="switch__track" aria-hidden="true"><span class="switch__thumb"></span></span>
             </label>
             <label class="switch">
-              <span class="switch__body"><strong>Narração por voz</strong><small>Lê em voz alta a região, os instrumentos e o valor quando o cursor para.</small></span>
-              <input type="checkbox" id="voiceToggle">
+              <span class="switch__body"><strong>Narração por voz</strong><small>Lê em voz alta os botões e controles ao navegar com Tab e, no mapa, a região, os instrumentos e o valor. A música para enquanto a voz fala. Deixe desligada se você usa um leitor de tela.</small></span>
+              <input type="checkbox" id="voiceToggle" data-no-echo>
               <span class="switch__track" aria-hidden="true"><span class="switch__thumb"></span></span>
             </label>
             <label class="switch">
               <span class="switch__body"><strong>Alto contraste</strong><small>Bordas, textos e foco reforçados.</small></span>
               <input type="checkbox" id="highContrast">
               <span class="switch__track" aria-hidden="true"><span class="switch__thumb"></span></span>
+            </label>
+            <label class="field">
+              <span class="field__label">Tamanho do texto</span>
+              <select id="textSize">
+                <option value="normal">Normal</option>
+                <option value="grande">Grande</option>
+                <option value="enorme">Enorme</option>
+              </select>
             </label>
             <label class="field">
               <span class="field__label">Filtro de cor e daltonismo</span>
@@ -279,19 +295,7 @@
                 </optgroup>
               </select>
             </label>
-            <details class="help-details">
-              <summary>Atalhos de teclado</summary>
-              <ul>
-                <li><kbd>Setas</kbd> movem o cursor focal virtual</li>
-                <li><kbd>Shift</kbd> + <kbd>setas</kbd> passos maiores</li>
-                <li><kbd>Enter</kbd> anuncia a leitura atual</li>
-                <li><kbd>Espaço</kbd> liga ou pausa o áudio</li>
-                <li><kbd>[</kbd> <kbd>]</kbd> hora anterior e próxima</li>
-                <li><kbd>P</kbd> reproduz ou pausa a linha do tempo</li>
-                <li><kbd>L</kbd> abre a legenda sensorial</li>
-                <li><kbd>Home</kbd> centraliza o cursor</li>
-              </ul>
-            </details>
+            <button class="button button--ghost button--block" id="helpOpenPanel" type="button" aria-haspopup="dialog" aria-controls="helpDialog">Ajuda e atalhos de teclado</button>
           </section>
         </aside>
       </div>
@@ -324,7 +328,7 @@
         <div><strong>Cor → nota</strong><span>O valor sob o cursor escolhe a nota na <span id="dlgKey">pentatônica de Dó</span>: grave à esquerda da escala, agudo à direita.</span></div>
         <div><strong>Brilho</strong><span>Pixels mais claros abrem o timbre e reforçam as camadas secundárias.</span></div>
         <div><strong>Celular</strong><span>Cores quentes ou valores altos vibram em pulsos curtos e rápidos. Cores frias ou valores baixos vibram em pulsos longos e lentos. Há um pulso duplo ao cruzar zonas.</span></div>
-        <div><strong>Voz</strong><span>Quando a narração fala, os instrumentos abaixam 15 dB e voltam suavemente ao fim da frase.</span></div>
+        <div><strong>Voz</strong><span id="dlgVoiceText">Quando a narração fala, a música para e volta ao fim da frase.</span></div>
       </div>
 
       <footer class="legend-dialog__foot">
@@ -361,6 +365,68 @@
       <button class="button button--ghost" id="tutorialRepeat" type="button">Repetir</button>
       <button class="button button--primary" id="tutorialNext" type="button">Próximo</button>
     </footer>
+  </dialog>
+
+  <!-- ===================== AJUDA E ATALHOS ===================== -->
+  <dialog class="help-dialog" id="helpDialog" aria-labelledby="helpTitle" aria-describedby="helpIntro">
+    <header class="help-dialog__head">
+      <div>
+        <p class="kicker">Acessibilidade</p>
+        <h2 id="helpTitle" tabindex="-1">Ajuda e atalhos de teclado</h2>
+      </div>
+      <button class="button button--ghost tutorial__close" id="helpClose" type="button" aria-label="Fechar a ajuda">
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>
+      </button>
+    </header>
+    <p id="helpIntro">Tudo neste site funciona só com o teclado e o som. Use Tab para andar pelos controles e Enter para ativar. Escape fecha esta ajuda.</p>
+    <button class="button button--primary" id="helpSpeak" type="button">Ouvir a ajuda em voz alta</button>
+    <div class="help-dialog__body" id="helpBody">
+      <section aria-labelledby="helpHow">
+        <h3 id="helpHow">Como funciona</h3>
+        <p>Escolha um mapa na galeria. Antes do mapa aparece a legenda, onde você ouve cada instrumento. No mapa, um cursor percorre o planeta: o valor do lugar escolhe a nota, e a posição escolhe o lado do som, esquerda ou direita. Com a narração por voz ligada, o site lê os botões e os lugares, e a música para enquanto a voz fala.</p>
+      </section>
+      <section aria-labelledby="helpAny">
+        <h3 id="helpAny">Em qualquer lugar da página</h3>
+        <ul>
+          <li><kbd>F1</kbd> ou <kbd>Alt</kbd> + <kbd>Shift</kbd> + <kbd>H</kbd>: abre esta ajuda.</li>
+          <li><kbd>Alt</kbd> + <kbd>Shift</kbd> + <kbd>N</kbd>: liga ou desliga a narração por voz.</li>
+          <li><kbd>Alt</kbd> + <kbd>Shift</kbd> + <kbd>M</kbd>: leva o foco para o mapa.</li>
+          <li><kbd>Alt</kbd> + <kbd>Shift</kbd> + <kbd>G</kbd>: volta para a galeria.</li>
+          <li><kbd>Alt</kbd> + <kbd>Shift</kbd> + <kbd>T</kbd>: abre o tutorial em áudio.</li>
+          <li><kbd>Escape</kbd>: cala a voz ou fecha a janela aberta.</li>
+        </ul>
+      </section>
+      <section aria-labelledby="helpMap">
+        <h3 id="helpMap">Com o mapa em foco</h3>
+        <ul>
+          <li><kbd>Setas</kbd>: movem o cursor. Com <kbd>Shift</kbd>, o passo é maior. A voz avisa quando você chega à borda.</li>
+          <li><kbd>Enter</kbd>: diz o lugar, os instrumentos e o valor.</li>
+          <li><kbd>O</kbd>: visão geral do mapa, com os valores mais alto e mais baixo e onde ficam.</li>
+          <li><kbd>C</kbd>: diz a posição do cursor e as coordenadas.</li>
+          <li><kbd>1</kbd> a <kbd>9</kbd>: saltam para nove regiões do mapa, como um teclado de telefone. 1 é o canto de cima à esquerda, 5 é o centro e 9 é o canto de baixo à direita.</li>
+          <li><kbd>Home</kbd>: volta ao centro.</li>
+          <li><kbd>Espaço</kbd>: liga ou pausa o som.</li>
+          <li><kbd>+</kbd> e <kbd>-</kbd>: aumentam e diminuem o volume.</li>
+          <li><kbd>N</kbd>: liga ou desliga a narração por voz.</li>
+          <li><kbd>[</kbd> e <kbd>]</kbd>: hora anterior e próxima hora.</li>
+          <li><kbd>P</kbd>: toca ou pausa a linha do tempo.</li>
+          <li><kbd>L</kbd>: abre a legenda dos instrumentos.</li>
+          <li><kbd>G</kbd>: volta para a galeria.</li>
+          <li><kbd>T</kbd>: abre o tutorial em áudio.</li>
+          <li><kbd>H</kbd>: abre esta ajuda.</li>
+        </ul>
+      </section>
+      <section aria-labelledby="helpScale">
+        <h3 id="helpScale">Na escala de cores</h3>
+        <ul>
+          <li><kbd>Setas</kbd>: percorrem a escala e tocam cada valor. <kbd>Home</kbd> e <kbd>End</kbd> vão para as pontas.</li>
+        </ul>
+      </section>
+      <section aria-labelledby="helpSr">
+        <h3 id="helpSr">Leitores de tela</h3>
+        <p>Se você usa NVDA, JAWS, VoiceOver ou TalkBack, deixe a narração por voz desligada: tudo o que ela diz também vai para o leitor de tela. No mapa, o leitor entra sozinho no modo de foco, e as teclas acima funcionam direto.</p>
+      </section>
+    </div>
   </dialog>
 
   <div class="sr-only" id="ariaLive" role="status" aria-live="polite" aria-atomic="true"></div>

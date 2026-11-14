@@ -2,7 +2,7 @@
 // Orquestra galeria, legenda sensorial, leitura de pixels, áudio, háptica e acessibilidade.
 
 import { SCALES, SCALE_LIST, LAYERS, LAYER_ORDER, GMAO_T0_UTC, scaleFromPixels, paletteColor } from "./scales.js";
-import { MAPPING_CONFIG, SAMPLE_SET, SAMPLE_SET_NAMES, layerInstruments, layerVariable, VARIABLE_LABELS } from "./config.js";
+import { MAPPING_CONFIG, SAMPLE_SET, SETTINGS, CONFIG_PROBLEMS, layerInstruments, layerVariable, VARIABLE_LABELS } from "./config.js";
 import { loadLandMask, formatCoord } from "./geo.js";
 import { ImageSampler, loadBitmap } from "./sampler.js";
 import { SonificationEngine, MUSICAL_KEYS, midiName } from "./audio.js";
@@ -10,6 +10,7 @@ import { HapticBridge, renderQr, guessReceiverBase, checkPublicReceiver, PUBLIC_
 import { presetGroups, upgradeGmaoSequences, groupFiles, filesFromDrop, renderPresets, renderLocalGroups } from "./gallery.js";
 import { createTutorial } from "./tutorial.js";
 import { narrator } from "./voz.js";
+import { initFocusEcho } from "./a11y.js";
 
 const $ = (id) => document.getElementById(id);
 const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
@@ -21,7 +22,7 @@ const scope = $("scopeCanvas");
 const scopeCtx = scope.getContext("2d");
 
 const engine = new SonificationEngine();
-window.sinfonia = { engine, MAPPING_CONFIG, SAMPLE_SET }; // acesso para depuração no console do navegador
+window.sinfonia = { engine, MAPPING_CONFIG, SAMPLE_SET, SETTINGS }; // acesso para depuração no console do navegador
 const haptics = new HapticBridge({ onStatus: onPhoneStatus });
 // as funções do app usadas aqui são declarações, então já existem (hoisting)
 const tutorial = createTutorial({
@@ -33,7 +34,13 @@ const tutorial = createTutorial({
   backToGallery,
   inExplore: () => !$("exploreView").hidden,
   toast,
+  onClose: onTutorialClose,
 });
+
+// A VOZ TEM PRIORIDADE: enquanto qualquer narração fala (tutorial, leitura do mapa, leitura
+// dos controles), a música para por completo e volta sozinha quando a fala termina.
+// O comportamento (parar ou só abaixar, e as rampas) vem de config.json → narracao.
+narrator.onBusyChange = (speaking) => engine.duck(speaking);
 
 const state = {
   presets: presetGroups(),
@@ -58,7 +65,6 @@ const state = {
   colorMode: "none",
   pendingStart: false,
   legendHover: null, // posição 0..1 sob o mouse na barra de cores (pré-escuta da escala)
-  overrides: {}, // instrumento escolhido pelo usuário na legenda, por camada
 };
 
 // ---------------------------------------------------------------------------
@@ -67,12 +73,23 @@ const state = {
 const prefs = (() => {
   try { return JSON.parse(localStorage.getItem("sinfonia-prefs") || "{}"); } catch { return {}; }
 })();
+// Os valores iniciais vêm do config.json. Se o arquivo foi editado desde a última visita,
+// ele vence as escolhas salvas no navegador para esses mesmos itens.
+const CONFIG_SIGNATURE = JSON.stringify([
+  SETTINGS.audio.volumeDb, SETTINGS.audio.key, SETTINGS.audio.useSamples,
+  SETTINGS.narration.onAtStart, SETTINGS.a11y.textSize, SETTINGS.a11y.highContrast,
+]);
+if (prefs.cfg !== CONFIG_SIGNATURE) {
+  for (const k of ["volume", "key", "samples", "voice", "voiceSet", "text", "hc"]) delete prefs[k];
+}
+let voiceChosen = !!prefs.voiceSet; // a pessoa já ligou ou desligou a narração por conta própria
 function savePrefs() {
   try {
     localStorage.setItem("sinfonia-prefs", JSON.stringify({
-      low: $("lowSensory").checked, voice: $("voiceToggle").checked, hc: $("highContrast").checked,
+      low: $("lowSensory").checked, voice: $("voiceToggle").checked, voiceSet: voiceChosen, hc: $("highContrast").checked,
       color: $("colorMode").value, volume: Number($("volumeSlider").value), key: $("keySelect").value,
-      samples: $("samplesToggle").checked, lan: $("lanInput").value, receiver: $("receiverMode").value, v: 2,
+      samples: $("samplesToggle").checked, lan: $("lanInput").value, receiver: $("receiverMode").value,
+      text: $("textSize").value, cfg: CONFIG_SIGNATURE, v: 2,
     }));
   } catch { /* armazenamento indisponível */ }
 }
@@ -87,34 +104,34 @@ function toast(msg, ms = 3800) {
   el.classList.add("is-visible");
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => el.classList.remove("is-visible"), ms);
+  speak(msg, { queue: true }); // avisos também são falados (o leitor de tela já lê o role=alert)
 }
 
-function announce(text, { speak = true, live: toLive = true } = {}) {
+// A narração está ligada? (interruptor do painel ou narração do tutorial)
+function voiceOn() {
+  return $("voiceToggle").checked || tutorial.wantsVoice();
+}
+
+// Fala com o narrador compartilhado (melhor voz pt-BR instalada, fila sem cortes).
+// A música para enquanto ele fala: ver narrator.onBusyChange acima.
+function speak(text, { queue = false, force = false } = {}) {
+  if (!text || !(force || voiceOn())) return;
+  const low = $("lowSensory").checked;
+  narrator.say(text, {
+    queue,
+    rate: low ? SETTINGS.low.voiceRate : SETTINGS.narration.rate,
+    volume: low ? SETTINGS.low.voiceVolume : SETTINGS.narration.volume,
+  });
+}
+
+// Anuncia para o leitor de tela (região ARIA live) e para a narração por voz
+function announce(text, { speak: toVoice = true, live: toLive = true } = {}) {
   const live = $("ariaLive");
   if (toLive) {
     live.textContent = "";
     requestAnimationFrame(() => { live.textContent = text; });
   }
-  if (speak && ($("voiceToggle").checked || tutorial.wantsVoice())) {
-    // narrador compartilhado com o tutorial (melhor voz pt-BR instalada, fila sem cortes)
-    // AUDIO DUCKING: a voz sobressai. Instrumentos caem para -15 dB enquanto ela fala
-    // e voltam suavemente (rampTo) quando termina.
-    engine.duck(true);
-    narrator.say(text, { rate: $("lowSensory").checked ? 0.94 : 1.05, volume: $("lowSensory").checked ? 0.7 : 1 });
-    watchSpeech();
-  }
-}
-
-// rede de segurança: alguns navegadores não disparam onend quando a fala é cancelada
-let speechWatch = null;
-function watchSpeech() {
-  clearInterval(speechWatch);
-  speechWatch = setInterval(() => {
-    if (!narrator.busy() && !(window.speechSynthesis?.speaking || window.speechSynthesis?.pending)) {
-      engine.duck(false);
-      clearInterval(speechWatch);
-    }
-  }, 250);
+  if (toVoice) speak(text);
 }
 
 // ---------------------------------------------------------------------------
@@ -125,6 +142,9 @@ function showView(name) {
   $("galleryView").hidden = !gallery;
   $("exploreView").hidden = gallery;
   document.body.dataset.view = name;
+  document.title = gallery || !state.group
+    ? "Galeria · A Sinfonia da Terra"
+    : `${state.group.title} · A Sinfonia da Terra`;
   if (gallery) {
     stopTimeline();
     engine.update({ active: false });
@@ -136,6 +156,7 @@ function backToGallery() {
   showView("gallery");
   $("main").focus({ preventScroll: true });
   window.scrollTo({ top: 0, behavior: reducedMotion.matches ? "auto" : "smooth" });
+  announce(`Galeria de mapas. ${state.presets.length} mapas da NASA. Use Tab para escolher um mapa e Enter para abrir.`);
 }
 
 // ---------------------------------------------------------------------------
@@ -195,13 +216,10 @@ async function selectGroup(group, index = 0, { skipLegend = false } = {}) {
   await loading;
 }
 
-// MAPPING_CONFIG (por escala) + escolhas do usuário na legenda → instrumentos das camadas
-function currentInstruments() {
-  const base = layerInstruments(state.scale?.id || "default");
-  return Object.fromEntries(LAYER_ORDER.map((l) => [l, state.overrides[l] || base[l]]));
-}
+// Instrumentos das camadas para a escala atual: vêm só do config.json (mapeamento e
+// camadasPorEscala); a interface não os altera.
 function applyInstruments() {
-  engine.setLayerInstruments(currentInstruments());
+  engine.setLayerInstruments(layerInstruments(state.scale?.id || "default"));
   $("instMeters").innerHTML = ""; // rótulos refeitos na próxima leitura
 }
 const instLabel = (layer) => SAMPLE_SET[engine.layerInstrument(layer)].label;
@@ -211,7 +229,10 @@ function openLegend() {
   const g = state.group;
   engine.update({ active: false });
   $("legendDialogTitle").textContent = "Legenda auditiva e sensorial";
-  $("legendDialogIntro").textContent = `${g.title}: passe o mouse sobre cada instrumento (ou sobre a barra de cores) para ouvi-lo antes de explorar. ${scale.label}.`;
+  $("legendDialogIntro").textContent = `${g.title}: passe o mouse sobre cada instrumento, ou use Tab e Enter nos botões Ouvir, para conhecer os sons antes de explorar. ${scale.label}.`;
+  $("dlgVoiceText").textContent = SETTINGS.narration.pauseMusic
+    ? "Quando a narração fala, a música para por completo e volta ao fim da frase."
+    : `Quando a narração fala, os instrumentos abaixam ${Math.abs(SETTINGS.narration.duckDb)} dB e voltam ao fim da frase.`;
   $("dlgScaleLabel").textContent = scale.label;
   $("dlgScaleUnit").textContent = scale.unit;
   $("dlgGradient").style.background = scale.gradientCss();
@@ -220,7 +241,6 @@ function openLegend() {
 
   const list = $("instrumentList");
   list.innerHTML = "";
-  const defaults = layerInstruments(scale.id);
   for (const id of LAYER_ORDER) {
     const layer = LAYERS[id];
     const instId = engine.layerInstrument(id);
@@ -228,36 +248,29 @@ function openLegend() {
     const variable = layerVariable(scale.id, id);
     const li = document.createElement("li");
     li.className = "instrument";
-    li.tabIndex = 0;
     li.style.setProperty("--inst", layer.color);
-    li.setAttribute("aria-labelledby", `inst-${id}`);
-    li.setAttribute("aria-describedby", `inst-${id}-here`);
     const swatch = instrumentSwatch(scale, id);
-    const options = SAMPLE_SET_NAMES.map(
-      (n) => `<option value="${n}"${n === instId ? " selected" : ""}>${SAMPLE_SET[n].label}${n === defaults[id] ? " (padrão)" : ""}</option>`
-    ).join("");
     li.innerHTML = `
       <span class="instrument__icon" aria-hidden="true">${INSTRUMENT_ICONS[inst.icon]}</span>
       <div class="instrument__body">
-        <p class="instrument__register">${layer.register} · <code title="${VARIABLE_LABELS[variable]}">MAPPING_CONFIG.${variable}</code></p>
-        <h3 class="instrument__name" id="inst-${id}">${inst.label}<span class="sr-only">, ${layer.register}</span></h3>
-        <p class="instrument__role">${layer.role}</p>
+        <p class="instrument__register">${layer.register} · <code title="${VARIABLE_LABELS[variable]}: definido em config.json">mapeamento.${variable}</code></p>
+        <h3 class="instrument__name" id="inst-${id}">${inst.label}</h3>
+        <p class="instrument__role" id="inst-${id}-role">${layer.role}</p>
         <p class="instrument__here" id="inst-${id}-here"><span class="instrument__swatch" style="background:${swatch}"></span>${scale.legend[id]}</p>
       </div>
-      <div class="instrument__actions">
-        <label class="instrument__pick"><span class="sr-only">Instrumento da camada ${layer.register.toLowerCase()}</span>
-          <select data-layer="${id}">${options}</select>
-        </label>
-      </div>`;
+      <div class="instrument__actions"></div>`;
+    // o botão carrega o nome e a explicação: é ele que o teclado e o leitor de tela encontram
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "button button--ghost instrument__play";
-    btn.setAttribute("aria-describedby", `inst-${id}`);
+    btn.setAttribute("aria-label", `Ouvir ${inst.label}, som ${layer.register.toLowerCase()}`);
+    btn.setAttribute("aria-describedby", `inst-${id}-role inst-${id}-here`);
     btn.innerHTML = `<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l10-6.5-10-6.5Z" fill="currentColor"/></svg> Ouvir`;
-    li.querySelector(".instrument__actions").prepend(btn);
+    li.querySelector(".instrument__actions").append(btn);
 
     const play = async () => {
       try {
+        narrator.cancel(); // a música fica muda enquanto a voz fala: cala a voz para ouvir o instrumento
         list.querySelectorAll(".is-playing").forEach((el) => el.classList.remove("is-playing"));
         li.classList.add("is-playing");
         const secs = await engine.preview(id);
@@ -278,19 +291,7 @@ function openLegend() {
     // PRÉ-ESCUTA NO HOVER: tocar ao entrar no card (pequeno atraso evita disparos ao só atravessar)
     li.addEventListener("mouseenter", () => { clearTimeout(li._hover); li._hover = setTimeout(play, 90); });
     li.addEventListener("mouseleave", stop);
-    li.addEventListener("focus", (e) => { if (e.target === li) play(); });
-    li.addEventListener("keydown", (e) => { if (e.target === li && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); play(); } });
     btn.addEventListener("click", play);
-    li.querySelector("select").addEventListener("change", (e) => {
-      const chosen = e.target.value;
-      if (chosen === defaults[id]) delete state.overrides[id];
-      else state.overrides[id] = chosen;
-      applyInstruments();
-      const now = SAMPLE_SET[chosen];
-      li.querySelector(".instrument__icon").innerHTML = INSTRUMENT_ICONS[now.icon];
-      li.querySelector(".instrument__name").firstChild.textContent = now.label;
-      play();
-    });
     list.append(li);
   }
 
@@ -339,7 +340,10 @@ async function startExperience({ quiet = false } = {}) {
   state.keyboardActive = true;
   state.readingDirty = true;
   layoutCanvas();
-  if (state.reading && !quiet) announceReading(true);
+  if (!quiet) {
+    announce(`Mapa aberto: ${state.group.title}. Use as setas para explorar. Aperte H para ouvir os atalhos.`);
+    if (state.reading) { state.announcedKey = ""; state.lastMove = performance.now(); } // a leitura do lugar vem em seguida
+  }
 }
 
 // Tutorial: abre o mapa de temperatura direto (a legenda é ensinada pelo próprio tutorial)
@@ -411,7 +415,7 @@ function setupExplorerFor(g) {
   slider.max = String(g.frames.length - 1);
   canvas.setAttribute(
     "aria-label",
-    `Mapa sonoro de ${g.title}, ${scale.label}. Use as setas para mover o cursor focal; cada posição toca instrumentos conforme o valor.`
+    `Mapa sonoro de ${g.title}, ${scale.label}. Setas movem o cursor, Enter lê o lugar, O dá a visão geral e H abre a ajuda`
   );
   layoutCanvas();
 }
@@ -586,6 +590,19 @@ function startTimeline() {
   };
   step();
 }
+function toggleTimeline() {
+  if (!state.group || state.group.frames.length < 2) {
+    announce("Este mapa tem uma imagem só, sem linha do tempo.");
+    return;
+  }
+  if (state.playing) {
+    stopTimeline();
+    announce(`Linha do tempo pausada em ${frameTimeText(state.group.frames[state.index])}.`);
+  } else {
+    announce(`Linha do tempo tocando, ${$("speedSelect").value} horas por segundo. Aperte P para pausar.`);
+    startTimeline();
+  }
+}
 function stopTimeline() {
   state.playing = false;
   clearTimeout(playTimer);
@@ -594,7 +611,11 @@ function stopTimeline() {
 }
 function stepFrame(delta) {
   const g = state.group;
-  if (!g || g.frames.length < 2) return;
+  if (!g) return;
+  if (g.frames.length < 2) {
+    announce("Este mapa tem uma imagem só, sem outras horas.");
+    return;
+  }
   stopTimeline();
   loadFrame((state.index + delta + g.frames.length) % g.frames.length).then(() => {
     announce(frameTimeText(g.frames[state.index]), { speak: true });
@@ -606,7 +627,7 @@ function stepFrame(delta) {
 // Leitura e sonificação
 // ---------------------------------------------------------------------------
 function isActive() {
-  return !$("exploreView").hidden && (state.pointerInside || state.keyboardActive) && !$("legendDialog").open;
+  return !$("exploreView").hidden && (state.pointerInside || state.keyboardActive) && !$("legendDialog").open && !$("helpDialog").open;
 }
 
 function computeReading() {
@@ -649,6 +670,80 @@ function announceReading(force = false) {
   if (!force && key === state.announcedKey) return;
   state.announcedKey = key;
   announce(readingSentence(r));
+}
+
+// ---------------------------------------------------------------------------
+// Exploração sem ver o mapa: visão geral, posição e saltos entre regiões
+// ---------------------------------------------------------------------------
+function placeWords(u, v) {
+  const vert = v < 1 / 3 ? "em cima" : v > 2 / 3 ? "embaixo" : "";
+  const horiz = u < 1 / 3 ? "à esquerda" : u > 2 / 3 ? "à direita" : "";
+  if (!vert && !horiz) return "no centro do mapa";
+  return [vert || "a meia altura", horiz || "no centro"].join(", ");
+}
+
+// Tecla O: percorre o mapa numa grade e diz onde estão os valores mais alto e mais baixo
+function mapOverview() {
+  const { sampler, scale, projection, group } = state;
+  if (!sampler || !scale) return;
+  const COLS = 24;
+  const ROWS = 12;
+  let hi = null;
+  let lo = null;
+  let sum = 0;
+  let n = 0;
+  for (let j = 0; j < ROWS; j += 1) {
+    for (let i = 0; i < COLS; i += 1) {
+      const r = sampler.read((i + 0.5) / COLS, (j + 0.5) / ROWS, scale, projection);
+      if (!r.valid) continue;
+      n += 1;
+      sum += r.value;
+      if (!hi || r.value > hi.value) hi = r;
+      if (!lo || r.value < lo.value) lo = r;
+    }
+  }
+  if (!n) {
+    announce(`Visão geral de ${group.title}: não encontrei dados legíveis nesta imagem.`);
+    return;
+  }
+  const where = (r) => `${r.region?.name ? `na região ${r.region.name}, ` : ""}${placeWords(r.u, r.v)}`;
+  announce(
+    `Visão geral de ${group.title}. ${scale.sentence(scale.format(hi.value))} é o valor mais alto, ${where(hi)}. ` +
+    `${scale.sentence(scale.format(lo.value))} é o mais baixo, ${where(lo)}. Média do mapa: ${scale.format(sum / n)}. ` +
+    "Use as teclas de 1 a 9 para saltar entre as regiões."
+  );
+}
+
+// Tecla C: onde o cursor está
+function announcePosition() {
+  const r = state.reading;
+  const place = r?.region?.name || state.group?.title || "Imagem";
+  const coord = r?.geo ? `${formatCoord(r.geo.lat, r.geo.lon)}. ` : "";
+  announce(`${place}. ${coord}Cursor ${placeWords(state.u, state.v)}: ${Math.round(state.u * 100)}% da largura e ${Math.round(state.v * 100)}% da altura do mapa.`);
+}
+
+// Teclas 1 a 9: nove regiões, como um teclado de telefone (1 = em cima à esquerda)
+function jumpToCell(n) {
+  state.u = ((n - 1) % 3 + 0.5) / 3;
+  state.v = (Math.floor((n - 1) / 3) + 0.5) / 3;
+  moveFocal(0, 0);
+  processReading();
+  announceReading(true);
+}
+
+function changeVolume(delta) {
+  const slider = $("volumeSlider");
+  const db = clamp(Number(slider.value) + delta, Number(slider.min), Number(slider.max));
+  slider.value = String(db);
+  setVolume(db);
+  announce(`Volume ${db} decibéis.`);
+}
+
+function setVolume(db) {
+  $("volumeOut").textContent = `${db} dB`;
+  $("volumeSlider").setAttribute("aria-valuetext", `${db} decibéis`);
+  engine.setVolume(db);
+  savePrefs();
 }
 
 function processReading() {
@@ -774,7 +869,7 @@ function draw(time) {
   // retícula do cursor focal
   const active = isActive();
   const pulse = reducedMotion.matches || $("lowSensory").checked ? 0 : Math.sin(time / 380) * 2;
-  const R = (14 + pulse) * dpr;
+  const R = (14 + pulse) * dpr * CURSOR_SCALE[$("textSize").value]; // retícula maior com texto grande (baixa visão)
   ctx.lineWidth = (hc ? 3 : 2) * dpr;
   ctx.strokeStyle = hc ? "#ffff00" : "rgba(255,255,255,.95)";
   ctx.shadowColor = "rgba(0,0,0,.7)";
@@ -853,9 +948,9 @@ function frame(time) {
     }
     draw(time);
     drawScope();
-    // anuncia quando o cursor para por ~0,7 s
-    // (não interrompe a instrução que o tutorial está falando)
-    if (isActive() && performance.now() - state.lastMove > 700 && state.lastMove && !tutorial.isSpeaking()) announceReading();
+    // anuncia quando o cursor para (config.json → narracao.esperaParadoMs),
+    // sem interromper o que a voz ainda está falando
+    if (isActive() && performance.now() - state.lastMove > SETTINGS.narration.restMs && state.lastMove && !narrator.busy()) announceReading();
   }
   requestAnimationFrame(frame);
 }
@@ -887,6 +982,8 @@ async function toggleAudio() {
   }
   updateAudioUI();
   state.readingDirty = true;
+  // só voz: o leitor de tela já recebe a mudança pelo status do painel de áudio
+  if (engine.started) announce(engine.paused ? "Som pausado." : "Som ligado.", { live: false });
 }
 
 engine.onSamplesState = (s, labels = []) => {
@@ -909,7 +1006,7 @@ function onPhoneStatus(kind, info) {
   const dot = $("phoneDot");
   dot.className = "status-dot";
   if (kind === "waiting") { st.textContent = "Aguardando o celular escanear o QR Code…"; dot.classList.add("is-wait"); }
-  if (kind === "connected") { st.textContent = `Smartphone conectado ✓ · mova o mouse sobre o mapa`; dot.classList.add("is-on"); announce("Smartphone conectado para vibração.", { speak: false }); }
+  if (kind === "connected") { st.textContent = `Smartphone conectado ✓ · mova o mouse sobre o mapa`; dot.classList.add("is-on"); announce("Smartphone conectado para vibração."); }
   if (kind === "caps" && info && info.vibrate === false) toast("O celular conectado não suporta vibração (ex.: iPhone). Ele mostrará pulsos visuais.", 6000);
   if (kind === "reconnecting") st.textContent = "Reconectando ao serviço de sinalização…";
   if (kind === "error") { st.textContent = `Erro na conexão WebRTC (${info}).`; dot.classList.add("is-err"); }
@@ -1019,6 +1116,69 @@ function applyLowSensory(on) {
   savePrefs();
 }
 
+// Narração por voz: lê os controles ao navegar e os lugares no mapa
+function applyVoice(on) {
+  $("voiceToggle").checked = on;
+  voiceChosen = true;
+  savePrefs();
+  if (on) announce("Narração por voz ligada. A música para enquanto eu falo. Aperte F1 para ouvir os atalhos.");
+  else {
+    narrator.cancel();
+    announce("Narração por voz desligada.", { speak: false });
+    speak("Narração por voz desligada.", { force: true });
+  }
+}
+
+// Ao sair do tutorial feito com narração, a voz continua ligada no resto do site:
+// quem não enxerga a tela não fica sem guia. Não muda nada se a pessoa já escolheu antes.
+function onTutorialClose({ started, voice }) {
+  if (!started || !voice || voiceChosen || $("voiceToggle").checked) return;
+  $("voiceToggle").checked = true;
+  savePrefs();
+  speak("A narração por voz continua ligada. Para desligar, aperte Alt, Shift e N. Para ouvir os atalhos, aperte F1.", { queue: true });
+}
+
+// Tamanho do texto (baixa visão)
+const CURSOR_SCALE = { normal: 1, grande: 1.35, enorme: 1.7 };
+function applyTextSize(size) {
+  if (!(size in CURSOR_SCALE)) size = "normal";
+  $("textSize").value = size;
+  document.documentElement.classList.toggle("text-grande", size === "grande");
+  document.documentElement.classList.toggle("text-enorme", size === "enorme");
+  if (!$("exploreView").hidden) layoutCanvas();
+  savePrefs();
+}
+
+// ---------------------------------------------------------------------------
+// Ajuda e atalhos
+// ---------------------------------------------------------------------------
+function openHelp() {
+  const dlg = $("helpDialog");
+  if (!dlg.open) dlg.showModal();
+  $("helpTitle").focus();
+}
+
+// texto da ajuda para a voz: nomes de teclas que a síntese não lê bem viram palavras
+function helpSpeech() {
+  const clone = $("helpBody").cloneNode(true);
+  const names = { "[": "abre colchete", "]": "fecha colchete", "+": "mais", "-": "menos" };
+  clone.querySelectorAll("kbd").forEach((k) => { k.textContent = names[k.textContent] || k.textContent; });
+  return [...clone.querySelectorAll("h3, p, li")]
+    .map((el) => el.textContent.replace(/\s+/g, " ").replace(/ \+ /g, " mais ").trim())
+    .map((t) => (/[.!?:]$/.test(t) ? t : `${t}.`))
+    .join(" ");
+}
+
+function focusMapShortcut() {
+  if ($("exploreView").hidden) {
+    announce("Nenhum mapa aberto. Escolha um mapa na galeria.");
+    return;
+  }
+  for (const id of ["helpDialog", "legendDialog"]) if ($(id).open) $(id).close();
+  canvas.focus({ preventScroll: true });
+  canvas.scrollIntoView({ block: "center", behavior: "auto" });
+}
+
 function applyColorMode(mode) {
   state.colorMode = mode;
   if (state.sampler) {
@@ -1056,6 +1216,33 @@ function setupEvents() {
   attachScaleHover($("dlgTrack"), $("dlgMarker"), $("dlgTip"));
   $("tutorialOpen").addEventListener("click", () => tutorial.open());
   $("tutorialSkipLink").addEventListener("click", (e) => { e.preventDefault(); tutorial.open(); });
+
+  // ajuda e atalhos
+  $("helpOpen").addEventListener("click", openHelp);
+  $("helpOpenPanel").addEventListener("click", openHelp);
+  $("helpSkipLink").addEventListener("click", (e) => { e.preventDefault(); openHelp(); });
+  $("helpClose").addEventListener("click", () => $("helpDialog").close());
+  $("helpDialog").addEventListener("close", () => narrator.cancel());
+  $("helpSpeak").addEventListener("click", () => speak(helpSpeech(), { force: true }));
+
+  // atalhos que valem na página toda (sempre com modificador, para não atrapalhar quem digita
+  // nem as teclas de navegação dos leitores de tela)
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "F1") { e.preventDefault(); openHelp(); return; }
+    if (e.altKey && e.shiftKey && !e.ctrlKey && !e.metaKey) {
+      const actions = {
+        KeyH: openHelp,
+        KeyN: () => applyVoice(!$("voiceToggle").checked),
+        KeyM: focusMapShortcut,
+        KeyG: () => { for (const id of ["helpDialog", "legendDialog"]) if ($(id).open) $(id).close(); backToGallery(); },
+        KeyT: () => tutorial.open(),
+      };
+      if (actions[e.code]) { e.preventDefault(); actions[e.code](); }
+      return;
+    }
+    // Escape cala a voz (o tutorial trata o próprio Escape)
+    if (e.key === "Escape" && narrator.busy() && !tutorial.isActive()) narrator.cancel();
+  });
 
   // diálogo da legenda
   const dlg = $("legendDialog");
@@ -1101,23 +1288,38 @@ function setupEvents() {
 
   // canvas: teclado
   canvas.addEventListener("keydown", (e) => {
-    const big = e.shiftKey ? 0.05 : 0.0125;
+    if (e.ctrlKey || e.metaKey || e.altKey) return; // atalhos globais e do navegador
+    const big = e.shiftKey ? SETTINGS.keyboard.bigStep : SETTINGS.keyboard.step;
     const map = { ArrowLeft: [-big, 0], ArrowRight: [big, 0], ArrowUp: [0, -big * 2], ArrowDown: [0, big * 2] };
     if (map[e.key]) {
       e.preventDefault();
+      const [u0, v0] = [state.u, state.v];
       moveFocal(...map[e.key]);
       tutorial.notify("move");
+      // chegou à borda: avisa, para a pessoa não ficar apertando a seta sem sair do lugar
+      if (state.u === u0 && state.v === v0 && !tutorial.isSpeaking()) {
+        const edge = { ArrowLeft: "esquerda", ArrowRight: "direita", ArrowUp: "de cima", ArrowDown: "de baixo" }[e.key];
+        announce(`Borda ${edge} do mapa.`);
+      }
       return;
     }
+    if (/^[1-9]$/.test(e.key)) { e.preventDefault(); jumpToCell(Number(e.key)); return; }
     switch (e.key) {
       case " ": e.preventDefault(); toggleAudio(); break;
       case "Enter": e.preventDefault(); state.readingDirty = true; processReading(); announceReading(true); tutorial.notify("announce"); break;
       case "Home": e.preventDefault(); state.u = 0.5; state.v = 0.5; moveFocal(0, 0); tutorial.notify("home"); break;
       case "[": e.preventDefault(); stepFrame(-1); break;
       case "]": e.preventDefault(); stepFrame(1); break;
-      case "p": case "P": e.preventDefault(); state.playing ? stopTimeline() : startTimeline(); break;
+      case "+": case "=": e.preventDefault(); changeVolume(2); break;
+      case "-": case "_": e.preventDefault(); changeVolume(-2); break;
+      case "p": case "P": e.preventDefault(); toggleTimeline(); break;
       case "l": case "L": e.preventDefault(); openLegend(); break;
       case "t": case "T": e.preventDefault(); tutorial.open(); break;
+      case "o": case "O": e.preventDefault(); mapOverview(); break;
+      case "c": case "C": e.preventDefault(); processReading(); announcePosition(); break;
+      case "n": case "N": e.preventDefault(); applyVoice(!$("voiceToggle").checked); break;
+      case "g": case "G": e.preventDefault(); backToGallery(); break;
+      case "h": case "H": case "?": e.preventDefault(); openHelp(); break;
       default:
     }
   });
@@ -1130,17 +1332,13 @@ function setupEvents() {
     $("frameLabel").textContent = `${state.group.frames[i].name} · ${i + 1}/${state.group.frames.length}`;
     $("frameTime").textContent = frameTimeText(state.group.frames[i]);
     clearTimeout(sliderTimer);
-    sliderTimer = setTimeout(() => loadFrame(i), 60);
+    // só voz: o leitor de tela lê o próprio controle deslizante
+    sliderTimer = setTimeout(() => loadFrame(i).then(() => announce(frameTimeText(state.group.frames[state.index]), { live: false })), 60);
   });
-  $("playTimeline").addEventListener("click", () => (state.playing ? stopTimeline() : startTimeline()));
+  $("playTimeline").addEventListener("click", toggleTimeline);
 
   // áudio
-  $("volumeSlider").addEventListener("input", (e) => {
-    const db = Number(e.target.value);
-    $("volumeOut").textContent = `${db} dB`;
-    engine.setVolume(db);
-    savePrefs();
-  });
+  $("volumeSlider").addEventListener("input", (e) => setVolume(Number(e.target.value)));
   $("keySelect").addEventListener("change", (e) => { engine.setKey(e.target.value); updateAudioUI(); savePrefs(); });
   $("samplesToggle").addEventListener("change", (e) => { engine.setUseSamples(e.target.checked); savePrefs(); });
 
@@ -1157,6 +1355,17 @@ function setupEvents() {
     if ($("lanSelect").value === "__manual") $("lanInput").focus();
   });
   $("receiverMode").addEventListener("change", () => { refreshQr(); savePrefs(); });
+  // alternativa ao QR Code para quem não enxerga a tela
+  $("copyReceiver").addEventListener("click", async () => {
+    const url = receiverUrl();
+    if (!url) { toast("Ainda não há link: o endereço deste computador não foi encontrado."); return; }
+    try {
+      await navigator.clipboard.writeText(url);
+      announce("Link do receptor copiado. Envie para o celular e abra no navegador.");
+    } catch {
+      toast("Não foi possível copiar. O link está escrito logo acima deste botão.");
+    }
+  });
   // rede mudou (outro Wi-Fi, cabo, VPN): refaz a detecção se o painel estiver aberto
   const redetect = () => { if (!$("phoneBox").hidden && haptics.peer?.id) detectAddresses(); };
   window.addEventListener("online", redetect);
@@ -1165,11 +1374,8 @@ function setupEvents() {
   // acessibilidade
   $("lowSensory").addEventListener("change", (e) => applyLowSensory(e.target.checked));
   $("highContrast").addEventListener("change", (e) => { document.documentElement.classList.toggle("hc", e.target.checked); savePrefs(); });
-  $("voiceToggle").addEventListener("change", (e) => {
-    savePrefs();
-    if (e.target.checked) announce("Narração por voz ativada.");
-    else narrator.cancel();
-  });
+  $("voiceToggle").addEventListener("change", (e) => applyVoice(e.target.checked));
+  $("textSize").addEventListener("change", (e) => applyTextSize(e.target.value));
   $("colorMode").addEventListener("change", (e) => applyColorMode(e.target.value));
 
   window.addEventListener("resize", () => { if (!$("exploreView").hidden) layoutCanvas(); });
@@ -1183,23 +1389,42 @@ function setupEvents() {
 // ---------------------------------------------------------------------------
 async function init() {
   setupEvents();
-  // preferências salvas
+  // valores iniciais: config.json; as escolhas salvas no navegador vêm por cima
   if (prefs.receiver) $("receiverMode").value = prefs.receiver;
-  if (prefs.volume !== undefined && prefs.v === 2) { $("volumeSlider").value = prefs.volume; $("volumeOut").textContent = `${prefs.volume} dB`; engine.setVolume(prefs.volume); }
-  if (prefs.key) { $("keySelect").value = prefs.key; engine.setKey(prefs.key); }
-  if (prefs.samples === false) { $("samplesToggle").checked = false; engine.setUseSamples(false); }
-  if (prefs.voice) $("voiceToggle").checked = true;
-  const hc = prefs.hc ?? window.matchMedia("(prefers-contrast: more)").matches;
+  const volume = prefs.volume !== undefined && prefs.v === 2 ? prefs.volume : SETTINGS.audio.volumeDb;
+  $("volumeSlider").value = volume;
+  $("volumeOut").textContent = `${volume} dB`;
+  $("volumeSlider").setAttribute("aria-valuetext", `${volume} decibéis`);
+  engine.setVolume(volume);
+  $("keySelect").value = prefs.key || SETTINGS.audio.key;
+  engine.setKey($("keySelect").value);
+  const samples = prefs.samples ?? SETTINGS.audio.useSamples;
+  $("samplesToggle").checked = samples;
+  if (samples !== engine.useSamples) engine.setUseSamples(samples);
+  $("voiceToggle").checked = prefs.voice ?? SETTINGS.narration.onAtStart;
+  const hc = prefs.hc ?? SETTINGS.a11y.highContrast ?? window.matchMedia("(prefers-contrast: more)").matches;
   $("highContrast").checked = !!hc;
   document.documentElement.classList.toggle("hc", !!hc);
+  $("textSize").value = prefs.text || SETTINGS.a11y.textSize;
+  applyTextSize($("textSize").value);
   if (prefs.color) { $("colorMode").value = prefs.color; state.colorMode = prefs.color; }
   if (prefs.lan) $("lanInput").value = prefs.lan;
   applyLowSensory(!!prefs.low);
+
+  // com a narração ligada, a voz lê cada controle que recebe o foco (js/a11y.js)
+  initFocusEcho({
+    enabled: () => SETTINGS.narration.readControls && voiceOn(),
+    speak: (text) => speak(text),
+    skip: (el) => el.id === "tutorialTitle", // o tutorial fala os próprios passos
+  });
 
   showView("gallery");
   renderGallery();
   updateAudioUI();
   requestAnimationFrame(frame);
+  if (CONFIG_PROBLEMS.length) {
+    toast(`config.json: ${CONFIG_PROBLEMS.length === 1 ? "1 problema" : `${CONFIG_PROBLEMS.length} problemas`}. ${CONFIG_PROBLEMS[0]}`, 12000);
+  }
   // primeira visita: o guia em áudio é a primeira coisa na tela (e no leitor de tela)
   if (!tutorial.seen()) tutorial.open({ gate: true });
 

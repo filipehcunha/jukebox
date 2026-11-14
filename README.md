@@ -25,7 +25,7 @@ Descompacte `dados.zip` na raiz para obter `dados/{temp,humidity,wind,co}_frames
 ## Fluxo da experiência
 
 1. **Galeria de escolha:** traz 6 mapas pré-carregados: ECCO2 (temperatura dos oceanos), GEDI (altura das florestas) e quatro mapas GMAO (temperatura, umidade, vento e CO). Também é possível carregar uma pasta (`webkitdirectory`), selecionar várias imagens ou arrastar e soltar. Cada pasta vira um grupo de miniaturas clicáveis com o nome do arquivo, carregadas sob demanda.
-2. **Legenda auditiva e sensorial (obrigatória):** é um diálogo modal que mostra a barra de cores da escala e as 4 camadas. **Passar o mouse sobre um card toca o instrumento na hora** (`mouseenter`, sem clicar). Focar o card pelo teclado também toca. Cada card mostra a constante do `MAPPING_CONFIG`, quais cores o acionam e um seletor para testar qualquer um dos 10 instrumentos do `SAMPLE_SET`. **Passar o mouse sobre a barra de cores toca o valor daquela posição.** O botão **Iniciar Experiência Multissensorial** abre o mapa.
+2. **Legenda auditiva e sensorial (obrigatória):** é um diálogo modal que mostra a barra de cores da escala e as 4 camadas. **Passar o mouse sobre um card toca o instrumento na hora** (`mouseenter`, sem clicar). Pelo teclado, cada card tem um botão **Ouvir** com o nome e a explicação do instrumento. Cada card mostra a característica do `config.json` que o alimenta e quais cores o acionam. Os instrumentos só mudam editando o `config.json`. **Passar o mouse sobre a barra de cores toca o valor daquela posição.** O botão **Iniciar Experiência Multissensorial** abre o mapa.
 3. **Exploração:** mouse, toque ou teclado sobre o mapa, com leitura em tempo real. Em sequências, a linha do tempo permite escutar o tempo passar com o cursor parado.
 
 ## Das cores aos números
@@ -50,19 +50,32 @@ Casos especiais:
 
 Validação (`python3 tools/extrair_escalas.py --validar`, 12 mil pixels por variável): ΔE mediano de 1,0 a 2,3. O Pacífico equatorial lê 28,8 °C, a Antártida −39,7 °C, a umidade da Amazônia 19 g/kg e o CO no leste da China 311 ppbv.
 
-## Constantes de mapeamento (`js/config.js`)
+## Configuração (`config.json`)
 
-```js
-const MAPPING_CONFIG = {
-  TEMPERATURE: 'CELLO',          // Águas frias a quentes
-  HUMIDITY: 'FLUTE',             // Nuvens e umidade atmosférica
-  VEGETATION_DENSITY: 'MARIMBA', // Altura do dossel (GEDI)
-  OCEAN_CURRENTS: 'HARP',        // Velocidade e fluxo de água
-  ALTITUDE_ELEVATION: 'PIANO'    // Relevo
-};
+Tudo o que é ajustável fica em **`config.json`**, na raiz do projeto. O arquivo só muda **à mão**: edite, salve e recarregue a página. A interface não grava nada nele, e a legenda não troca mais instrumentos.
+
+| Seção | O que controla |
+| --- | --- |
+| `mapeamento` | Qual instrumento toca cada característica: `TEMPERATURE`, `HUMIDITY`, `VEGETATION_DENSITY`, `OCEAN_CURRENTS`, `ALTITUDE_ELEVATION`. |
+| `camadasPorEscala` | Qual característica alimenta cada camada (`low`, `mid`, `high`, `arp`). `default` vale para todos os mapas; `gedi`, `temp`, `wind` etc. trocam só as camadas indicadas. |
+| `instrumentos` | Para cada um dos 10 instrumentos: `nome`, **`volumeDb`** (volume na mixagem, em decibéis) e a faixa de notas MIDI (`notaMaisGrave`, `notaMaisAguda`). |
+| `audio` | Volume geral inicial, tonalidade (`C` ou `G`), amostras gravadas, limitador e reverberação. |
+| `narracao` | `pausarMusica` (a música para enquanto a voz fala), `reducaoDb` (usado se `pausarMusica` for `false`), rampas, velocidade e volume da voz, espera com o cursor parado, leitura dos controles. |
+| `baixaSensibilidade` | Redução de volume, limitador, filtro, voz e vibração do modo de baixa sensibilidade. |
+| `teclado` | Tamanho do passo do cursor no mapa. |
+| `vibracao` | Duração, intervalo e força dos pulsos do celular nos extremos frio e quente. |
+| `acessibilidade` | Tamanho do texto e alto contraste iniciais. |
+
+Exemplo: para a temperatura tocar no contrabaixo, 6 dB mais baixo:
+
+```json
+"mapeamento":   { "TEMPERATURE": "DOUBLE_BASS" },
+"instrumentos": { "DOUBLE_BASS": { "nome": "Contrabaixo", "volumeDb": -6.5, "notaMaisGrave": 28, "notaMaisAguda": 50 } }
 ```
 
-O `SAMPLE_SET` traz os 10 instrumentos: `CELLO`, `DOUBLE_BASS`, `GRAND_PIANO`, `MARIMBA`, `FLUTE`, `HARP`, `VIOLIN`, `CLARINET`, `SYNTH_PAD` e `STEEL_DRUM`. Cada um define a faixa de notas, se sustenta ou é percutido, o timbre sintetizado e, quando existem, as amostras gravadas (marimba, pad e steel drum são só sintetizados). Para trocar um instrumento, edite o nome no `MAPPING_CONFIG` e recarregue. `SCALE_LAYER_MAPPING` define qual variável alimenta cada camada (grave, médio, agudo, arpejo) em cada escala. Por exemplo, no GEDI a camada média usa `VEGETATION_DENSITY` (marimba).
+Chaves que começam com `_` são comentários. Um valor ausente ou inválido (instrumento que não existe, texto no lugar de número, JSON com erro de sintaxe) não derruba o app: ele usa o padrão, mostra um aviso na tela e detalha no console. Controles que continuam na interface (volume geral, tonalidade, narração, tamanho do texto) partem do valor do arquivo e a escolha da pessoa fica salva no navegador; se o valor do arquivo for editado, ele volta a valer.
+
+`js/config.js` só lê e valida o arquivo. A parte técnica de cada instrumento (timbre sintetizado e URLs das amostras) continua no código. Os textos do tutorial (`assets/tutorial/roteiro.json`) citam violoncelo, piano, flauta e harpa pelo nome: se trocar o mapeamento, ajuste o roteiro e regrave os áudios.
 
 ## Sonificação (Tone.js)
 
@@ -79,7 +92,7 @@ O `SAMPLE_SET` traz os 10 instrumentos: `CELLO`, `DOUBLE_BASS`, `GRAND_PIANO`, `
 - Todas as mudanças de volume, filtro e panorama usam `rampTo`. Violoncelo e flauta fazem glide ou legato, e o piano re-toca suavemente quando o cursor repousa.
 - As amostras são gravações reais (piano Salamander; violoncelo, contrabaixo, violino, clarinete, flauta e harpa do *tonejs-instruments*), carregadas só para os instrumentos em uso e com fallback sintetizado.
 - **Barra de cores tocável:** passar o mouse (ou usar as setas com a barra em foco) toca exatamente o que um pixel daquela cor tocaria no mapa e também vibra o celular.
-- **Audio ducking:** enquanto a narração por voz fala, os instrumentos caem 15 dB (rampa de 0,15 s). Ao fim da frase, voltam ao normal com rampa de 0,9 s.
+- **A voz tem prioridade:** enquanto qualquer narração fala (tutorial, leitura do mapa, leitura dos controles), a música **para por completo** e volta sozinha ao fim da fala, com uma rampa curta. O narrador (`js/voz.js`) avisa o motor de áudio quando começa e quando termina. Com `narracao.pausarMusica: false` no `config.json`, a música só abaixa `reducaoDb` decibéis.
 
 ## Smartphone (vibração tátil)
 
@@ -87,11 +100,36 @@ O painel **Conectar Smartphone** gera um peer PeerJS com ID aleatório e um QR C
 
 ## Acessibilidade
 
-- **Modo de baixa sensibilidade:** limitador em −18 dB, volume −10 dB, filtro até 1,7 kHz, rampas lentas, arpejos mais lentos, vibração a 45% e animações desligadas.
-- **Teclado:** setas movem o cursor focal (Shift = passo maior), `Enter` anuncia, `Espaço` liga/pausa, `[` `]` trocam a hora, `P` reproduz a linha do tempo, `L` abre a legenda e `Home` centraliza.
-- **ARIA live + narração por voz** (`speechSynthesis`, pt-BR). Exemplo: "Atlântico Norte: Violoncelo e Piano. Temperatura 22,0 °C, quente."
-- **Alto contraste** (respeita `prefers-contrast`) e **filtros de cor**: paletas seguras que recolorem a imagem *pelos dados decodificados* (Cividis, Viridis, cinza) e simulações de deuteranopia, protanopia e tritanopia.
-- O layout é responsivo, respeita `prefers-reduced-motion` e usa um `<dialog>` modal com foco gerenciado.
+O site inteiro funciona sem ver a tela, de dois jeitos:
+
+- **Com leitor de tela** (NVDA, JAWS, VoiceOver, TalkBack): a página tem links de atalho, regiões e títulos, diálogos modais com foco gerenciado, nomes e estados em todos os controles e regiões ARIA live para leituras, avisos e mudanças de tela. O mapa é um `role="application"`, então as teclas chegam direto a ele.
+- **Sem leitor de tela:** a **Narração por voz** vira um leitor embutido (`js/a11y.js`). Ela lê cada controle que recebe o foco (nome, tipo, estado e descrição), o novo estado de interruptores, listas e controles deslizantes, os avisos, as trocas de tela e, no mapa, o lugar, os instrumentos e o valor. Quem termina o tutorial com a narração ligada continua com ela no resto do site.
+
+Enquanto a voz fala, a música para.
+
+**Atalhos na página toda:** `F1` ou `Alt+Shift+H` abre a ajuda (que também pode ser ouvida em voz alta), `Alt+Shift+N` liga ou desliga a narração, `Alt+Shift+M` leva o foco ao mapa, `Alt+Shift+G` volta à galeria, `Alt+Shift+T` abre o tutorial e `Escape` cala a voz.
+
+**Com o mapa em foco:**
+
+| Tecla | Ação |
+| --- | --- |
+| Setas (`Shift` = passo maior) | movem o cursor; a voz avisa ao chegar à borda |
+| `Enter` | lê o lugar, os instrumentos e o valor |
+| `O` | visão geral: valores mais alto e mais baixo, onde ficam, e a média |
+| `C` | posição do cursor e coordenadas |
+| `1` a `9` | saltam para nove regiões do mapa (1 = em cima à esquerda, 5 = centro) |
+| `Home` | volta ao centro |
+| `Espaço`, `+`, `-` | liga ou pausa o som; aumenta e diminui o volume |
+| `N` | liga ou desliga a narração |
+| `[` `]`, `P` | hora anterior e próxima; toca ou pausa a linha do tempo |
+| `L`, `G`, `T`, `H` | legenda, galeria, tutorial, ajuda |
+
+Outros recursos:
+
+- **Celular sem QR Code:** o botão **Copiar o link do receptor** permite mandar o endereço para o celular por mensagem.
+- **Baixa visão:** tamanho do texto (normal, grande, enorme; o cursor do mapa cresce junto), **alto contraste** (respeita `prefers-contrast`) e **filtros de cor**: paletas seguras que recolorem a imagem *pelos dados decodificados* (Cividis, Viridis, cinza) e simulações de deuteranopia, protanopia e tritanopia.
+- **Modo de baixa sensibilidade:** limitador, volume e filtro reduzidos, rampas lentas, arpejos mais lentos, vibração mais fraca e animações desligadas (valores em `config.json`).
+- O layout é responsivo e respeita `prefers-reduced-motion`.
 
 ### Tutorial em áudio (pessoas cegas)
 
@@ -132,13 +170,15 @@ Código: `js/tutorial.js` e `js/voz.js`. No `app.js`, o tutorial recebe os event
 ```text
 index.html, receiver.html, servidor.py
 css/styles.css
-js/config.js     MAPPING_CONFIG, SAMPLE_SET (10 instrumentos) e camadas por escala
+config.json      TODA a configuração: instrumentos por característica, volume (dB) de cada um, narração etc.
+js/config.js     lê e valida o config.json; parte técnica dos 10 instrumentos
+js/a11y.js       leitura em voz alta dos controles ao navegar (leitor embutido)
 js/app.js        orquestração: galeria → legenda → exploração, teclado, ARIA, voz
 js/scales.js     escalas, cor → valor, papéis dos instrumentos, paletas acessíveis
 js/colormaps.js  barras GMAO amostradas (gerado)
 js/sampler.js    leitura robusta de pixels, gradiente, recoloração
 js/geo.js        projeções, máscara terra/oceano, nomes de regiões
-js/audio.js      motor Tone.js em 4 camadas, instrumentos trocáveis, pré-escuta e ducking
+js/audio.js      motor Tone.js em 4 camadas, pré-escuta e pausa da música durante a voz
 js/haptics.js    PeerJS + QR Code
 js/receiver.js   página do celular
 js/gallery.js    pastas locais, presets, miniaturas

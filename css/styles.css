@@ -62,7 +62,7 @@ body {
     radial-gradient(circle at 15% 0%, rgba(21, 84, 109, 0.24), transparent 34rem),
     radial-gradient(circle at 88% 8%, rgba(91, 33, 75, 0.18), transparent 30rem),
     linear-gradient(180deg, #040a12, #02050a 60%, #04090f);
-  font: 15px/1.55 var(--font-body);
+  font: 0.9375rem/1.55 var(--font-body);
   -webkit-font-smoothing: antialiased;
 }
 html.hc body { background: #000; }
@@ -358,9 +358,9 @@ html.hc .inst-meters b { background: #ffff00; }
 .instrument {
   display: grid; grid-template-columns: 52px 1fr; gap: 6px 14px; padding: 14px; border-radius: var(--radius-lg);
   border: 1px solid var(--border); background: var(--panel-raised); border-left: 4px solid var(--inst);
-  cursor: pointer; transition: border-color 0.15s, background 0.15s, transform 0.15s;
+  transition: border-color 0.15s, background 0.15s, transform 0.15s;
 }
-.instrument:hover, .instrument:focus-visible { border-color: var(--inst); background: color-mix(in srgb, var(--inst) 10%, var(--panel-raised)); }
+.instrument:hover, .instrument:focus-within { border-color: var(--inst); background: color-mix(in srgb, var(--inst) 10%, var(--panel-raised)); }
 .instrument.is-playing { border-color: var(--inst); box-shadow: 0 0 0 1px var(--inst), 0 0 24px -8px var(--inst); }
 .instrument.is-playing .instrument__icon { animation: inst-pulse 0.9s ease-in-out infinite; }
 @keyframes inst-pulse { 50% { transform: scale(1.08); } }
@@ -392,6 +392,29 @@ html.hc .instrument__register { color: #fff; }
   transition: transform 0.35s var(--ease);
 }
 .toast.is-visible { transform: translate(-50%, 0); }
+/* ---------------- ajuda e atalhos ---------------- */
+.help-dialog {
+  width: min(720px, calc(100vw - 32px)); max-height: calc(100vh - 48px); overflow-y: auto; padding: clamp(20px, 3vw, 32px);
+  border: 1px solid var(--border-strong); border-radius: var(--radius-xl); background: var(--panel-solid); color: var(--text);
+  box-shadow: var(--shadow);
+}
+.help-dialog[open] { display: grid; gap: 16px; justify-items: start; }
+.help-dialog::backdrop { background: rgba(1, 4, 9, 0.88); backdrop-filter: blur(8px); }
+html.hc .help-dialog { background: #000; border: 3px solid #ffff00; }
+html.hc .help-dialog::backdrop { background: #000; }
+.help-dialog__head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; width: 100%; }
+.help-dialog__head h2 { font: 600 clamp(1.4rem, 3vw, 1.9rem)/1.15 var(--font-display); margin: 6px 0 0; outline: none; }
+.help-dialog__body { display: grid; gap: 18px; color: var(--text-soft); line-height: 1.6; }
+.help-dialog__body h3 { color: var(--text); font-size: 1.05rem; margin-bottom: 6px; }
+.help-dialog__body ul { margin: 0; padding-left: 20px; display: grid; gap: 6px; }
+
+/* ---------------- tamanho do texto (baixa visão) ---------------- */
+html.text-grande { font-size: 120%; }
+html.text-enorme { font-size: 145%; }
+html.text-grande .icon, html.text-enorme .icon { width: 1.2rem; height: 1.2rem; }
+html.text-grande .topbar, html.text-enorme .topbar { flex-wrap: wrap; }
+html.text-grande .topbar__actions, html.text-enorme .topbar__actions { flex-wrap: wrap; }
+
 .noscript { padding: 20px; text-align: center; background: #300; }
 
 /* ---------------- tutorial em áudio ---------------- */
@@ -448,7 +471,7 @@ html.hc .tutorial__status { background: #000; border: 2px solid #ffff00; color: 
 }
 @media (max-width: 760px) {
   .tutorial[data-mode="mission"] { inset: auto 0 0 0; width: 100%; border-radius: var(--radius-xl) var(--radius-xl) 0 0; padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px)); }
-  #tutorialOpen span { display: none; }
+  #tutorialOpen span, #helpOpen span { display: none; }
 }
 @media (max-width: 460px) {
   .reading-grid, .mapping-list { grid-template-columns: 1fr; }
