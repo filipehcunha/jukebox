@@ -15,6 +15,7 @@
 </head>
 <body>
   <a class="skip-link" href="#main">Pular para o conteúdo principal</a>
+  <a class="skip-link" href="#tutorialPanel" id="tutorialSkipLink">Iniciar o tutorial em áudio, recomendado para pessoas cegas</a>
 
   <header class="topbar">
     <a class="brand" href="#" id="brandLink" aria-label="A Sinfonia da Terra, voltar à galeria">
@@ -28,6 +29,10 @@
       </span>
     </a>
     <div class="topbar__actions">
+      <button class="button button--ghost" id="tutorialOpen" type="button" aria-haspopup="dialog" aria-controls="tutorialPanel">
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 13a8 8 0 0 1 16 0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><rect x="3" y="13" width="4.5" height="7" rx="1.6" fill="currentColor"/><rect x="16.5" y="13" width="4.5" height="7" rx="1.6" fill="currentColor"/></svg>
+        <span>Tutorial em áudio</span>
+      </button>
       <span class="live-pill" id="livePill"><span class="live-pill__dot" aria-hidden="true"></span><span id="liveText">Áudio desligado</span></span>
       <button class="button button--ghost" id="quickLowSensory" type="button" aria-pressed="false" title="Modo de baixa sensibilidade">
         <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h3l4-4v8l-4-4H4Z" fill="currentColor"/><path d="M15 9.5c1 .8 1 4.2 0 5" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round"/></svg>
@@ -321,6 +326,32 @@
         </button>
       </footer>
     </form>
+  </dialog>
+
+  <!-- ===================== TUTORIAL EM ÁUDIO (pessoas cegas) ===================== -->
+  <!-- Guia modal no centro da tela; nos desafios vira um painel não modal na base e o foco fica no mapa. -->
+  <dialog class="tutorial" id="tutorialPanel" aria-labelledby="tutorialTitle" aria-describedby="tutorialBody">
+    <header class="tutorial__head">
+      <div>
+        <p class="kicker" id="tutorialStep">Passo 1</p>
+        <h2 id="tutorialTitle" tabindex="-1">Tutorial em áudio</h2>
+      </div>
+      <button class="button button--ghost tutorial__close" id="tutorialClose" type="button" aria-label="Fechar tutorial">
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>
+      </button>
+    </header>
+    <div class="tutorial__body" id="tutorialBody"></div>
+    <p class="tutorial__status" id="tutorialStatus" role="status" aria-live="polite" aria-atomic="true"></p>
+    <label class="switch tutorial__voice">
+      <span class="switch__body"><strong>Narração do tutorial</strong><small>Desmarque se você já usa um leitor de tela.</small></span>
+      <input type="checkbox" id="tutorialVoice" checked>
+      <span class="switch__track" aria-hidden="true"><span class="switch__thumb"></span></span>
+    </label>
+    <footer class="tutorial__foot" id="tutorialNav">
+      <button class="button button--ghost" id="tutorialPrev" type="button">Anterior</button>
+      <button class="button button--ghost" id="tutorialRepeat" type="button">Repetir</button>
+      <button class="button button--primary" id="tutorialNext" type="button">Próximo</button>
+    </footer>
   </dialog>
 
   <div class="sr-only" id="ariaLive" role="status" aria-live="polite" aria-atomic="true"></div>

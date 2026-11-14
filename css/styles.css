@@ -86,10 +86,11 @@ html.hc :focus-visible { outline: 3px solid #ffff00; outline-offset: 3px; }
   overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
 }
 .skip-link {
-  position: absolute; left: 16px; top: -60px; z-index: 100; padding: 10px 16px; border-radius: 10px;
+  position: absolute; left: 16px; top: 0; z-index: 100; padding: 10px 16px; border-radius: 10px; max-width: calc(100vw - 32px);
+  transform: translateY(-110%);
   background: var(--accent); color: var(--accent-ink); font-weight: 700; text-decoration: none;
 }
-.skip-link:focus { top: 12px; }
+.skip-link:focus { transform: translateY(12px); }
 .svg-defs { position: absolute; width: 0; height: 0; }
 .icon { width: 18px; height: 18px; flex: none; }
 .kicker, .eyebrow {
@@ -367,6 +368,41 @@ html.hc .instrument__register { color: #fff; }
 .toast.is-visible { transform: translate(-50%, 0); }
 .noscript { padding: 20px; text-align: center; background: #300; }
 
+/* ---------------- tutorial em áudio ---------------- */
+/* modo guia: diálogo modal no centro, com o resto da página escurecido */
+.tutorial {
+  width: min(680px, calc(100vw - 32px)); max-height: calc(100vh - 48px); overflow-y: auto; padding: clamp(20px, 3vw, 32px);
+  border: 1px solid var(--border-strong); border-radius: var(--radius-xl); background: var(--panel-solid); color: var(--text);
+  box-shadow: var(--shadow);
+}
+.tutorial[open] { display: grid; gap: 16px; }
+.tutorial::backdrop { background: rgba(1, 4, 9, 0.88); backdrop-filter: blur(8px); }
+html.hc .tutorial { background: #000; border: 3px solid #ffff00; }
+html.hc .tutorial::backdrop { background: #000; }
+.tutorial__head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.tutorial__head h2 { font: 600 clamp(1.5rem, 3vw, 2rem)/1.15 var(--font-display); margin: 6px 0 0; outline: none; }
+.tutorial__close { min-height: 40px; width: 40px; padding: 0; justify-content: center; flex: none; }
+.tutorial__body { display: grid; gap: 12px; color: var(--text-soft); font-size: 1.02rem; line-height: 1.6; }
+.tutorial__body p { margin: 0; }
+.tutorial__actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 6px; }
+.tutorial__actions .button.is-playing { border-color: var(--accent); color: var(--accent); }
+.tutorial__status { margin: 0; padding: 12px 14px; border-radius: var(--radius-md); background: rgba(103, 232, 249, 0.08); color: var(--text); font-weight: 600; line-height: 1.5; }
+.tutorial__status:empty { display: none; }
+html.hc .tutorial__status { background: #000; border: 2px solid #ffff00; color: #ffff00; }
+.tutorial__voice { padding-top: 14px; border-top: 1px solid var(--border); }
+.tutorial__foot { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 10px; }
+.tutorial__foot[hidden] { display: none; }
+.tutorial__foot .button:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* modo desafio: painel compacto na base, sem cobrir o mapa (o foco fica no mapa) */
+.tutorial[data-mode="mission"] {
+  position: fixed; inset: auto 0 16px 0; margin: 0 auto; z-index: 60; width: min(620px, calc(100vw - 32px));
+  max-height: 42vh; gap: 10px; padding: 16px 20px; border-color: var(--accent);
+}
+.tutorial[data-mode="mission"] .tutorial__head h2 { font-size: 1.2rem; }
+.tutorial[data-mode="mission"] .tutorial__body,
+.tutorial[data-mode="mission"] .tutorial__voice { display: none; } /* o texto já está no status */
+
 /* ---------------- responsivo ---------------- */
 @media (max-width: 1100px) {
   .explore { grid-template-columns: minmax(0, 1fr); }
@@ -383,6 +419,10 @@ html.hc .instrument__register { color: #fff; }
   main { padding: 16px; }
   .timeline { flex-wrap: wrap; }
   .timeline__track { flex-basis: calc(100% - 64px); }
+}
+@media (max-width: 760px) {
+  .tutorial[data-mode="mission"] { inset: auto 0 0 0; width: 100%; border-radius: var(--radius-xl) var(--radius-xl) 0 0; padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px)); }
+  #tutorialOpen span { display: none; }
 }
 @media (max-width: 460px) {
   .reading-grid, .mapping-list { grid-template-columns: 1fr; }

@@ -1,0 +1,131 @@
+// Narrador único do app: fila de falas que toca gravações em MP3 (voz neural gerada por
+// tools/gerar_audio_tutorial.py) quando existem e, no resto, usa a voz mais natural
+// instalada no navegador (speechSynthesis, pt-BR).
+
+const synth = "speechSynthesis" in window ? window.speechSynthesis : null;
+let voices = [];
+function loadVoices() { voices = synth?.getVoices() || []; }
+loadVoices();
+synth?.addEventListener?.("voiceschanged", loadVoices);
+
+// Prefere vozes neurais ("Natural"/"Online" no Edge, "Google" no Chrome) às vozes locais antigas.
+export function bestVoice() {
+  if (!voices.length) loadVoices();
+  let pt = voices.filter((v) => /^pt[-_]br/i.test(v.lang));
+  if (!pt.length) pt = voices.filter((v) => /^pt/i.test(v.lang));
+  const score = (v) =>
+    (/natural|neural/i.test(v.name) ? 8 : 0) +
+    (/online/i.test(v.name) ? 4 : 0) +
+    (/google/i.test(v.name) ? 3 : 0) +
+    (/francisca|thalita|antonio/i.test(v.name) ? 1 : 0);
+  return pt.sort((a, b) => score(b) - score(a))[0] || null;
+}
+
+// Junta frases em blocos de até ~220 caracteres: fala fluida, sem o corte de ~15 s
+// que o Chrome aplica a falas longas em algumas vozes.
+function chunks(text, max = 220) {
+  const sentences = text.replace(/\s+/g, " ").match(/[^.!?]+[.!?]*/g)?.map((s) => s.trim()).filter(Boolean) || [];
+  const out = [];
+  let cur = "";
+  for (const s of sentences) {
+    if (cur && (cur + " " + s).length > max) { out.push(cur); cur = s; } else cur = cur ? `${cur} ${s}` : s;
+  }
+  if (cur) out.push(cur);
+  return out;
+}
+
+class Narrator {
+  constructor() {
+    this.queue = [];
+    this.current = null;
+    this.audio = null;
+    this.clips = {}; // id -> { src, texto }
+  }
+
+  /** Registra as gravações disponíveis: id -> { src, texto }. */
+  setClips(map) { this.clips = map || {}; }
+
+  hasClip(id, text) {
+    const c = this.clips[id];
+    return !!c && (text === undefined || c.texto === text);
+  }
+
+  /** Fala um texto com a voz do navegador. */
+  say(text, { queue = false, rate = 1, volume = 1, tag = null } = {}) {
+    if (!text) return;
+    if (!queue) this.cancel();
+    this.queue.push({ kind: "tts", text, rate, volume, tag });
+    this._next();
+  }
+
+  /** Toca a gravação `id` se ela corresponder ao texto; senão fala o texto. */
+  clip(id, text, { queue = false, rate = 1, volume = 1, tag = null } = {}) {
+    if (!this.hasClip(id, text)) return this.say(text, { queue, rate, volume, tag });
+    if (!queue) this.cancel();
+    this.queue.push({ kind: "clip", src: this.clips[id].src, text, rate, volume, tag });
+    this._next();
+  }
+
+  /** Tira da fila (sem interromper a fala atual) os itens com esta etiqueta. */
+  drop(tag) {
+    this.queue = this.queue.filter((q) => q.tag !== tag);
+  }
+
+  cancel() {
+    this.queue = [];
+    this.current = null;
+    if (this.audio) { this.audio.pause(); this.audio = null; }
+    synth?.cancel();
+  }
+
+  busy() { return !!this.current || this.queue.length > 0; }
+
+  _next() {
+    if (this.current || !this.queue.length) return;
+    const item = this.queue.shift();
+    this.current = item;
+    const done = () => {
+      if (this.current !== item) return; // item antigo (cancelado)
+      this.current = null;
+      this._next();
+    };
+    if (item.kind === "clip") this._playClip(item, done);
+    else this._speak(item, done);
+  }
+
+  _playClip(item, done) {
+    const audio = new Audio(item.src);
+    this.audio = audio;
+    audio.volume = Math.min(1, item.volume);
+    audio.playbackRate = item.rate;
+    audio.onended = done;
+    audio.onerror = () => { if (this.current === item) this._speak(item, done); };
+    audio.play().catch(() => {
+      // sem gesto do usuário (ou arquivo ausente): tenta a voz do navegador
+      if (this.current === item && this.audio === audio) this._speak(item, done);
+    });
+  }
+
+  _speak(item, done) {
+    if (!synth) { setTimeout(done, 0); return; }
+    const parts = chunks(item.text);
+    if (!parts.length) { setTimeout(done, 0); return; }
+    const voice = bestVoice();
+    let left = parts.length;
+    parts.forEach((part) => {
+      const u = new SpeechSynthesisUtterance(part);
+      u.lang = "pt-BR";
+      if (voice) u.voice = voice;
+      u.rate = item.rate;
+      u.volume = item.volume;
+      let finished = false;
+      const fin = () => { if (!finished) { finished = true; if (--left === 0) done(); } };
+      u.onend = fin;
+      u.onerror = fin;
+      setTimeout(fin, 3000 + part.length * 95); // segurança: onend às vezes não dispara
+      synth.speak(u);
+    });
+  }
+}
+
+export const narrator = new Narrator();

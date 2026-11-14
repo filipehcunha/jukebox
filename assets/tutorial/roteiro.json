@@ -1,0 +1,219 @@
+{
+  "voz": "pt-BR-FranciscaNeural",
+  "passos": {
+    "inicio": {
+      "titulo": "Tutorial em áudio",
+      "texto": [
+        "Bem-vindo à Sinfonia da Terra! Este guia em áudio ensina a usar o site sem precisar enxergar a tela.",
+        "Aperte Enter para começar, ou Escape para pular e ir direto para a galeria de mapas."
+      ]
+    },
+    "boas-vindas": {
+      "titulo": "Bem-vindo ao tutorial em áudio",
+      "texto": [
+        "A Sinfonia da Terra transforma mapas do planeta em música. Você não precisa enxergar o mapa: cada lugar toca instrumentos diferentes, de acordo com a temperatura, a umidade ou o vento.",
+        "O tutorial leva uns cinco minutos. Primeiro, você vai conhecer os sons. Depois, vai praticar num mapa de verdade, usando só o teclado.",
+        "Use Tab para passar pelos botões e Enter para apertar. O botão Próximo avança, o Repetir lê o passo de novo, e o Escape fecha o tutorial quando você quiser.",
+        "Se você já usa um leitor de tela, desligue a opção Narração do tutorial, para não ouvir duas vozes ao mesmo tempo. E, se puder, use fones de ouvido: eles ajudam a perceber a esquerda e a direita."
+      ]
+    },
+    "instrumentos": {
+      "titulo": "Os quatro instrumentos",
+      "texto": [
+        "Cada instrumento representa um tipo de lugar. Use os botões abaixo para ouvir cada um.",
+        "O violoncelo, ou contrabaixo, tem som grave. Ele representa águas frias, baixas temperaturas e regiões polares.",
+        "O piano, ou marimba, tem som médio. Ele representa temperaturas amenas e vegetação moderada.",
+        "A flauta, e os outros sopros de madeira, têm som agudo. Representam alta umidade, nuvens ou florestas muito altas.",
+        "E a harpa toca arpejos rápidos. Ela mostra a força das correntes marítimas e dos ventos."
+      ]
+    },
+    "grave-agudo": {
+      "titulo": "Grave é frio, agudo é quente",
+      "texto": [
+        "O valor de cada lugar escolhe a nota. Valores baixos, como o frio dos polos, tocam notas graves no violoncelo. Valores médios passam para o piano. E os mais altos sobem para as notas agudas.",
+        "As notas seguem a escala pentatônica, então qualquer combinação soa agradável.",
+        "Aperte o botão para ouvir um passeio do frio até o calor."
+      ]
+    },
+    "esquerda-direita": {
+      "titulo": "Esquerda e direita",
+      "texto": [
+        "A posição no mapa também vira posição no som. O lado esquerdo do mapa toca no seu ouvido esquerdo, e o lado direito, no ouvido direito. No meio, o som fica no centro.",
+        "Com os fones, aperte o botão e ouça o piano atravessar da esquerda para a direita."
+      ]
+    },
+    "harpa": {
+      "titulo": "A harpa avisa mudanças",
+      "texto": [
+        "Quando o lugar muda de repente, como numa frente fria, ou quando há vento ou corrente marítima forte, a harpa entra com arpejos. Quanto mais forte, mais rápidos eles ficam.",
+        "Aperte o botão para ouvir a harpa crescer e depois diminuir."
+      ]
+    },
+    "praticar": {
+      "titulo": "Hora de praticar",
+      "texto": [
+        "Agora você vai explorar o mapa de temperatura do ar do planeta inteiro. O norte fica em cima, o sul embaixo, o oeste à esquerda e o leste à direita. O centro do mapa é o Oceano Atlântico, na linha do equador.",
+        "Quando o mapa abrir, ele já vai estar em foco. As setas movem um cursor invisível, e você ouve o lugar onde ele está. Durante os desafios, aperte R para repetir a instrução.",
+        "Aperte o botão para abrir o mapa."
+      ]
+    },
+    "desafio-mover": {
+      "titulo": "Desafio: mova o cursor",
+      "texto": [
+        "Você está no centro do mapa, no Oceano Atlântico, perto da linha do equador. Ali faz calor, por isso toca o piano.",
+        "Aperte as setas para a esquerda ou para a direita algumas vezes, e ouça o som mudar. Segurando Shift junto com a seta, os passos ficam maiores."
+      ]
+    },
+    "desafio-onde": {
+      "titulo": "Desafio: onde estou?",
+      "texto": [
+        "Aperte Enter para ouvir o nome do lugar, os instrumentos que estão tocando e a temperatura."
+      ]
+    },
+    "desafio-frio": {
+      "titulo": "Desafio: encontre o frio",
+      "texto": [
+        "Agora procure um lugar bem frio, onde toca o violoncelo grave.",
+        "Uma dica: a Antártida fica lá embaixo. Aperte Shift e seta para baixo algumas vezes."
+      ]
+    },
+    "desafio-centro": {
+      "titulo": "Desafio: volte ao centro",
+      "texto": [
+        "Aperte a tecla Home para voltar ao centro do mapa, onde faz calor."
+      ]
+    },
+    "desafio-tempo": {
+      "titulo": "Desafio: avance no tempo",
+      "texto": [
+        "Este mapa tem uma linha do tempo, com uma imagem para cada hora. Aperte a tecla fecha colchetes para avançar uma hora, e abre colchetes para voltar.",
+        "A tecla P toca as horas em sequência, e o som muda com o tempo, mesmo sem mover o cursor."
+      ]
+    },
+    "fim": {
+      "titulo": "Pronto, você terminou!",
+      "texto": [
+        "Um resumo das teclas, com o mapa em foco: as setas movem o cursor, e com Shift os passos ficam maiores. Enter diz onde você está. Home volta ao centro. Espaço liga ou pausa o som. Abre e fecha colchetes trocam a hora, P toca a linha do tempo, e L abre a legenda dos instrumentos.",
+        "Na galeria há outros mapas para explorar: a temperatura dos oceanos, a altura das florestas, a umidade, o vento e o monóxido de carbono. Também dá para conectar um celular e sentir o mapa em vibrações.",
+        "Para ouvir este tutorial de novo, use o botão Tutorial em áudio no topo da página, ou a tecla T com o mapa em foco."
+      ]
+    }
+  },
+  "mensagens": {
+    "ok-mover": "Muito bem! Você está movendo o cursor.",
+    "ok-onde": "Isso mesmo! Aperte Enter sempre que quiser saber onde está.",
+    "ok-frio": "Encontrou! Esse som grave é o violoncelo: o frio abaixo de zero.",
+    "ok-centro": "Ótimo, você voltou ao centro, e o piano voltou a tocar.",
+    "ok-tempo": "Perfeito! Você ouviu a hora mudar.",
+    "abrindo": "Abrindo o mapa de temperatura.",
+    "voz-ligada": "Narração do tutorial ligada.",
+    "sem-som": "Não consegui ligar o som. Verifique a conexão com a internet e tente de novo."
+  },
+  "audio": {
+    "inicio": {
+      "arquivo": "inicio.mp3",
+      "voz": "pt-BR-FranciscaNeural",
+      "texto": "Tutorial em áudio. Bem-vindo à Sinfonia da Terra! Este guia em áudio ensina a usar o site sem precisar enxergar a tela. Aperte Enter para começar, ou Escape para pular e ir direto para a galeria de mapas."
+    },
+    "boas-vindas": {
+      "arquivo": "boas-vindas.mp3",
+      "voz": "pt-BR-FranciscaNeural",
+      "texto": "Bem-vindo ao tutorial em áudio. A Sinfonia da Terra transforma mapas do planeta em música. Você não precisa enxergar o mapa: cada lugar toca instrumentos diferentes, de acordo com a temperatura, a umidade ou o vento. O tutorial leva uns cinco minutos. Primeiro, você vai conhecer os sons. Depois, vai praticar num mapa de verdade, usando só o teclado. Use Tab para passar pelos botões e Enter para apertar. O botão Próximo avança, o Repetir lê o passo de novo, e o Escape fecha o tutorial quando você quiser. Se você já usa um leitor de tela, desligue a opção Narração do tutorial, para não ouvir duas vozes ao mesmo tempo. E, se puder, use fones de ouvido: eles ajudam a perceber a esquerda e a direita."
+    },
+    "instrumentos": {
+      "arquivo": "instrumentos.mp3",
+      "voz": "pt-BR-FranciscaNeural",
+      "texto": "Os quatro instrumentos. Cada instrumento representa um tipo de lugar. Use os botões abaixo para ouvir cada um. O violoncelo, ou contrabaixo, tem som grave. Ele representa águas frias, baixas temperaturas e regiões polares. O piano, ou marimba, tem som médio. Ele representa temperaturas amenas e vegetação moderada. A flauta, e os outros sopros de madeira, têm som agudo. Representam alta umidade, nuvens ou florestas muito altas. E a harpa toca arpejos rápidos. Ela mostra a força das correntes marítimas e dos ventos."
+    },
+    "grave-agudo": {
+      "arquivo": "grave-agudo.mp3",
+      "voz": "pt-BR-FranciscaNeural",
+      "texto": "Grave é frio, agudo é quente. O valor de cada lugar escolhe a nota. Valores baixos, como o frio dos polos, tocam notas graves no violoncelo. Valores médios passam para o piano. E os mais altos sobem para as notas agudas. As notas seguem a escala pentatônica, então qualquer combinação soa agradável. Aperte o botão para ouvir um passeio do frio até o calor."
+    },
+    "esquerda-direita": {
+      "arquivo": "esquerda-direita.mp3",
+      "voz": "pt-BR-FranciscaNeural",
+      "texto": "Esquerda e direita. A posição no mapa também vira posição no som. O lado esquerdo do mapa toca no seu ouvido esquerdo, e o lado direito, no ouvido direito. No meio, o som fica no centro. Com os fones, aperte o botão e ouça o piano atravessar da esquerda para a direita."
+    },
+    "harpa": {
+      "arquivo": "harpa.mp3",
+      "voz": "pt-BR-FranciscaNeural",
+      "texto": "A harpa avisa mudanças. Quando o lugar muda de repente, como numa frente fria, ou quando há vento ou corrente marítima forte, a harpa entra com arpejos. Quanto mais forte, mais rápidos eles ficam. Aperte o botão para ouvir a harpa crescer e depois diminuir."
+    },
+    "praticar": {
+      "arquivo": "praticar.mp3",
+      "voz": "pt-BR-FranciscaNeural",
+      "texto": "Hora de praticar. Agora você vai explorar o mapa de temperatura do ar do planeta inteiro. O norte fica em cima, o sul embaixo, o oeste à esquerda e o leste à direita. O centro do mapa é o Oceano Atlântico, na linha do equador. Quando o mapa abrir, ele já vai estar em foco. As setas movem um cursor invisível, e você ouve o lugar onde ele está. Durante os desafios, aperte R para repetir a instrução. Aperte o botão para abrir o mapa."
+    },
+    "desafio-mover": {
+      "arquivo": "desafio-mover.mp3",
+      "voz": "pt-BR-FranciscaNeural",
+      "texto": "Desafio: mova o cursor. Você está no centro do mapa, no Oceano Atlântico, perto da linha do equador. Ali faz calor, por isso toca o piano. Aperte as setas para a esquerda ou para a direita algumas vezes, e ouça o som mudar. Segurando Shift junto com a seta, os passos ficam maiores."
+    },
+    "desafio-onde": {
+      "arquivo": "desafio-onde.mp3",
+      "voz": "pt-BR-FranciscaNeural",
+      "texto": "Desafio: onde estou? Aperte Enter para ouvir o nome do lugar, os instrumentos que estão tocando e a temperatura."
+    },
+    "desafio-frio": {
+      "arquivo": "desafio-frio.mp3",
+      "voz": "pt-BR-FranciscaNeural",
+      "texto": "Desafio: encontre o frio. Agora procure um lugar bem frio, onde toca o violoncelo grave. Uma dica: a Antártida fica lá embaixo. Aperte Shift e seta para baixo algumas vezes."
+    },
+    "desafio-centro": {
+      "arquivo": "desafio-centro.mp3",
+      "voz": "pt-BR-FranciscaNeural",
+      "texto": "Desafio: volte ao centro. Aperte a tecla Home para voltar ao centro do mapa, onde faz calor."
+    },
+    "desafio-tempo": {
+      "arquivo": "desafio-tempo.mp3",
+      "voz": "pt-BR-FranciscaNeural",
+      "texto": "Desafio: avance no tempo. Este mapa tem uma linha do tempo, com uma imagem para cada hora. Aperte a tecla fecha colchetes para avançar uma hora, e abre colchetes para voltar. A tecla P toca as horas em sequência, e o som muda com o tempo, mesmo sem mover o cursor."
+    },
+    "fim": {
+      "arquivo": "fim.mp3",
+      "voz": "pt-BR-FranciscaNeural",
+      "texto": "Pronto, você terminou! Um resumo das teclas, com o mapa em foco: as setas movem o cursor, e com Shift os passos ficam maiores. Enter diz onde você está. Home volta ao centro. Espaço liga ou pausa o som. Abre e fecha colchetes trocam a hora, P toca a linha do tempo, e L abre a legenda dos instrumentos. Na galeria há outros mapas para explorar: a temperatura dos oceanos, a altura das florestas, a umidade, o vento e o monóxido de carbono. Também dá para conectar um celular e sentir o mapa em vibrações. Para ouvir este tutorial de novo, use o botão Tutorial em áudio no topo da página, ou a tecla T com o mapa em foco."
+    },
+    "ok-mover": {
+      "arquivo": "ok-mover.mp3",
+      "voz": "pt-BR-FranciscaNeural",
+      "texto": "Muito bem! Você está movendo o cursor."
+    },
+    "ok-onde": {
+      "arquivo": "ok-onde.mp3",
+      "voz": "pt-BR-FranciscaNeural",
+      "texto": "Isso mesmo! Aperte Enter sempre que quiser saber onde está."
+    },
+    "ok-frio": {
+      "arquivo": "ok-frio.mp3",
+      "voz": "pt-BR-FranciscaNeural",
+      "texto": "Encontrou! Esse som grave é o violoncelo: o frio abaixo de zero."
+    },
+    "ok-centro": {
+      "arquivo": "ok-centro.mp3",
+      "voz": "pt-BR-FranciscaNeural",
+      "texto": "Ótimo, você voltou ao centro, e o piano voltou a tocar."
+    },
+    "ok-tempo": {
+      "arquivo": "ok-tempo.mp3",
+      "voz": "pt-BR-FranciscaNeural",
+      "texto": "Perfeito! Você ouviu a hora mudar."
+    },
+    "abrindo": {
+      "arquivo": "abrindo.mp3",
+      "voz": "pt-BR-FranciscaNeural",
+      "texto": "Abrindo o mapa de temperatura."
+    },
+    "voz-ligada": {
+      "arquivo": "voz-ligada.mp3",
+      "voz": "pt-BR-FranciscaNeural",
+      "texto": "Narração do tutorial ligada."
+    },
+    "sem-som": {
+      "arquivo": "sem-som.mp3",
+      "voz": "pt-BR-FranciscaNeural",
+      "texto": "Não consegui ligar o som. Verifique a conexão com a internet e tente de novo."
+    }
+  }
+}

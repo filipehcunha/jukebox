@@ -7,6 +7,8 @@ import { ImageSampler, loadBitmap } from "./sampler.js";
 import { SonificationEngine, MUSICAL_KEYS, midiName } from "./audio.js";
 import { HapticBridge, renderQr, guessReceiverBase, PUBLIC_RECEIVER_BASE } from "./haptics.js";
 import { presetGroups, upgradeGmaoSequences, groupFiles, filesFromDrop, renderPresets, renderLocalGroups } from "./gallery.js";
+import { createTutorial } from "./tutorial.js";
+import { narrator } from "./voz.js";
 
 const $ = (id) => document.getElementById(id);
 const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
@@ -20,6 +22,17 @@ const scopeCtx = scope.getContext("2d");
 const engine = new SonificationEngine();
 window.sinfonia = { engine }; // acesso para depuração no console do navegador
 const haptics = new HapticBridge({ onStatus: onPhoneStatus });
+// as funções do app usadas aqui são declarações, então já existem (hoisting)
+const tutorial = createTutorial({
+  engine,
+  isLowSensory: () => $("lowSensory").checked,
+  openPractice,
+  hasTimeline: () => (state.group?.frames.length ?? 0) > 1,
+  focusMap: () => { canvas.focus({ preventScroll: true }); state.keyboardActive = true; state.readingDirty = true; },
+  backToGallery,
+  inExplore: () => !$("exploreView").hidden,
+  toast,
+});
 
 const state = {
   presets: presetGroups(),
@@ -77,15 +90,9 @@ function announce(text, { speak = true } = {}) {
   const live = $("ariaLive");
   live.textContent = "";
   requestAnimationFrame(() => { live.textContent = text; });
-  if (speak && $("voiceToggle").checked && "speechSynthesis" in window) {
-    speechSynthesis.cancel();
-    const u = new SpeechSynthesisUtterance(text);
-    u.lang = "pt-BR";
-    u.rate = $("lowSensory").checked ? 0.92 : 1.05;
-    u.volume = $("lowSensory").checked ? 0.7 : 1;
-    const voice = speechSynthesis.getVoices().find((v) => v.lang?.toLowerCase().startsWith("pt"));
-    if (voice) u.voice = voice;
-    speechSynthesis.speak(u);
+  if (speak && ($("voiceToggle").checked || tutorial.wantsVoice())) {
+    // narrador compartilhado com o tutorial (melhor voz pt-BR instalada, fila sem cortes)
+    narrator.say(text, { rate: $("lowSensory").checked ? 0.94 : 1.05, volume: $("lowSensory").checked ? 0.7 : 1 });
   }
 }
 
@@ -143,7 +150,7 @@ function addFiles(files) {
 // ---------------------------------------------------------------------------
 // Seleção de imagem -> Legenda sensorial -> Exploração
 // ---------------------------------------------------------------------------
-async function selectGroup(group, index = 0) {
+async function selectGroup(group, index = 0, { skipLegend = false } = {}) {
   state.group = group;
   state.index = index;
   state.scale = group.scaleId ? SCALES[group.scaleId] : null;
@@ -152,6 +159,11 @@ async function selectGroup(group, index = 0) {
   state.trail = [];
   state.announcedKey = "";
   const loading = loadFrame(index, { initial: true });
+  if (skipLegend) {
+    await loading;
+    await startExperience({ quiet: true });
+    return;
+  }
   if (!state.scale) await loading; // precisa detectar a escala antes de montar a legenda
   openLegend();
   await loading;
@@ -234,7 +246,7 @@ const INSTRUMENT_ICONS = {
   harp: `<svg viewBox="0 0 48 48"><path d="M12 42V8c10 0 14 6 18 12s8 8 8 8l-26 14Z" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linejoin="round"/><path d="M17 13v26M22 15v21M27 19v15M32 25v6" stroke="currentColor" stroke-width="1.6"/></svg>`,
 };
 
-async function startExperience() {
+async function startExperience({ quiet = false } = {}) {
   showView("explore");
   try {
     await engine.start();
@@ -247,7 +259,14 @@ async function startExperience() {
   state.keyboardActive = true;
   state.readingDirty = true;
   layoutCanvas();
-  if (state.reading) announceReading(true);
+  if (state.reading && !quiet) announceReading(true);
+}
+
+// Tutorial: abre o mapa de temperatura direto (a legenda é ensinada pelo próprio tutorial)
+async function openPractice() {
+  const group = state.presets.find((g) => g.id === "gmao-temp") || state.presets[0];
+  await selectGroup(group, group.startIndex ?? 0, { skipLegend: true });
+  canvas.scrollIntoView({ block: "center", behavior: reducedMotion.matches ? "auto" : "smooth" });
 }
 
 // ---------------------------------------------------------------------------
@@ -393,6 +412,7 @@ function stepFrame(delta) {
   stopTimeline();
   loadFrame((state.index + delta + g.frames.length) % g.frames.length).then(() => {
     announce(frameTimeText(g.frames[state.index]), { speak: true });
+    tutorial.notify("frame");
   });
 }
 
@@ -451,7 +471,9 @@ function processReading() {
   const prev = state.reading;
   state.reading = r;
   const active = isActive();
-  engine.update({
+  tutorial.notify("reading", r);
+  // durante uma demonstração sonora do tutorial, o motor fica com ela
+  if (!tutorial.isDemoPlaying()) engine.update({
     active: active && r.valid,
     pan: state.u * 2 - 1,
     norm: r.valid ? r.norm : 0.5,
@@ -639,7 +661,8 @@ function frame(time) {
     draw(time);
     drawScope();
     // anuncia quando o cursor para por ~0,7 s
-    if (isActive() && performance.now() - state.lastMove > 700 && state.lastMove) announceReading();
+    // (não interrompe a instrução que o tutorial está falando)
+    if (isActive() && performance.now() - state.lastMove > 700 && state.lastMove && !tutorial.isSpeaking()) announceReading();
   }
   requestAnimationFrame(frame);
 }
@@ -806,6 +829,8 @@ function setupEvents() {
   $("audioToggle").addEventListener("click", toggleAudio);
   $("quickLowSensory").addEventListener("click", () => applyLowSensory(!$("lowSensory").checked));
   $("reviewLegend").addEventListener("click", openLegend);
+  $("tutorialOpen").addEventListener("click", () => tutorial.open());
+  $("tutorialSkipLink").addEventListener("click", (e) => { e.preventDefault(); tutorial.open(); });
 
   // diálogo da legenda
   const dlg = $("legendDialog");
@@ -855,16 +880,18 @@ function setupEvents() {
     if (map[e.key]) {
       e.preventDefault();
       moveFocal(...map[e.key]);
+      tutorial.notify("move");
       return;
     }
     switch (e.key) {
       case " ": e.preventDefault(); toggleAudio(); break;
-      case "Enter": e.preventDefault(); state.readingDirty = true; processReading(); announceReading(true); break;
-      case "Home": e.preventDefault(); state.u = 0.5; state.v = 0.5; moveFocal(0, 0); break;
+      case "Enter": e.preventDefault(); state.readingDirty = true; processReading(); announceReading(true); tutorial.notify("announce"); break;
+      case "Home": e.preventDefault(); state.u = 0.5; state.v = 0.5; moveFocal(0, 0); tutorial.notify("home"); break;
       case "[": e.preventDefault(); stepFrame(-1); break;
       case "]": e.preventDefault(); stepFrame(1); break;
       case "p": case "P": e.preventDefault(); state.playing ? stopTimeline() : startTimeline(); break;
       case "l": case "L": e.preventDefault(); openLegend(); break;
+      case "t": case "T": e.preventDefault(); tutorial.open(); break;
       default:
     }
   });
@@ -907,7 +934,7 @@ function setupEvents() {
   $("voiceToggle").addEventListener("change", (e) => {
     savePrefs();
     if (e.target.checked) announce("Narração por voz ativada.");
-    else speechSynthesis?.cancel();
+    else narrator.cancel();
   });
   $("colorMode").addEventListener("change", (e) => applyColorMode(e.target.value));
 
@@ -939,6 +966,8 @@ async function init() {
   renderGallery();
   updateAudioUI();
   requestAnimationFrame(frame);
+  // primeira visita: o guia em áudio é a primeira coisa na tela (e no leitor de tela)
+  if (!tutorial.seen()) tutorial.open({ gate: true });
 
   await loadLandMask();
   await upgradeGmaoSequences(state.presets);
