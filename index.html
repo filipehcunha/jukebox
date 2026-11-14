@@ -1,0 +1,298 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#03080f">
+  <meta name="description" content="A Sinfonia da Terra: uma experiência multissensorial que transforma dados oceânicos e florestais da NASA em som, imagem e navegação acessível.">
+  <title>A Sinfonia da Terra · Earth Jukebox Interativo</title>
+  <link rel="stylesheet" href="css/styles.css">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='29' fill='%23060d18' stroke='%2367e8f9' stroke-width='2'/%3E%3Cpath d='M8 36c8-9 16-3 24-10s16-3 24 6' fill='none' stroke='%2367e8f9' stroke-width='2.5' stroke-linecap='round'/%3E%3Ccircle cx='32' cy='32' r='4' fill='%23fb7185'/%3E%3C/svg%3E">
+</head>
+<body>
+  <a class="skip-link" href="#main">Pular para o conteúdo principal</a>
+
+  <div class="ambient" aria-hidden="true">
+    <div class="ambient__orb ambient__orb--cyan"></div>
+    <div class="ambient__orb ambient__orb--coral"></div>
+    <div class="ambient__orb ambient__orb--green"></div>
+    <div class="ambient__grain"></div>
+  </div>
+
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand__mark" aria-hidden="true">
+        <svg viewBox="0 0 64 64" role="presentation">
+          <circle cx="32" cy="32" r="27" fill="none" stroke="currentColor" stroke-width="1.5" opacity=".55"/>
+          <ellipse cx="32" cy="32" rx="31" ry="12" fill="none" stroke="currentColor" stroke-width="1.2" opacity=".42" transform="rotate(-22 32 32)"/>
+          <path d="M10 38c8-11 16-2 23-9s13-2 21 7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
+          <circle cx="32" cy="32" r="4.5" fill="#fb7185"/>
+        </svg>
+      </span>
+      <div class="brand__text">
+        <p class="eyebrow">NASA Earth Data · Web Audio</p>
+        <h1>A Sinfonia da Terra</h1>
+        <p class="brand__subtitle">Earth Jukebox Interativo</p>
+      </div>
+    </div>
+
+    <div class="topbar__actions">
+      <div class="live-pill" id="livePill">
+        <span class="live-pill__dot" aria-hidden="true"></span>
+        <span id="liveText">Pronto para explorar</span>
+      </div>
+      <button class="button button--play" id="playButton" type="button" aria-pressed="false" aria-describedby="audioStatusText">
+        <span class="button__icon" aria-hidden="true">
+          <svg class="icon icon--play" viewBox="0 0 24 24"><path d="M8 5.5v13l10-6.5-10-6.5Z" fill="currentColor"/></svg>
+          <svg class="icon icon--pause" viewBox="0 0 24 24"><path d="M7 5h3.5v14H7V5Zm6.5 0H17v14h-3.5V5Z" fill="currentColor"/></svg>
+        </span>
+        <span id="playLabel">Iniciar experiência</span>
+      </button>
+    </div>
+  </header>
+
+  <main class="app-shell" id="main">
+    <section class="stage" aria-labelledby="vizHeading">
+      <div class="stage__head">
+        <div>
+          <p class="kicker" id="datasetKicker">ECCO2 · NASA/JPL</p>
+          <h2 id="vizHeading">Temperatura e Correntes</h2>
+        </div>
+        <div class="dataset-badge">
+          <span class="badge">NASA</span>
+          <span id="datasetMeta">Global Sea Surface Currents and Temperature</span>
+        </div>
+      </div>
+
+      <div class="canvas-shell" id="canvasShell">
+        <canvas
+          id="visualCanvas"
+          width="1200"
+          height="600"
+          tabindex="0"
+          role="application"
+          aria-roledescription="mapa sonoro interativo"
+          aria-label="Mapa da temperatura e das correntes oceânicas da NASA. Use o ponteiro ou as setas do teclado para explorar. Cada posição produz uma nota musical."
+          aria-describedby="canvasHelp"
+        ></canvas>
+
+        <div class="canvas-ui canvas-ui--top-left">
+          <span class="canvas-chip" id="canvasHint">Mova o ponteiro ou use as setas do teclado</span>
+        </div>
+        <div class="canvas-ui canvas-ui--top-right">
+          <span class="canvas-chip canvas-chip--mono" id="coordReadout">0° · 0°</span>
+        </div>
+
+        <div class="legend" id="legend" aria-hidden="true">
+          <div class="legend__head">
+            <span id="legendTitle">Temperatura da superfície do mar</span>
+            <span id="legendRange">0–32 °C</span>
+          </div>
+          <div class="legend__bar" id="legendBar"></div>
+          <div class="legend__ticks" id="legendTicks"></div>
+        </div>
+
+        <div class="loading-veil" id="loadingVeil" hidden>
+          <span class="spinner" aria-hidden="true"></span>
+          <span>Carregando visualização científica…</span>
+        </div>
+
+        <div class="start-overlay" id="startOverlay">
+          <div class="start-overlay__card">
+            <p class="kicker">Experiência sonora imersiva</p>
+            <h3>Ouça a Terra em movimento</h3>
+            <p>Temperatura vira altura musical. Correntes viram textura. A posição horizontal vira estéreo.</p>
+            <button class="button button--start" id="startButton" type="button">
+              <span class="button__icon" aria-hidden="true">
+                <svg class="icon" viewBox="0 0 24 24"><path d="M8 5.5v13l10-6.5-10-6.5Z" fill="currentColor"/></svg>
+              </span>
+              Ativar áudio e explorar
+            </button>
+            <p class="start-overlay__note">O áudio só é iniciado após um gesto, conforme as regras do navegador.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="reading-grid" aria-label="Leitura atual da sonificação">
+        <article class="reading-card">
+          <span class="reading-card__label">Região</span>
+          <strong class="reading-card__value" id="readRegion">—</strong>
+        </article>
+        <article class="reading-card">
+          <span class="reading-card__label" id="readValueLabel">Temperatura</span>
+          <strong class="reading-card__value" id="readValue">—</strong>
+        </article>
+        <article class="reading-card">
+          <span class="reading-card__label" id="readIntensityLabel">Corrente</span>
+          <strong class="reading-card__value" id="readIntensity">—</strong>
+        </article>
+        <article class="reading-card">
+          <span class="reading-card__label">Nota</span>
+          <strong class="reading-card__value" id="readNote">—</strong>
+        </article>
+      </div>
+
+      <p class="canvas-help" id="canvasHelp">
+        Clique no mapa ou pressione Tab até ele e use as setas para navegar. Shift + setas move mais rápido.
+        Espaço ativa ou pausa o som quando o mapa está em foco.
+      </p>
+    </section>
+
+    <aside class="sidebar" aria-label="Painel de controle">
+      <section class="panel panel--audio">
+        <div class="panel__head">
+          <h2>Experiência sonora</h2>
+          <span class="status-dot" id="audioStatusDot" aria-hidden="true"></span>
+        </div>
+        <p class="panel__status" id="audioStatusText" role="status">Áudio aguardando ativação</p>
+        <canvas class="scope" id="scopeCanvas" width="360" height="80" aria-hidden="true"></canvas>
+        <div class="meter-row" aria-hidden="true">
+          <span>Grave</span>
+          <span class="meter-line"><i id="pitchMarker"></i></span>
+          <span>Agudo</span>
+        </div>
+        <p class="help">A altura da nota acompanha a temperatura; o brilho das correntes abre o filtro.</p>
+      </section>
+
+      <section class="panel">
+        <h2>Dataset</h2>
+        <fieldset class="choice-group">
+          <legend class="sr-only">Selecione o dataset da NASA</legend>
+          <label class="choice">
+            <input type="radio" name="dataset" value="sst" checked>
+            <span class="choice__control" aria-hidden="true"></span>
+            <span class="choice__body">
+              <strong>ECCO2 · Temperatura e Correntes</strong>
+              <small>Oceano global e regional · ECCO2 / MIT / JPL</small>
+            </span>
+          </label>
+          <label class="choice">
+            <input type="radio" name="dataset" value="gedi">
+            <span class="choice__control" aria-hidden="true"></span>
+            <span class="choice__body">
+              <strong>GEDI · Altura das Florestas</strong>
+              <small>Dossel global e regional · NASA GEDI / ISS</small>
+            </span>
+          </label>
+        </fieldset>
+        <div class="control-group">
+          <label class="field-label" for="sceneSelect">Imagem analisada</label>
+          <div class="select-wrap">
+            <select id="sceneSelect" aria-describedby="sceneHelp"></select>
+          </div>
+          <p class="help" id="sceneHelp">Escolha uma visão global ou um recorte regional para explorar.</p>
+        </div>
+        <p class="source-line">Fonte: <a id="sourceLink" href="https://svs.gsfc.nasa.gov/3912" target="_blank" rel="noreferrer">NASA Scientific Visualization Studio</a></p>
+      </section>
+
+      <section class="panel">
+        <h2>Escala musical</h2>
+        <label class="field-label" for="scaleSelect">Harmonia da sonificação</label>
+        <div class="select-wrap">
+          <select id="scaleSelect">
+            <option value="pentatonicC">Pentatônica Maior de Dó</option>
+            <option value="lydianC">Modo Lídio de Dó</option>
+            <option value="pentatonicMinorA">Pentatônica Menor de Lá</option>
+          </select>
+        </div>
+        <p class="help">Todas as frequências são quantizadas para evitar intervalos ásperos e manter a escuta confortável.</p>
+      </section>
+
+      <section class="panel panel--a11y">
+        <h2>Acessibilidade</h2>
+
+        <label class="switch">
+          <span class="switch__body">
+            <strong>Modo de baixa sensibilidade</strong>
+            <small>Limita volume, filtros e picos de vibração.</small>
+          </span>
+          <input type="checkbox" id="lowSensory">
+          <span class="switch__track" aria-hidden="true"><span class="switch__thumb"></span></span>
+        </label>
+
+        <div class="control-group">
+          <label class="field-label" for="colorMode">Filtro para daltonismo</label>
+          <div class="select-wrap">
+            <select id="colorMode">
+              <option value="none">Sem filtro</option>
+              <option value="deuteranopia">Deuteranopia</option>
+              <option value="protanopia">Protanopia</option>
+              <option value="tritanopia">Tritanopia</option>
+            </select>
+          </div>
+        </div>
+
+        <label class="switch switch--compact">
+          <span class="switch__body">
+            <strong>Alto contraste</strong>
+            <small>Reforça bordas, textos e foco.</small>
+          </span>
+          <input type="checkbox" id="highContrast">
+          <span class="switch__track" aria-hidden="true"><span class="switch__thumb"></span></span>
+        </label>
+
+        <label class="switch switch--compact">
+          <span class="switch__body">
+            <strong>Feedback tátil</strong>
+            <small>Microvibrações em transições térmicas.</small>
+          </span>
+          <input type="checkbox" id="vibrationToggle" checked>
+          <span class="switch__track" aria-hidden="true"><span class="switch__thumb"></span></span>
+        </label>
+
+        <details class="help-details">
+          <summary>Navegação por teclado</summary>
+          <ul>
+            <li><kbd>Tab</kbd> entra no mapa e nos controles.</li>
+            <li><kbd>Setas</kbd> movem a grade focal virtual.</li>
+            <li><kbd>Shift</kbd> + <kbd>Setas</kbd> saltam mais rápido.</li>
+            <li><kbd>Espaço</kbd> ativa ou pausa o áudio.</li>
+            <li><kbd>Enter</kbd> repete a leitura atual.</li>
+          </ul>
+        </details>
+      </section>
+
+      <section class="panel panel--quiet">
+        <h2>Como ouvir</h2>
+        <ul class="mini-list">
+          <li><span class="mini-list__swatch mini-list__swatch--warm"></span>Águas quentes sobem na escala.</li>
+          <li><span class="mini-list__swatch mini-list__swatch--cold"></span>Águas frias descem e ganham profundidade.</li>
+          <li><span class="mini-list__swatch mini-list__swatch--flow"></span>Correntes intensas abrem o filtro.</li>
+        </ul>
+      </section>
+    </aside>
+  </main>
+
+  <footer class="site-footer">
+    <p>
+      Dados visuais: NASA Scientific Visualization Studio.
+      <span aria-hidden="true">·</span>
+      Sonificação original com Web Audio API, sem arquivos de áudio externos.
+    </p>
+    <p class="site-footer__small">Explore com o mouse, toque ou teclado. O som é gerado ao vivo no navegador.</p>
+  </footer>
+
+  <div class="sr-only" id="ariaStatus" role="status" aria-live="polite" aria-atomic="true"></div>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <svg class="svg-defs" aria-hidden="true" focusable="false">
+    <defs>
+      <filter id="deuteranopia" color-interpolation-filters="sRGB">
+        <feColorMatrix type="matrix" values="0.625 0.375 0 0 0  0.7 0.3 0 0 0  0 0.3 0.7 0 0  0 0 0 1 0"/>
+      </filter>
+      <filter id="protanopia" color-interpolation-filters="sRGB">
+        <feColorMatrix type="matrix" values="0.567 0.433 0 0 0  0.558 0.442 0 0 0  0 0.242 0.758 0 0  0 0 0 1 0"/>
+      </filter>
+      <filter id="tritanopia" color-interpolation-filters="sRGB">
+        <feColorMatrix type="matrix" values="0.95 0.05 0 0 0  0 0.433 0.567 0 0  0 0.475 0.525 0 0  0 0 0 1 0"/>
+      </filter>
+    </defs>
+  </svg>
+
+  <noscript>
+    <div class="noscript">Este projeto precisa de JavaScript para gerar a sonificação em tempo real.</div>
+  </noscript>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

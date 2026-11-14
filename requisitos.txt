@@ -1,0 +1,35 @@
+Atue como Desenvolvedor Web Senior e Especialista em Design de Áudio Interativo. Crie um projeto web completo (HTML, CSS e JavaScript) chamado "A Sinfonia da Terra: Earth Jukebox Interativo".
+
+O objetivo da aplicação é transformar a visualização científica de dados terrestres da NASA (especificamente o dataset "Global Sea Surface Currents and Temperature" do modelo ECCO2/JPL da NASA, que mapeia temperatura e correntes oceânicas) em uma experiência multissensorial imersiva, acessível e sonoramente agradável.
+
+Requisitos Obrigatórios do Projeto:
+
+1. SONIFICAÇÃO CONTÍNUA E INTERATIVA (HOVER / TEMPO REAL):
+- NÃO crie um som estático único por imagem. A sonificação deve mudar continuamente e em tempo real à medida que o usuário move o ponteiro do mouse (ou navega via teclado) sobre as diferentes partes/pixels da imagem visualizada.
+- Mapeamento Sonoro de Coordenadas e Pixels:
+  * Eixo Y / Temperatura do Mar (SST - tons de azul a vermelho): Mapeie a cor/temperatura sob o cursor para a Frequência/Pitch da nota musical. Águas frias (azuis/pólos) devem produzir graves profundos e aveludados (100 Hz - 250 Hz); águas quentes (amarelas e vermelhas/equador) devem produzir notas médias e agudas suaves (300 Hz - 800 Hz).
+  * Eixo X / Panorama Estéreo (Panning): Mapeie a posição horizontal (0% a 100% da largura da imagem) diretamente para o balanço de áudio estéreo (Left a Right).
+  * Brilho / Intensidade das Correntes Oceânicas: Mapeie o brilho ou variação do pixel sob o cursor para o Filtro de Frequência (Cutoff do filtro passa-baixas) e ressonância, adicionando textura harmônica onde as correntes são mais intensas.
+- Suavização de Áudio (Interpolção): Utilize rampas lineares e suavização (linearRampToValueAtTime na Web Audio API ou rampTo no Tone.js) para garantir que a transição de som entre pixels adjacentes seja ultra-fluida, sem cliques, estalos ou interrupções bruscas.
+
+2. QUALIDADE SENSORIAL EXTREMAMENTE AGRADÁVEL:
+- Harmonia Musical (Quantização): Para evitar ruídos caóticos ou incômodos, quantize todas as frequências geradas em uma escala musical relaxante (ex: Pentatônica Maior em Dó ou Modo Lídio).
+- Timbre Confortável: Utilize osciladores de onda senoidal combinados com triângulos suaves e envelopes de ataque/decaimento macios.
+- Efeitos Espaciais: Aplique um efeito de Reverb ambiental de estúdio (Spatial Reverb) e um tom sutil de textura ambiente de fundo (drone suave) para criar um efeito relaxante e contemplativo.
+- Modo de Baixa Sensibilidade (Low-Sensory Mode): Inclua um botão para limitar picos de volume e suavizar filtros para usuários com hipersensibilidade auditiva.
+
+3. ACESSIBILIDADE TOTAL E INCLUSÃO UNIVERSAL:
+- Navegação Completa por Teclado: Pessoas cegas ou com baixa visão devem conseguir explorar a imagem através das teclas direcionais (Setas/Tab), movendo uma grade focal virtual X/Y que dispara o mesmo feedback sonoro instantâneo.
+- Leitores de Tela (ARIA Live): Inclua anúncios dinâmicos (aria-live="polite") indicando a região e os dados sob o cursor (ex: "Atlântico Norte: 24°C, Corrente Moderada").
+- Feedback Tátil (Vibration API): Em dispositivos móveis ou telas sensíveis ao toque, dispare microvibrações táteis leves ao cruzar zonas de transição térmica acentuada.
+- Alto Contraste e Modos de Cor Adaptativos: Disponibilize filtros visuais para daltonismo (Deuteranopia, Protanopia, Tritanopia) e modo de alto contraste.
+
+4. ARQUITETURA E INTERFACE:
+- Interface limpa, moderna e elegante em HTML5 Canvas e TailwindCSS (ou CSS puro).
+- Painel de controle simples: Play/Mute, Seleção de Dataset (Sea Surface Temperature vs GEDI Forest Height), Alternador de Escala Musical e Painel de Acessibilidade.
+- Implemente todo o código de síntese de áudio de forma nativa utilizando a Web Audio API (ou Tone.js via CDN) sem necessidade de arquivos de áudio externos.
+
+
+-   Novas Adicoes
+
+Os sons são muito baixos. Busque mais dados das respectivas fontes para que seja possível analisar diversas imagens.
