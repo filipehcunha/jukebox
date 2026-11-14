@@ -93,6 +93,40 @@ O painel **Conectar Smartphone** gera um peer PeerJS com ID aleatório e um QR C
 - **Alto contraste** (respeita `prefers-contrast`) e **filtros de cor**: paletas seguras que recolorem a imagem *pelos dados decodificados* (Cividis, Viridis, cinza) e simulações de deuteranopia, protanopia e tritanopia.
 - O layout é responsivo, respeita `prefers-reduced-motion` e usa um `<dialog>` modal com foco gerenciado.
 
+### Tutorial em áudio (pessoas cegas)
+
+É um guia de uns cinco minutos que funciona só com teclado e som.
+
+**Primeira visita:** o guia abre sozinho, centralizado e com o resto da página escurecido, e é a primeira coisa que o leitor de tela encontra. O foco já está em **Começar o tutorial**: `Enter` começa e `Escape` pula. A voz só começa depois desse primeiro toque, porque os navegadores bloqueiam áudio antes de qualquer interação. Depois que o tutorial é fechado, ele não abre mais sozinho. Para ver de novo, use o botão **Tutorial em áudio** no topo, o segundo link de atalho da página ou a tecla `T` com o mapa em foco. Para testar a primeira visita outra vez, apague `sinfonia-tutorial-visto` do `localStorage`.
+
+O tutorial tem duas partes:
+
+1. **Ouvir (guia modal no centro da tela):** boas-vindas; botões para ouvir cada instrumento; demonstrações de "grave é frio, agudo é quente", do som passando da esquerda para a direita (com fones) e dos arpejos da harpa.
+2. **Praticar:** abre o mapa de temperatura do ar sem passar pela legenda (o tutorial já a ensinou). O painel encolhe para a base da tela, sem modal, e o foco vai para o mapa. O app detecta sozinho cada desafio:
+   - mover o cursor com as setas;
+   - apertar `Enter` para ouvir onde está;
+   - encontrar o frio da Antártida, onde toca o violoncelo;
+   - voltar ao centro com `Home`;
+   - avançar uma hora com `]`, se a pasta `dados/` existir.
+
+   Assim que um desafio é cumprido, o próximo já vale. As teclas apertadas durante a fala contam. A confirmação e a nova instrução tocam em sequência, e instruções de desafios já cumpridos saem da fila.
+
+`R` repete a instrução e `Escape` fecha o tutorial.
+
+**Voz.** As falas fixas são MP3 gravados com voz neural (Microsoft Francisca, pt-BR) e ficam em `assets/tutorial/`. As falas que mudam a cada momento (por exemplo, "Bacia do Congo: Piano. Temperatura 29,9 °C") usam a voz mais natural instalada no navegador: "Natural/Online" no Edge, "Google" no Chrome. Essa escolha fica em `js/voz.js`, um narrador com fila usado pelo tutorial e pelo app. A opção **Narração do tutorial** (salva no navegador) liga ou desliga a voz. Quem usa leitor de tela pode desligá-la, porque todo o texto também vai para regiões ARIA live.
+
+**Editar os textos.** Os textos ficam em `assets/tutorial/roteiro.json`. Depois de editar, regrave os áudios:
+
+```bash
+pip install edge-tts
+python tools/gerar_audio_tutorial.py          # grava só as falas que mudaram
+python tools/gerar_audio_tutorial.py --voz pt-BR-AntonioNeural --tudo   # trocar a voz
+```
+
+O roteiro guarda o texto de cada gravação. Se uma fala foi editada e não regravada, o app usa a voz do navegador para ela em vez de tocar um áudio desatualizado. O edge-tts envia os textos ao serviço de voz da Microsoft só no momento de gravar; no uso, os MP3 tocam localmente.
+
+Código: `js/tutorial.js` e `js/voz.js`. No `app.js`, o tutorial recebe os eventos `move`, `announce`, `reading`, `home` e `frame`.
+
 ## Estrutura
 
 ```text
@@ -108,6 +142,10 @@ js/audio.js      motor Tone.js em 4 camadas, instrumentos trocáveis, pré-escut
 js/haptics.js    PeerJS + QR Code
 js/receiver.js   página do celular
 js/gallery.js    pastas locais, presets, miniaturas
+js/tutorial.js   tutorial guiado em áudio e teclado (demonstrações + desafios no mapa)
+js/voz.js        narrador com fila: MP3 neural do tutorial ou a melhor voz pt-BR do navegador
+assets/tutorial/ roteiro.json (textos do tutorial) + MP3 gravados
+tools/gerar_audio_tutorial.py  roteiro → MP3 com voz neural (edge-tts)
 tools/extrair_escalas.py     legendas → js/colormaps.js (+ --validar)
 tools/gerar_mascara_terra.py frames de vento → assets/landmask.png
 referencias/escalas/         legendas oficiais usadas como referência
