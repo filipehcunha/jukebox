@@ -1,35 +1,39 @@
-Atue como Desenvolvedor Web Senior e Especialista em Design de Áudio Interativo. Crie um projeto web completo (HTML, CSS e JavaScript) chamado "A Sinfonia da Terra: Earth Jukebox Interativo".
+Atue como Desenvolvedor Web Senior e Especialista em Design de Áudio Interativo, WebRTC e Acessibilidade. Crie um projeto web completo (HTML, CSS e JavaScript) em arquivo único (ou modular utilizando Tone.js, PeerJS e QRCode.js via CDN) chamado "A Sinfonia da Terra: Earth Jukebox Multissensorial".
 
-O objetivo da aplicação é transformar a visualização científica de dados terrestres da NASA (especificamente o dataset "Global Sea Surface Currents and Temperature" do modelo ECCO2/JPL da NASA, que mapeia temperatura e correntes oceânicas) em uma experiência multissensorial imersiva, acessível e sonoramente agradável.
+O objetivo da aplicação é traduzir imagens de dados terrestres (da NASA ou enviadas pelo próprio usuário) em uma experiência de sonificação instrumental, altamente inclusiva, relaxante e interativa em tempo real.
 
 Requisitos Obrigatórios do Projeto:
 
-1. SONIFICAÇÃO CONTÍNUA E INTERATIVA (HOVER / TEMPO REAL):
-- NÃO crie um som estático único por imagem. A sonificação deve mudar continuamente e em tempo real à medida que o usuário move o ponteiro do mouse (ou navega via teclado) sobre as diferentes partes/pixels da imagem visualizada.
-- Mapeamento Sonoro de Coordenadas e Pixels:
-  * Eixo Y / Temperatura do Mar (SST - tons de azul a vermelho): Mapeie a cor/temperatura sob o cursor para a Frequência/Pitch da nota musical. Águas frias (azuis/pólos) devem produzir graves profundos e aveludados (100 Hz - 250 Hz); águas quentes (amarelas e vermelhas/equador) devem produzir notas médias e agudas suaves (300 Hz - 800 Hz).
-  * Eixo X / Panorama Estéreo (Panning): Mapeie a posição horizontal (0% a 100% da largura da imagem) diretamente para o balanço de áudio estéreo (Left a Right).
-  * Brilho / Intensidade das Correntes Oceânicas: Mapeie o brilho ou variação do pixel sob o cursor para o Filtro de Frequência (Cutoff do filtro passa-baixas) e ressonância, adicionando textura harmônica onde as correntes são mais intensas.
-- Suavização de Áudio (Interpolção): Utilize rampas lineares e suavização (linearRampToValueAtTime na Web Audio API ou rampTo no Tone.js) para garantir que a transição de som entre pixels adjacentes seja ultra-fluida, sem cliques, estalos ou interrupções bruscas.
+1. CARREGAMENTO DE PASTA LOCAL DE IMAGENS (GALERIA):
+- Implemente um leitor de pasta local (utilizando `<input type="file" webkitdirectory directory multiple>` ou seletor múltiplo de arquivos de imagem JPG, PNG e WebP).
+- Crie uma Galeria de Escolha onde todas as imagens carregadas da pasta do computador são exibidas em miniaturas clicáveis com o nome do arquivo.
+- Mantenha 2 imagens de dados da NASA pré-carregadas por padrão (Temperatura dos Oceanos ECCO2 e Altura das Florestas GEDI) para uso imediato caso o usuário não selecione uma pasta local.
 
-2. QUALIDADE SENSORIAL EXTREMAMENTE AGRADÁVEL:
-- Harmonia Musical (Quantização): Para evitar ruídos caóticos ou incômodos, quantize todas as frequências geradas em uma escala musical relaxante (ex: Pentatônica Maior em Dó ou Modo Lídio).
-- Timbre Confortável: Utilize osciladores de onda senoidal combinados com triângulos suaves e envelopes de ataque/decaimento macios.
-- Efeitos Espaciais: Aplique um efeito de Reverb ambiental de estúdio (Spatial Reverb) e um tom sutil de textura ambiente de fundo (drone suave) para criar um efeito relaxante e contemplativo.
-- Modo de Baixa Sensibilidade (Low-Sensory Mode): Inclua um botão para limitar picos de volume e suavizar filtros para usuários com hipersensibilidade auditiva.
+2. TELA DE LEGENDA AUDITIVA E SENSORIAL (ONBOARDING PRÉVIO):
+- Antes de iniciar a navegação na imagem selecionada, apresente obrigatoriamente uma Tela de Legenda Explicativa (Modal / Card de Preparação Sensorial).
+- Esta tela deve mostrar qual característica ambiental/cor cada instrumento representa e conter botões de teste áudio para o usuário ouvir e aprender cada som individualmente antes de explorar:
+  * Violoncelo / Contrabasso (Grave): Representa Águas Frias / Baixas Temperaturas / Regiões Polares.
+  * Piano de Cauda / Marimba (Médio): Representa Temperaturas Amenas e Vegetação Moderada.
+  * Flauta / Sopros de Madeira (Agudo): Representa Alta Umidade, Nuvens ou Dossel Florestal Elevado.
+  * Harpa / Percussão Leve (Arpejos/Rhythm): Representa a Intensidade de Correntes Marítimas ou Ventos Fortes.
+- Inclua o botão "Iniciar Experiência Multissensorial" ao final da legenda para carregar o canvas interativo.
 
-3. ACESSIBILIDADE TOTAL E INCLUSÃO UNIVERSAL:
-- Navegação Completa por Teclado: Pessoas cegas ou com baixa visão devem conseguir explorar a imagem através das teclas direcionais (Setas/Tab), movendo uma grade focal virtual X/Y que dispara o mesmo feedback sonoro instantâneo.
-- Leitores de Tela (ARIA Live): Inclua anúncios dinâmicos (aria-live="polite") indicando a região e os dados sob o cursor (ex: "Atlântico Norte: 24°C, Corrente Moderada").
-- Feedback Tátil (Vibration API): Em dispositivos móveis ou telas sensíveis ao toque, dispare microvibrações táteis leves ao cruzar zonas de transição térmica acentuada.
-- Alto Contraste e Modos de Cor Adaptativos: Disponibilize filtros visuais para daltonismo (Deuteranopia, Protanopia, Tritanopia) e modo de alto contraste.
+3. SONIFICAÇÃO INSTRUMENTAL CONTÍNUA EM TEMPO REAL (HOVER):
+- O som NÃO deve ser estático por imagem. À medida que o mouse transita pelos pixels da imagem, os instrumentos e suas notas se alteram continuamente e em tempo real.
+- Polifonia por Camadas Instrumentais (Tone.js / Web Audio API):
+  * Eixo X (Panning Estéreo): Posição horizontal do mouse direciona o som suavemente entre os canais Esquerdo e Direito.
+  * Matiz da Cor / Temperatura: Mapeie a cor sob o cursor para a nota do instrumento principal (quantizada na Escala Pentatônica Maior de Dó ou Sol para garantir uma sonoridade extremamente agradável e musical).
+  * Brilho / Umidade / Densidade: Ative camadas secundárias (ex: arpejos de harpa ou soprano de flauta) conforme a intensidade dos pixels aumenta.
+- Suavização de Áudio (Interpolção/Glide): Aplique rampas suaves de transição (rampTo) para eliminar estalos, ruídos secos ou mudanças bruscas de volume.
 
-4. ARQUITETURA E INTERFACE:
-- Interface limpa, moderna e elegante em HTML5 Canvas e TailwindCSS (ou CSS puro).
-- Painel de controle simples: Play/Mute, Seleção de Dataset (Sea Surface Temperature vs GEDI Forest Height), Alternador de Escala Musical e Painel de Acessibilidade.
-- Implemente todo o código de síntese de áudio de forma nativa utilizando a Web Audio API (ou Tone.js via CDN) sem necessidade de arquivos de áudio externos.
+4. SINCRONIZAÇÃO HÁPTICA COM O SMARTPHONE (VIBRAÇÃO VIA QR CODE):
+- Na interface principal do computador, inclua um painel "Conectar Smartphone (Vibração Tátil)".
+- Ao clicar, gere um QR Code único utilizando PeerJS (conexão WebRTC Peer-to-Peer nativa sem necessidade de servidor backend dedicado).
+- Ao escanear o QR Code com a câmera do celular, o smartphone abre uma página receptora leve.
+- Conforme o usuário move o mouse sobre a imagem no computador, o computador envia pacotes de dados via WebRTC em tempo real para o celular, acionando a Vibration API (`navigator.vibrate`) com padrões e frequências de vibração variáveis conforme o mouse cruza zonas de transição térmica ou de alta densidade.
 
-
--   Novas Adicoes
-
-Os sons são muito baixos. Busque mais dados das respectivas fontes para que seja possível analisar diversas imagens.
+5. ACESSIBILIDADE E CONFORTO SENSORIAL:
+- Modo de Baixa Sensibilidade (Low-Sensory Mode): Botão para ativar limitador de volume e suavização extrema de frequências para usuários neurodivergentes ou com hipersensibilidade auditiva.
+- Navegação Completa por Teclado: Teclas direcionais movimentam um cursor focal virtual pela imagem.
+- Síntese de Voz / ARIA Live: Anúncia verbalmente para leitores de tela os dados sob o cursor (ex: "Zona Atlântica: Violoncelo e Piano - Temperatura 22°C").
+- Layout responsivo, elegante e limpo com suporte a modos de alto contraste e filtros de cor para daltonismo.
