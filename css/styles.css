@@ -268,6 +268,22 @@ html.hc .legend-bar__marker { background: #ffff00; width: 6px; margin-left: -3px
 .legend-bar__ticks span:first-child { transform: none; }
 .legend-bar__ticks span:last-child { transform: translateX(-100%); }
 .legend-bar__ends { display: flex; justify-content: space-between; font-size: 0.74rem; color: var(--muted); }
+.legend-bar__hint { margin: 0; font-size: 0.72rem; color: var(--muted); }
+/* barra tocável: passar o mouse toca o valor */
+.legend-bar__track--play { cursor: crosshair; touch-action: none; border-radius: 6px; outline-offset: 4px; }
+.legend-bar__track--play:hover .legend-bar__gradient,
+.legend-bar__track--play:focus-visible .legend-bar__gradient { box-shadow: 0 0 0 2px var(--accent); }
+.legend-bar__gradient--big { height: 28px; }
+.legend-bar__track--play .legend-bar__marker { pointer-events: none; }
+.legend-bar__gradient--big + .legend-bar__marker { height: 38px; }
+.legend-bar__tip {
+  position: absolute; bottom: calc(100% + 10px); transform: translateX(-50%); pointer-events: none; white-space: nowrap;
+  padding: 4px 10px; border-radius: 8px; background: rgba(3, 8, 15, 0.92); border: 1px solid rgba(255, 255, 255, 0.25);
+  color: #eef8ff; font: 600 0.78rem var(--font-mono); z-index: 2;
+}
+.legend-bar__tip[data-edge="start"] { transform: translateX(-8px); }
+.legend-bar__tip[data-edge="end"] { transform: translateX(calc(-100% + 8px)); }
+html.hc .legend-bar__tip { background: #000; border-color: #ffff00; color: #ffff00; }
 
 .reading-grid { display: grid; grid-template-columns: 1.1fr 1fr 1.3fr 0.8fr; gap: 10px; }
 .reading-card {
@@ -341,7 +357,17 @@ html.hc .inst-meters b { background: #ffff00; }
 .instrument {
   display: grid; grid-template-columns: 52px 1fr; gap: 6px 14px; padding: 14px; border-radius: var(--radius-lg);
   border: 1px solid var(--border); background: var(--panel-raised); border-left: 4px solid var(--inst);
+  cursor: pointer; transition: border-color 0.15s, background 0.15s, transform 0.15s;
 }
+.instrument:hover, .instrument:focus-visible { border-color: var(--inst); background: color-mix(in srgb, var(--inst) 10%, var(--panel-raised)); }
+.instrument.is-playing { border-color: var(--inst); box-shadow: 0 0 0 1px var(--inst), 0 0 24px -8px var(--inst); }
+.instrument.is-playing .instrument__icon { animation: inst-pulse 0.9s ease-in-out infinite; }
+@keyframes inst-pulse { 50% { transform: scale(1.08); } }
+html.low-sensory .instrument.is-playing .instrument__icon { animation: none; }
+@media (prefers-reduced-motion: reduce) { .instrument.is-playing .instrument__icon { animation: none; } }
+.instrument__register code { font: 600 0.68rem var(--font-mono); letter-spacing: 0; text-transform: none; opacity: 0.85; }
+.instrument__actions { grid-column: 2; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.instrument__pick select { min-height: 38px; padding: 6px 34px 6px 10px; font-size: 0.85rem; }
 html.hc .instrument { border-left-color: #ffff00; }
 .instrument__icon { width: 52px; height: 52px; color: var(--inst); grid-row: span 2; }
 html.hc .instrument__icon { color: #ffff00; }
@@ -351,10 +377,10 @@ html.hc .instrument__register { color: #fff; }
 .instrument__role { color: var(--text-soft); font-size: 0.86rem; }
 .instrument__here { display: flex; align-items: center; gap: 8px; margin-top: 6px; color: var(--muted); font-size: 0.8rem; }
 .instrument__swatch { width: 54px; height: 12px; border-radius: 3px; flex: none; border: 1px solid rgba(255, 255, 255, 0.35); }
-.instrument__play { grid-column: 2; justify-self: start; min-height: 38px; padding: 6px 14px; }
-.instrument__play.is-playing { border-color: var(--inst); color: var(--inst); }
-.mapping-list { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
-.mapping-list div { display: grid; gap: 2px; padding: 10px 12px; border-radius: var(--radius-md); border: 1px solid var(--border); font-size: 0.8rem; color: var(--text-soft); }
+.instrument__play { min-height: 38px; padding: 6px 14px; }
+.instrument.is-playing .instrument__play { border-color: var(--inst); color: var(--inst); }
+.mapping-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; }
+.mapping-list div { display: grid; align-content: start; gap: 2px; padding: 10px 12px; border-radius: var(--radius-md); border: 1px solid var(--border); font-size: 0.8rem; color: var(--text-soft); }
 .mapping-list strong { color: var(--text); font-size: 0.86rem; }
 .legend-dialog__foot { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 10px; }
 

@@ -1,19 +1,25 @@
 // Motor de sonificação polifônica em camadas (Tone.js).
 //
-//   Violoncelo (grave)  ─┐
-//   Piano     (médio)   ─┤→ filtro passa-baixas (brilho) → panner (eixo X) → reverb → volume → limitador
-//   Flauta    (agudo)   ─┤
-//   Harpa     (arpejos) ─┘
+//   low  (grave)    ─┐
+//   mid  (médio)    ─┤→ filtro passa-baixas (brilho) → panner (eixo X) → reverb → volume
+//   high (agudo)    ─┤     → ducking (voz) → compressor → limitador
+//   arp  (arpejos)  ─┘
 //
-// Todas as notas são quantizadas na escala pentatônica maior (Dó ou Sol), então qualquer
-// combinação de camadas é consonante. Volumes, filtro e panorama mudam sempre com rampas
-// (rampTo) para evitar estalos.
+// O instrumento de cada camada vem do MAPPING_CONFIG / SAMPLE_SET (js/config.js) e pode ser
+// trocado em tempo real. Todas as notas são quantizadas na escala pentatônica maior (Dó ou
+// Sol), então qualquer combinação de camadas é consonante. Volumes, filtro e panorama mudam
+// sempre com rampas (rampTo) para evitar estalos.
+
+import { SAMPLE_SET, LAYER_ORDER, layerInstruments } from "./config.js";
 
 const T = () => window.Tone;
 const NOTE_NAMES = ["Dó", "Dó♯", "Ré", "Ré♯", "Mi", "Fá", "Fá♯", "Sol", "Sol♯", "Lá", "Lá♯", "Si"];
 const PENTATONIC = [0, 2, 4, 7, 9];
 const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
 const lerp = (a, b, t) => a + (b - a) * t;
+
+// Redução de volume dos instrumentos enquanto a voz sintetizada fala (audio ducking)
+export const DUCK_DB = -15;
 
 export const MUSICAL_KEYS = {
   C: { label: "Pentatônica Maior de Dó", root: 0 },
@@ -25,42 +31,103 @@ export function midiName(midi) {
 }
 const midiToNote = (m) => T().Frequency(m, "midi").toNote();
 
-// Faixas (MIDI) de cada camada
-const RANGES = {
-  cello: [36, 57], // Dó2–Lá3
-  piano: [55, 84], // Sol3–Dó6
-  flute: [72, 93], // Dó5–Lá6
-  harp: [55, 88], // Sol3–Mi6
-};
-// Nível relativo de cada camada no mix
-const LEVEL = { cello: 0.9, piano: 0.85, flute: 0.55, harp: 0.6 };
-
-const SAMPLE_SETS = {
-  piano: {
-    baseUrl: "https://tonejs.github.io/audio/salamander/",
-    urls: { A1: "A1.mp3", C2: "C2.mp3", "D#2": "Ds2.mp3", "F#2": "Fs2.mp3", A2: "A2.mp3", C3: "C3.mp3",
-      "D#3": "Ds3.mp3", "F#3": "Fs3.mp3", A3: "A3.mp3", C4: "C4.mp3", "D#4": "Ds4.mp3", "F#4": "Fs4.mp3",
-      A4: "A4.mp3", C5: "C5.mp3", "D#5": "Ds5.mp3", "F#5": "Fs5.mp3", A5: "A5.mp3", C6: "C6.mp3" },
-    release: 1.6,
-  },
-  cello: {
-    baseUrl: "https://nbrosowsky.github.io/tonejs-instruments/samples/cello/",
-    urls: Object.fromEntries(["C2", "E2", "G2", "A2", "C3", "E3", "G3", "A3", "C4", "E4"].map((n) => [n, `${n}.mp3`])),
-    attack: 0.12,
-    release: 1.6,
-  },
-  flute: {
-    baseUrl: "https://nbrosowsky.github.io/tonejs-instruments/samples/flute/",
-    urls: Object.fromEntries(["C4", "E4", "A4", "C5", "E5", "A5", "C6", "E6", "A6", "C7"].map((n) => [n, `${n}.mp3`])),
-    attack: 0.15,
-    release: 1.4,
-  },
-  harp: {
-    baseUrl: "https://nbrosowsky.github.io/tonejs-instruments/samples/harp/",
-    urls: Object.fromEntries(["B1", "D2", "F2", "A2", "C3", "E3", "G3", "B3", "D4", "F4", "A4", "C5", "E5", "G5", "B5", "D6"].map((n) => [n, `${n}.mp3`])),
-    release: 1.8,
-  },
-};
+// ---------------------------------------------------------------------------
+// Timbres sintetizados (funcionam offline e enquanto as amostras carregam)
+// Retornam { node: saída a conectar, voice: o que recebe as notas, mono }
+// ---------------------------------------------------------------------------
+function makeSynth(type) {
+  const Tone = T();
+  const bowed = (opts, vib) => {
+    const v = new Tone.Vibrato(...vib);
+    const voice = new Tone.MonoSynth({
+      oscillator: { type: "sawtooth" },
+      filter: { type: "lowpass", Q: 0.8, rolloff: -24 },
+      envelope: { attack: 0.3, decay: 0.3, sustain: 0.85, release: 1.6 },
+      portamento: 0.14,
+      ...opts,
+    }).connect(v);
+    return { node: v, voice, mono: true };
+  };
+  switch (type) {
+    case "bowed":
+      return bowed({ filterEnvelope: { attack: 0.25, decay: 0.4, sustain: 0.6, release: 1.4, baseFrequency: 160, octaves: 2.4 }, volume: -6 }, [4.8, 0.06]);
+    case "bowedLow":
+      return bowed({ filterEnvelope: { attack: 0.3, decay: 0.4, sustain: 0.6, release: 1.4, baseFrequency: 90, octaves: 2.2 }, volume: -3 }, [4.2, 0.05]);
+    case "bowedHigh":
+      return bowed({ filterEnvelope: { attack: 0.2, decay: 0.3, sustain: 0.7, release: 1.2, baseFrequency: 420, octaves: 3 }, envelope: { attack: 0.2, decay: 0.2, sustain: 0.85, release: 1.2 }, volume: -11 }, [5.6, 0.09]);
+    case "keys":
+      return {
+        voice: new Tone.PolySynth(Tone.FMSynth, {
+          harmonicity: 3.01,
+          modulationIndex: 6,
+          oscillator: { type: "sine" },
+          envelope: { attack: 0.003, decay: 1.3, sustain: 0, release: 1.2 },
+          modulation: { type: "sine" },
+          modulationEnvelope: { attack: 0.002, decay: 0.35, sustain: 0, release: 0.4 },
+          volume: -4,
+        }),
+        mono: false,
+      };
+    case "mallet": // marimba: fundamental + 4º harmônico (duas oitavas) com decaimento rápido
+      return {
+        voice: new Tone.PolySynth(Tone.FMSynth, {
+          harmonicity: 4,
+          modulationIndex: 2.2,
+          oscillator: { type: "sine" },
+          envelope: { attack: 0.001, decay: 0.6, sustain: 0, release: 0.5 },
+          modulation: { type: "sine" },
+          modulationEnvelope: { attack: 0.001, decay: 0.08, sustain: 0, release: 0.1 },
+          volume: -2,
+        }),
+        mono: false,
+      };
+    case "steel": // steel drum: parciais metálicos, ataque brilhante
+      return {
+        voice: new Tone.PolySynth(Tone.FMSynth, {
+          harmonicity: 2,
+          modulationIndex: 4.5,
+          oscillator: { type: "sine" },
+          envelope: { attack: 0.002, decay: 0.9, sustain: 0, release: 0.8 },
+          modulation: { type: "sine" },
+          modulationEnvelope: { attack: 0.002, decay: 0.25, sustain: 0, release: 0.3 },
+          volume: -7,
+        }),
+        mono: false,
+      };
+    case "flute": {
+      const v = new Tone.Vibrato(5.4, 0.1);
+      const voice = new Tone.Synth({ oscillator: { type: "triangle" }, envelope: { attack: 0.28, decay: 0.2, sustain: 0.85, release: 1.3 }, portamento: 0.12, volume: -8 }).connect(v);
+      return { node: v, voice, mono: true };
+    }
+    case "reed": {
+      const voice = new Tone.MonoSynth({
+        oscillator: { type: "square" },
+        filter: { type: "lowpass", Q: 1, rolloff: -24 },
+        filterEnvelope: { attack: 0.06, decay: 0.3, sustain: 0.7, release: 0.6, baseFrequency: 300, octaves: 2.5 },
+        envelope: { attack: 0.06, decay: 0.2, sustain: 0.8, release: 0.7 },
+        portamento: 0.08,
+        volume: -13,
+      });
+      return { voice, mono: true };
+    }
+    case "pad": {
+      const f = new Tone.Filter({ type: "lowpass", frequency: 1800, Q: 0.3 });
+      const voice = new Tone.Synth({
+        oscillator: { type: "fatsawtooth", count: 3, spread: 28 },
+        envelope: { attack: 0.9, decay: 0.4, sustain: 0.8, release: 2.2 },
+        portamento: 0.3,
+        volume: -17,
+      }).connect(f);
+      return { node: f, voice, mono: true };
+    }
+    case "pluck":
+    default:
+      return {
+        voice: new Tone.PolySynth(Tone.Synth, { oscillator: { type: "triangle" }, envelope: { attack: 0.002, decay: 0.9, sustain: 0, release: 0.9 }, volume: -5 }),
+        mono: false,
+      };
+  }
+}
 
 export class SonificationEngine {
   constructor() {
@@ -70,15 +137,17 @@ export class SonificationEngine {
     this.key = "C";
     this.userVolumeDb = 0;
     this.useSamples = true;
-    this.samplesLoaded = false;
-    this.samplesState = "idle"; // idle | loading | ready | failed
+    this.samplesState = "idle"; // idle | loading | ready | partial | failed | none
     this.onSamplesState = null;
     this.layers = {};
-    this.state = { active: false, weights: { cello: 0, piano: 0, flute: 0, harp: 0 }, norm: 0.5 };
+    this.assignment = layerInstruments("default");
+    this.state = { active: false, weights: { low: 0, mid: 0, high: 0, arp: 0 }, norm: 0.5 };
     this.idx = {};
     this.lastStrike = {};
     this.notes = {};
     this.arpStep = 0;
+    this.ducked = false;
+    this._previewTimers = [];
   }
 
   get available() {
@@ -94,18 +163,18 @@ export class SonificationEngine {
     }
     this._build();
     this.started = true;
-    this._loadSamples();
     this._timer = setInterval(() => this._tick(), 100);
   }
 
   _build() {
     const Tone = T();
-    // saída: volume do usuário -> compressor -> ganho de compensação -> limitador
+    // saída: volume do usuário → ducking (voz) → compressor → ganho de compensação → limitador
     // (o compressor nivela camadas fracas e fortes; o limitador impede clipping)
     this.limiter = new Tone.Limiter(-3).toDestination();
     this.makeup = new Tone.Gain(Tone.dbToGain(9)).connect(this.limiter);
     this.compressor = new Tone.Compressor({ threshold: -26, ratio: 3.5, attack: 0.01, release: 0.25, knee: 8 }).connect(this.makeup);
-    this.volume = new Tone.Volume(this.userVolumeDb).connect(this.compressor);
+    this.duckGain = new Tone.Gain(this.ducked ? Tone.dbToGain(DUCK_DB) : 1).connect(this.compressor);
+    this.volume = new Tone.Volume(this.userVolumeDb).connect(this.duckGain);
     this.reverb = new Tone.Reverb({ decay: 5, preDelay: 0.03, wet: 0.3 }).connect(this.volume);
     this.panner = new Tone.Panner(0).connect(this.reverb);
     this.filter = new Tone.Filter({ type: "lowpass", frequency: 6000, rolloff: -12, Q: 0.4 }).connect(this.panner);
@@ -114,56 +183,9 @@ export class SonificationEngine {
     this.meter = new Tone.Meter({ smoothing: 0.6 });
     this.limiter.connect(this.meter);
 
-    const mk = (id, synth) => {
-      const out = new Tone.Gain(0).connect(this.filter);
-      synth.connect(out);
-      this.layers[id] = { out, synth, sampler: null, sustaining: null };
-    };
+    for (const layer of LAYER_ORDER) this._assign(layer, this.assignment[layer]);
 
-    // --- vozes sintetizadas (funcionam offline e enquanto as amostras carregam) ---
-    const celloVib = new Tone.Vibrato(4.8, 0.06);
-    const cello = new Tone.MonoSynth({
-      oscillator: { type: "sawtooth" },
-      filter: { type: "lowpass", Q: 0.8, rolloff: -24 },
-      filterEnvelope: { attack: 0.25, decay: 0.4, sustain: 0.6, release: 1.4, baseFrequency: 160, octaves: 2.4 },
-      envelope: { attack: 0.3, decay: 0.3, sustain: 0.85, release: 1.6 },
-      portamento: 0.14,
-      volume: -6,
-    }).connect(celloVib);
-    mk("cello", celloVib);
-    this.layers.cello.voice = cello;
-
-    const piano = new Tone.PolySynth(Tone.FMSynth, {
-      harmonicity: 3.01,
-      modulationIndex: 6,
-      oscillator: { type: "sine" },
-      envelope: { attack: 0.003, decay: 1.3, sustain: 0, release: 1.2 },
-      modulation: { type: "sine" },
-      modulationEnvelope: { attack: 0.002, decay: 0.35, sustain: 0, release: 0.4 },
-      volume: -4,
-    });
-    mk("piano", piano);
-    this.layers.piano.voice = piano;
-
-    const fluteVib = new Tone.Vibrato(5.4, 0.1);
-    const flute = new Tone.Synth({
-      oscillator: { type: "triangle" },
-      envelope: { attack: 0.28, decay: 0.2, sustain: 0.85, release: 1.3 },
-      portamento: 0.12,
-      volume: -8,
-    }).connect(fluteVib);
-    mk("flute", fluteVib);
-    this.layers.flute.voice = flute;
-
-    const harp = new Tone.PolySynth(Tone.Synth, {
-      oscillator: { type: "triangle" },
-      envelope: { attack: 0.002, decay: 0.9, sustain: 0, release: 0.9 },
-      volume: -5,
-    });
-    mk("harp", harp);
-    this.layers.harp.voice = harp;
-
-    // arpejo da harpa: intervalo varia com a intensidade (ventos/correntes)
+    // arpejo: intervalo varia com a intensidade (ventos/correntes)
     const transport = Tone.getTransport ? Tone.getTransport() : Tone.Transport;
     this.arpLoop = new Tone.Loop((time) => this._arp(time), 0.3).start(0);
     transport.start();
@@ -171,55 +193,118 @@ export class SonificationEngine {
     this._applyLow();
   }
 
-  _loadSamples() {
-    const Tone = T();
-    this.samplesState = "loading";
-    this.onSamplesState?.(this.samplesState);
-    const pending = Object.entries(SAMPLE_SETS).map(
-      ([id, cfg]) =>
-        new Promise((resolve) => {
-          const sampler = new Tone.Sampler({
-            urls: cfg.urls,
-            baseUrl: cfg.baseUrl,
-            attack: cfg.attack || 0,
-            release: cfg.release || 1,
-            volume: cfg.volume ?? 4,
-            onload: () => resolve(true),
-            onerror: () => resolve(false),
-          });
-          sampler.connect(this.layers[id].out);
-          this.layers[id].sampler = sampler;
-        })
-    );
-    const timeout = new Promise((r) => setTimeout(() => r("timeout"), 15000));
-    Promise.race([Promise.all(pending), timeout]).then((res) => {
-      const ok = Array.isArray(res) && res.every(Boolean);
-      this.samplesLoaded = ok;
-      this.samplesState = ok ? "ready" : "failed";
-      if (ok) this._releaseAll();
-      this.onSamplesState?.(this.samplesState);
-    });
+  // ---------------- instrumentos por camada ----------------
+  layerInstrument(layer) {
+    return this.assignment[layer];
   }
 
-  _sampling(id) {
-    return this.useSamples && this.samplesLoaded && this.layers[id]?.sampler;
+  // { low: 'CELLO', mid: 'GRAND_PIANO', ... } — troca só as camadas que mudaram
+  setLayerInstruments(map) {
+    for (const layer of LAYER_ORDER) if (map[layer]) this.setLayerInstrument(layer, map[layer]);
+  }
+
+  setLayerInstrument(layer, instId) {
+    if (!SAMPLE_SET[instId] || this.assignment[layer] === instId) return;
+    this.assignment[layer] = instId;
+    if (this.started) this._assign(layer, instId);
+  }
+
+  _assign(layer, instId) {
+    const Tone = T();
+    const cfg = SAMPLE_SET[instId];
+    const old = this.layers[layer];
+    const out = old?.out || new Tone.Gain(0).connect(this.filter);
+    if (old) {
+      this._releaseLayer(layer);
+      const trash = [old.voice, old.node, old.sampler].filter(Boolean);
+      setTimeout(() => trash.forEach((n) => { try { n.dispose(); } catch { /* noop */ } }), 3000);
+    }
+    const { node, voice, mono } = makeSynth(cfg.synth);
+    (node || voice).connect(out);
+    const L = { out, inst: instId, cfg, node, voice, mono, sampler: null, samplerState: cfg.samples ? "idle" : "none", sustaining: null, sustainTime: 0 };
+    this.layers[layer] = L;
+    delete this.idx[layer];
+    this.notes[layer] = null;
+    if (this.useSamples && cfg.samples) this._loadSampler(layer);
+    else this._emitSamples();
+  }
+
+  _loadSampler(layer) {
+    const Tone = T();
+    const L = this.layers[layer];
+    const s = L.cfg.samples;
+    if (!s || L.sampler) return;
+    L.samplerState = "loading";
+    this._emitSamples();
+    const done = (ok) => {
+      if (L.samplerState !== "loading") return;
+      L.samplerState = ok ? "ready" : "failed";
+      if (ok && this.layers[layer] === L) {
+        // troca o sintetizador pela gravação sem deixar nota presa
+        try { L.mono ? L.voice.triggerRelease() : L.voice.releaseAll(); } catch { /* noop */ }
+        L.sustaining = null;
+      }
+      this._emitSamples();
+    };
+    L.sampler = new Tone.Sampler({
+      urls: s.urls,
+      baseUrl: s.baseUrl,
+      attack: s.attack || 0,
+      release: s.release || 1,
+      volume: s.volume ?? 4,
+      onload: () => done(true),
+      onerror: () => done(false),
+    }).connect(L.out);
+    setTimeout(() => done(false), 15000);
+  }
+
+  _emitSamples() {
+    const ls = LAYER_ORDER.map((l) => this.layers[l]).filter((L) => L && L.cfg.samples);
+    let st;
+    if (!this.useSamples || !ls.length) st = "none";
+    else if (ls.some((L) => L.samplerState === "loading" || L.samplerState === "idle")) st = "loading";
+    else if (ls.every((L) => L.samplerState === "ready")) st = "ready";
+    else if (ls.some((L) => L.samplerState === "ready")) st = "partial";
+    else st = "failed";
+    this.samplesState = st;
+    const labels = LAYER_ORDER.map((l) => this.layers[l]).filter(Boolean).map((L) => `${L.cfg.label}${L.cfg.samples && this._ready(L) ? "" : " (sintetizado)"}`);
+    this.onSamplesState?.(st, labels);
+  }
+
+  _ready(L) {
+    return this.useSamples && L.samplerState === "ready";
+  }
+
+  _sampling(layer) {
+    const L = this.layers[layer];
+    return !!L && this._ready(L);
+  }
+
+  _voice(layer) {
+    const L = this.layers[layer];
+    return this._sampling(layer) ? L.sampler : L.voice;
   }
 
   setUseSamples(on) {
     this._releaseAll();
     this.useSamples = on;
+    if (on && this.started) for (const l of LAYER_ORDER) this._loadSampler(l);
+    this._emitSamples();
+  }
+
+  _releaseLayer(layer) {
+    const L = this.layers[layer];
+    if (!L) return;
+    try {
+      L.sampler?.releaseAll?.();
+      if (L.voice?.releaseAll) L.voice.releaseAll();
+      else L.voice?.triggerRelease?.();
+    } catch { /* noop */ }
+    L.sustaining = null;
   }
 
   _releaseAll() {
-    for (const id of Object.keys(this.layers)) {
-      const L = this.layers[id];
-      try {
-        L.sampler?.releaseAll?.();
-        if (L.voice?.releaseAll) L.voice.releaseAll();
-        else L.voice?.triggerRelease?.();
-      } catch { /* noop */ }
-      L.sustaining = null;
-    }
+    for (const l of Object.keys(this.layers)) this._releaseLayer(l);
   }
 
   // ---------------- escala musical ----------------
@@ -232,14 +317,18 @@ export class SonificationEngine {
     return out;
   }
 
-  // norm 0..1 -> índice na escala da camada, com histerese para não oscilar na fronteira
-  _quantize(id, norm) {
-    const notes = this.scaleNotes(...RANGES[id]);
+  _range(layer) {
+    return SAMPLE_SET[this.assignment[layer]].range;
+  }
+
+  // norm 0..1 → índice na escala da camada, com histerese para não oscilar na fronteira
+  _quantize(layer, norm) {
+    const notes = this.scaleNotes(...this._range(layer));
     const x = clamp(norm) * (notes.length - 1);
-    const prev = this.idx[id];
+    const prev = this.idx[layer];
     let i = Math.round(x);
     if (prev !== undefined && Math.abs(x - prev) < 0.62) i = prev;
-    this.idx[id] = i;
+    this.idx[layer] = i;
     return notes[i];
   }
 
@@ -267,6 +356,16 @@ export class SonificationEngine {
     if (this.started && !this.paused) this.volume.volume.rampTo(db + (this.low ? -10 : 0), 0.15);
   }
 
+  // Audio ducking: abaixa os instrumentos enquanto a voz fala e restaura suavemente depois
+  duck(on) {
+    if (this.ducked === on) return;
+    this.ducked = on;
+    if (!this.started) return;
+    const g = this.duckGain.gain;
+    g.cancelScheduledValues(T().now());
+    g.rampTo(on ? T().dbToGain(DUCK_DB) : 1, on ? 0.15 : 0.9);
+  }
+
   pause() {
     if (!this.started) return;
     this.paused = true;
@@ -281,7 +380,7 @@ export class SonificationEngine {
   }
 
   // ---------------- atualização contínua ----------------
-  // s = { active, pan (-1..1), norm (0..1), weights {cello,piano,flute,harp}, bright, grad }
+  // s = { active, pan (-1..1), norm (0..1), weights {low,mid,high,arp}, bright, grad }
   update(s) {
     if (!this.started || this.paused) return;
     const prev = this.state;
@@ -294,9 +393,12 @@ export class SonificationEngine {
     const cutoff = this.low ? lerp(700, 1700, bright) : lerp(2000, 12000, bright ** 0.8);
     this.filter.frequency.rampTo(cutoff, this.low ? 0.8 : 0.2);
 
-    for (const id of Object.keys(this.layers)) {
-      const w = s.active ? Math.sqrt(clamp(s.weights?.[id] ?? 0)) : 0;
-      this.layers[id].out.gain.rampTo(w * LEVEL[id] * (this.low && id === "harp" ? 0.6 : 1), s.active ? ramp : 0.5);
+    if (this._previewLayer && s.active) this.stopPreview();
+    for (const layer of LAYER_ORDER) {
+      if (layer === this._previewLayer) continue; // não abafa a pré-escuta em andamento
+      const L = this.layers[layer];
+      const w = s.active ? Math.sqrt(clamp(s.weights?.[layer] ?? 0)) : 0;
+      L.out.gain.rampTo(w * L.cfg.level * (this.low && layer === "arp" ? 0.6 : 1), s.active ? ramp : 0.5);
     }
 
     if (!s.active) {
@@ -305,34 +407,31 @@ export class SonificationEngine {
     }
     this._inactiveSince = null;
 
-    // camadas sustentadas: violoncelo e flauta
-    for (const id of ["cello", "flute"]) {
-      const w = s.weights[id] ?? 0;
-      const midi = this._quantize(id, s.norm);
-      this._sustain(id, midi, w, now);
+    for (const layer of ["low", "mid", "high"]) {
+      const w = s.weights[layer] ?? 0;
+      const midi = this._quantize(layer, s.norm);
+      if (this.layers[layer].cfg.sustain) this._sustain(layer, midi, w, now);
+      else if (w > 0.05 && midi !== this.notes[layer]) this._strike(layer, midi, w, now);
     }
-    // piano: toca quando a nota muda
-    const pm = this._quantize("piano", s.norm);
-    const wp = s.weights.piano ?? 0;
-    if (wp > 0.05 && pm !== this.notes.piano) this._strikePiano(pm, wp, now);
-    // harpa: o loop lê o estado; ajusta a velocidade do arpejo
-    const wh = clamp(s.weights.harp ?? 0);
-    this.arpLoop.interval = this.low ? lerp(0.7, 0.36, wh) : lerp(0.48, 0.085, wh ** 0.8);
+    // arpejo: o loop lê o estado; ajusta a velocidade
+    const wa = clamp(s.weights.arp ?? 0);
+    this.arpLoop.interval = this.low ? lerp(0.7, 0.36, wa) : lerp(0.48, 0.085, wa ** 0.8);
   }
 
-  _strikePiano(midi, w, now) {
+  // instrumentos percutidos/pinçados: toca quando a nota muda
+  _strike(layer, midi, w, now) {
     const minGap = this.low ? 0.28 : 0.09;
-    if (now - (this.lastStrike.piano || 0) < minGap) return;
-    this.lastStrike.piano = now;
-    this.notes.piano = midi;
+    if (now - (this.lastStrike[layer] || 0) < minGap) return;
+    this.lastStrike[layer] = now;
+    this.notes[layer] = midi;
     const vel = clamp((0.5 + 0.45 * w) * (this.low ? 0.6 : 1), 0.1, 1);
-    const v = this._sampling("piano") ? this.layers.piano.sampler : this.layers.piano.voice;
-    v.triggerAttackRelease(midiToNote(midi), this.low ? 2.2 : 1.4, now, vel);
+    this._voice(layer).triggerAttackRelease(midiToNote(midi), this.low ? 2.2 : 1.4, now, vel);
   }
 
-  _sustain(id, midi, w, now) {
-    const L = this.layers[id];
-    const sampling = this._sampling(id);
+  // instrumentos sustentados: legato com amostras, glide com sintetizador
+  _sustain(layer, midi, w, now) {
+    const L = this.layers[layer];
+    const sampling = this._sampling(layer);
     if (w < 0.03) {
       if (L.sustaining !== null && now - (L.sustainTime || 0) > 0.6) {
         if (sampling) L.sampler.triggerRelease(midiToNote(L.sustaining), now);
@@ -344,7 +443,7 @@ export class SonificationEngine {
     const vel = clamp(0.55 + 0.4 * w, 0.2, 0.95) * (this.low ? 0.65 : 1);
     if (sampling) {
       // amostra: troca de nota com sobreposição (legato); re-arco periódico mantém o som vivo
-      const restrike = now - (L.sustainTime || 0) > (id === "cello" ? 2.6 : 3.0);
+      const restrike = now - (L.sustainTime || 0) > (layer === "low" ? 2.6 : 3.0);
       const changed = midi !== L.sustaining;
       const gap = this.low ? 0.45 : 0.2;
       if ((changed && now - (L.sustainTime || 0) > gap) || restrike) {
@@ -366,16 +465,15 @@ export class SonificationEngine {
   _arp(time) {
     const s = this.state;
     if (!this.started || this.paused || !s.active) return;
-    const w = s.weights?.harp ?? 0;
+    const w = s.weights?.arp ?? 0;
     if (w < 0.05) return;
-    const notes = this.scaleNotes(...RANGES.harp);
-    const base = Math.round(clamp(s.norm) * (notes.length - 6));
+    const notes = this.scaleNotes(...this._range("arp"));
+    const base = Math.round(clamp(s.norm) * Math.max(0, notes.length - 6));
     const pattern = [0, 1, 2, 3, 4, 3, 2, 1];
     const n = notes[clamp(base + pattern[this.arpStep % pattern.length], 0, notes.length - 1)];
     this.arpStep += 1;
     const vel = clamp((0.4 + 0.5 * w) * (this.low ? 0.55 : 1), 0.1, 0.9);
-    const v = this._sampling("harp") ? this.layers.harp.sampler : this.layers.harp.voice;
-    v.triggerAttackRelease(midiToNote(n), 0.6, time, vel);
+    this._voice("arp").triggerAttackRelease(midiToNote(n), 0.6, time, vel);
   }
 
   _tick() {
@@ -383,17 +481,20 @@ export class SonificationEngine {
     const s = this.state;
     const now = T().now();
     if (s.active) {
-      // re-toque suave do piano quando o cursor repousa (o mapa continua "cantando")
-      const wp = s.weights.piano ?? 0;
-      const rest = this.low ? 3.2 : 1.8;
-      if (wp > 0.12 && now - (this.lastStrike.piano || 0) > rest) {
-        this.notes.piano = null;
-        this._strikePiano(this._quantize("piano", s.norm), wp * 0.85, now);
+      for (const layer of ["low", "mid", "high"]) {
+        const w = s.weights[layer] ?? 0;
+        if (this.layers[layer].cfg.sustain) {
+          if (this._sampling(layer)) this._sustain(layer, this._quantize(layer, s.norm), w, now);
+        } else {
+          // re-toque suave quando o cursor repousa (o mapa continua "cantando")
+          const rest = this.low ? 3.2 : 1.8;
+          if (w > 0.12 && now - (this.lastStrike[layer] || 0) > rest) {
+            this.notes[layer] = null;
+            this._strike(layer, this._quantize(layer, s.norm), w * 0.85, now);
+          }
+        }
       }
-      for (const id of ["cello", "flute"]) {
-        if (this._sampling(id)) this._sustain(id, this._quantize(id, s.norm), s.weights[id] ?? 0, now);
-      }
-    } else if (this._inactiveSince && now - this._inactiveSince > 1.2) {
+    } else if (this._inactiveSince && !this._previewLayer && now - this._inactiveSince > 1.2) {
       this._releaseAll();
       this._inactiveSince = null;
       this.notes = {};
@@ -401,43 +502,55 @@ export class SonificationEngine {
   }
 
   currentNoteName() {
-    const m = this.idx.piano !== undefined ? this.scaleNotes(...RANGES.piano)[this.idx.piano] : null;
+    const m = this.idx.mid !== undefined ? this.scaleNotes(...this._range("mid"))[this.idx.mid] : null;
     return m ? midiName(m) : "—";
   }
 
-  noteFor(id, norm) {
-    const notes = this.scaleNotes(...RANGES[id]);
+  noteFor(layer, norm) {
+    const notes = this.scaleNotes(...this._range(layer));
     return notes[Math.round(clamp(norm) * (notes.length - 1))];
   }
 
-  // ---------------- teste individual (Tela de Legenda) ----------------
-  async preview(id) {
+  // ---------------- pré-escuta (Tela de Legenda) ----------------
+  // Usa temporizadores JS (e não agendamento no futuro do Tone) para poder ser
+  // interrompida na hora quando o mouse sai do card.
+  async preview(layer) {
     await this.start();
     if (this.paused) this.resume();
-    const Tone = T();
-    const L = this.layers[id];
-    const now = Tone.now() + 0.05;
-    const voice = this._sampling(id) ? L.sampler : L.voice;
+    this.stopPreview();
+    const L = this.layers[layer];
+    const cfg = L.cfg;
+    const now = T().now();
     L.out.gain.cancelScheduledValues(now);
-    L.out.gain.rampTo(LEVEL[id], 0.05);
-    const scale = this.scaleNotes(...RANGES[id]);
-    const phrase = {
-      cello: [[0, 0, 1.6], [2, 1.2, 1.6], [4, 2.4, 2.2]],
-      piano: [[2, 0, 0.8], [4, 0.35, 0.8], [6, 0.7, 0.8], [7, 1.05, 0.8], [9, 1.4, 1.6]],
-      flute: [[3, 0, 1.2], [4, 1.0, 1.2], [6, 2.0, 2.0]],
-      harp: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((k, i) => [k + 2, i * 0.14, 1.2]),
-    }[id];
-    const mono = !this._sampling(id) && (id === "cello" || id === "flute");
-    phrase.forEach(([deg, t, dur]) => {
-      const note = midiToNote(scale[Math.min(scale.length - 1, deg)]);
-      if (mono) voice.triggerAttackRelease(note, dur * 0.85, now + t, 0.85);
-      else voice.triggerAttackRelease(note, dur, now + t, 0.85);
-    });
+    L.out.gain.rampTo(cfg.level, 0.05);
+    const scale = this.scaleNotes(...cfg.range);
+    const mid = Math.floor(scale.length / 2);
+    let phrase;
+    if (layer === "arp") phrase = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((k, i) => [k + 1, i * 0.14, 1.2]);
+    else if (cfg.sustain) phrase = [[mid - 3, 0, 1.6], [mid - 1, 1.2, 1.6], [mid + 1, 2.4, 2.2]];
+    else phrase = [[mid - 3, 0, 0.8], [mid - 1, 0.35, 0.8], [mid, 0.7, 0.8], [mid + 1, 1.05, 0.8], [mid + 3, 1.4, 1.6]];
+    this._previewLayer = layer;
+    this._previewTimers = phrase.map(([deg, t, dur]) =>
+      setTimeout(() => {
+        if (this._previewLayer !== layer || this.paused) return;
+        const note = midiToNote(scale[clamp(deg, 0, scale.length - 1)]);
+        const mono = !this._sampling(layer) && L.mono;
+        this._voice(layer).triggerAttackRelease(note, mono ? dur * 0.85 : dur, T().now(), 0.85);
+      }, t * 1000)
+    );
     const total = phrase[phrase.length - 1][1] + phrase[phrase.length - 1][2] + 0.6;
-    setTimeout(() => {
-      if (!this.state.active) L.out.gain.rampTo(0, 0.6);
-    }, total * 1000);
+    this._previewTimers.push(setTimeout(() => this.stopPreview({ soft: true }), total * 1000));
     return total;
+  }
+
+  stopPreview({ soft = false } = {}) {
+    this._previewTimers.forEach(clearTimeout);
+    this._previewTimers = [];
+    const layer = this._previewLayer;
+    this._previewLayer = null;
+    if (!layer || !this.started) return;
+    if (!soft) this._releaseLayer(layer);
+    if (!this.state.active) this.layers[layer].out.gain.rampTo(0, soft ? 0.6 : 0.25);
   }
 
   // nível de saída em dBFS (após o limitador)

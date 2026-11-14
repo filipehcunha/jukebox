@@ -1,11 +1,12 @@
 // A Sinfonia da Terra · Earth Jukebox Multissensorial
 // Orquestra galeria, legenda sensorial, leitura de pixels, áudio, háptica e acessibilidade.
 
-import { SCALES, SCALE_LIST, INSTRUMENTS, INSTRUMENT_ORDER, GMAO_T0_UTC, scaleFromPixels, paletteColor } from "./scales.js";
+import { SCALES, SCALE_LIST, LAYERS, LAYER_ORDER, GMAO_T0_UTC, scaleFromPixels, paletteColor } from "./scales.js";
+import { MAPPING_CONFIG, SAMPLE_SET, SAMPLE_SET_NAMES, layerInstruments, layerVariable, VARIABLE_LABELS } from "./config.js";
 import { loadLandMask, formatCoord } from "./geo.js";
 import { ImageSampler, loadBitmap } from "./sampler.js";
 import { SonificationEngine, MUSICAL_KEYS, midiName } from "./audio.js";
-import { HapticBridge, renderQr, guessReceiverBase, PUBLIC_RECEIVER_BASE } from "./haptics.js";
+import { HapticBridge, renderQr, guessReceiverBase, checkPublicReceiver, PUBLIC_RECEIVER_BASE } from "./haptics.js";
 import { presetGroups, upgradeGmaoSequences, groupFiles, filesFromDrop, renderPresets, renderLocalGroups } from "./gallery.js";
 
 const $ = (id) => document.getElementById(id);
@@ -18,7 +19,7 @@ const scope = $("scopeCanvas");
 const scopeCtx = scope.getContext("2d");
 
 const engine = new SonificationEngine();
-window.sinfonia = { engine }; // acesso para depuração no console do navegador
+window.sinfonia = { engine, MAPPING_CONFIG, SAMPLE_SET }; // acesso para depuração no console do navegador
 const haptics = new HapticBridge({ onStatus: onPhoneStatus });
 
 const state = {
@@ -43,6 +44,8 @@ const state = {
   loadToken: 0,
   colorMode: "none",
   pendingStart: false,
+  legendHover: null, // posição 0..1 sob o mouse na barra de cores (pré-escuta da escala)
+  overrides: {}, // instrumento escolhido pelo usuário na legenda, por camada
 };
 
 // ---------------------------------------------------------------------------
@@ -73,10 +76,12 @@ function toast(msg, ms = 3800) {
   toastTimer = setTimeout(() => el.classList.remove("is-visible"), ms);
 }
 
-function announce(text, { speak = true } = {}) {
+function announce(text, { speak = true, live: toLive = true } = {}) {
   const live = $("ariaLive");
-  live.textContent = "";
-  requestAnimationFrame(() => { live.textContent = text; });
+  if (toLive) {
+    live.textContent = "";
+    requestAnimationFrame(() => { live.textContent = text; });
+  }
   if (speak && $("voiceToggle").checked && "speechSynthesis" in window) {
     speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(text);
@@ -85,8 +90,26 @@ function announce(text, { speak = true } = {}) {
     u.volume = $("lowSensory").checked ? 0.7 : 1;
     const voice = speechSynthesis.getVoices().find((v) => v.lang?.toLowerCase().startsWith("pt"));
     if (voice) u.voice = voice;
+    // AUDIO DUCKING: a voz sobressai. Instrumentos caem para -15 dB enquanto ela fala
+    // e voltam suavemente (rampTo) quando termina.
+    u.onstart = () => engine.duck(true);
+    u.onend = u.onerror = () => { if (!speechSynthesis.speaking) engine.duck(false); };
+    engine.duck(true);
     speechSynthesis.speak(u);
+    watchSpeech();
   }
+}
+
+// rede de segurança: alguns navegadores não disparam onend quando a fala é cancelada
+let speechWatch = null;
+function watchSpeech() {
+  clearInterval(speechWatch);
+  speechWatch = setInterval(() => {
+    if (!speechSynthesis.speaking && !speechSynthesis.pending) {
+      engine.duck(false);
+      clearInterval(speechWatch);
+    }
+  }, 250);
 }
 
 // ---------------------------------------------------------------------------
@@ -144,6 +167,9 @@ function addFiles(files) {
 // Seleção de imagem -> Legenda sensorial -> Exploração
 // ---------------------------------------------------------------------------
 async function selectGroup(group, index = 0) {
+  // o clique na galeria é um gesto do usuário: libera o áudio já aqui, para que a
+  // pré-escuta no hover da legenda toque sem precisar de outro clique
+  if (engine.available) engine.start().then(updateAudioUI).catch(() => {});
   state.group = group;
   state.index = index;
   state.scale = group.scaleId ? SCALES[group.scaleId] : null;
@@ -153,15 +179,28 @@ async function selectGroup(group, index = 0) {
   state.announcedKey = "";
   const loading = loadFrame(index, { initial: true });
   if (!state.scale) await loading; // precisa detectar a escala antes de montar a legenda
+  applyInstruments();
   openLegend();
   await loading;
 }
 
+// MAPPING_CONFIG (por escala) + escolhas do usuário na legenda → instrumentos das camadas
+function currentInstruments() {
+  const base = layerInstruments(state.scale?.id || "default");
+  return Object.fromEntries(LAYER_ORDER.map((l) => [l, state.overrides[l] || base[l]]));
+}
+function applyInstruments() {
+  engine.setLayerInstruments(currentInstruments());
+  $("instMeters").innerHTML = ""; // rótulos refeitos na próxima leitura
+}
+const instLabel = (layer) => SAMPLE_SET[engine.layerInstrument(layer)].label;
+
 function openLegend() {
   const scale = state.scale || SCALES.generic;
   const g = state.group;
+  engine.update({ active: false });
   $("legendDialogTitle").textContent = "Legenda auditiva e sensorial";
-  $("legendDialogIntro").textContent = `${g.title}: ouça cada instrumento antes de explorar. ${scale.label}.`;
+  $("legendDialogIntro").textContent = `${g.title}: passe o mouse sobre cada instrumento (ou sobre a barra de cores) para ouvi-lo antes de explorar. ${scale.label}.`;
   $("dlgScaleLabel").textContent = scale.label;
   $("dlgScaleUnit").textContent = scale.unit;
   $("dlgGradient").style.background = scale.gradientCss();
@@ -170,37 +209,77 @@ function openLegend() {
 
   const list = $("instrumentList");
   list.innerHTML = "";
-  for (const id of INSTRUMENT_ORDER) {
-    const inst = INSTRUMENTS[id];
+  const defaults = layerInstruments(scale.id);
+  for (const id of LAYER_ORDER) {
+    const layer = LAYERS[id];
+    const instId = engine.layerInstrument(id);
+    const inst = SAMPLE_SET[instId];
+    const variable = layerVariable(scale.id, id);
     const li = document.createElement("li");
     li.className = "instrument";
-    li.style.setProperty("--inst", inst.color);
+    li.tabIndex = 0;
+    li.style.setProperty("--inst", layer.color);
+    li.setAttribute("aria-labelledby", `inst-${id}`);
+    li.setAttribute("aria-describedby", `inst-${id}-here`);
     const swatch = instrumentSwatch(scale, id);
+    const options = SAMPLE_SET_NAMES.map(
+      (n) => `<option value="${n}"${n === instId ? " selected" : ""}>${SAMPLE_SET[n].label}${n === defaults[id] ? " (padrão)" : ""}</option>`
+    ).join("");
     li.innerHTML = `
-      <span class="instrument__icon" aria-hidden="true">${INSTRUMENT_ICONS[id]}</span>
+      <span class="instrument__icon" aria-hidden="true">${INSTRUMENT_ICONS[inst.icon]}</span>
       <div class="instrument__body">
-        <p class="instrument__register">${inst.register}</p>
-        <h3 class="instrument__name" id="inst-${id}">${inst.name}</h3>
-        <p class="instrument__role">${inst.role}</p>
-        <p class="instrument__here"><span class="instrument__swatch" style="background:${swatch}"></span>${scale.legend[id]}</p>
+        <p class="instrument__register">${layer.register} · <code title="${VARIABLE_LABELS[variable]}">MAPPING_CONFIG.${variable}</code></p>
+        <h3 class="instrument__name" id="inst-${id}">${inst.label}<span class="sr-only">, ${layer.register}</span></h3>
+        <p class="instrument__role">${layer.role}</p>
+        <p class="instrument__here" id="inst-${id}-here"><span class="instrument__swatch" style="background:${swatch}"></span>${scale.legend[id]}</p>
+      </div>
+      <div class="instrument__actions">
+        <label class="instrument__pick"><span class="sr-only">Instrumento da camada ${layer.register.toLowerCase()}</span>
+          <select data-layer="${id}">${options}</select>
+        </label>
       </div>`;
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "button button--ghost instrument__play";
     btn.setAttribute("aria-describedby", `inst-${id}`);
     btn.innerHTML = `<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l10-6.5-10-6.5Z" fill="currentColor"/></svg> Ouvir`;
-    btn.addEventListener("click", async () => {
+    li.querySelector(".instrument__actions").prepend(btn);
+
+    const play = async () => {
       try {
-        btn.classList.add("is-playing");
+        list.querySelectorAll(".is-playing").forEach((el) => el.classList.remove("is-playing"));
+        li.classList.add("is-playing");
         const secs = await engine.preview(id);
         updateAudioUI();
-        setTimeout(() => btn.classList.remove("is-playing"), secs * 1000);
+        clearTimeout(li._t);
+        li._t = setTimeout(() => li.classList.remove("is-playing"), secs * 1000);
       } catch (err) {
-        btn.classList.remove("is-playing");
+        li.classList.remove("is-playing");
         toast(err.message || "Não foi possível iniciar o áudio.");
       }
+    };
+    const stop = () => {
+      clearTimeout(li._hover);
+      clearTimeout(li._t);
+      li.classList.remove("is-playing");
+      engine.stopPreview();
+    };
+    // PRÉ-ESCUTA NO HOVER: tocar ao entrar no card (pequeno atraso evita disparos ao só atravessar)
+    li.addEventListener("mouseenter", () => { clearTimeout(li._hover); li._hover = setTimeout(play, 90); });
+    li.addEventListener("mouseleave", stop);
+    li.addEventListener("focus", (e) => { if (e.target === li) play(); });
+    li.addEventListener("keydown", (e) => { if (e.target === li && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); play(); } });
+    btn.addEventListener("click", play);
+    li.querySelector("select").addEventListener("change", (e) => {
+      const chosen = e.target.value;
+      if (chosen === defaults[id]) delete state.overrides[id];
+      else state.overrides[id] = chosen;
+      applyInstruments();
+      const now = SAMPLE_SET[chosen];
+      li.querySelector(".instrument__icon").innerHTML = INSTRUMENT_ICONS[now.icon];
+      li.querySelector(".instrument__name").firstChild.textContent = now.label;
+      play();
     });
-    li.append(btn);
     list.append(li);
   }
 
@@ -209,7 +288,7 @@ function openLegend() {
   $("legendDialogTitle").focus();
 }
 
-// gradiente com as cores da escala onde o instrumento domina (ou um ícone de brilho/borda)
+// gradiente com as cores da escala onde a camada domina (ou um ícone de brilho/borda)
 function instrumentSwatch(scale, id) {
   const stops = [];
   for (let i = 0; i <= 60; i += 1) {
@@ -222,16 +301,18 @@ function instrumentSwatch(scale, id) {
     const pick = stops.filter((_, i) => i % Math.ceil(stops.length / 8) === 0);
     return `linear-gradient(90deg, ${pick.join(", ")})`;
   }
-  return id === "harp"
+  return id === "arp"
     ? "repeating-linear-gradient(90deg, #fff 0 3px, #222 3px 7px)"
     : "linear-gradient(90deg, #333, #fff)";
 }
 
 const INSTRUMENT_ICONS = {
-  cello: `<svg viewBox="0 0 48 48"><path d="M24 4v10M20 6h8" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/><path d="M24 14c-5 0-8 3-7 8 .6 2.6-3 3.5-3 9 0 6.5 4.5 11 10 11s10-4.5 10-11c0-5.5-3.6-6.4-3-9 1-5-2-8-7-8Z" fill="none" stroke="currentColor" stroke-width="2.4"/><path d="M21 27c1 1 5 1 6 0M21 33c1-1 5-1 6 0" stroke="currentColor" stroke-width="2"/><path d="M24 14v28" stroke="currentColor" stroke-width="1.6"/></svg>`,
-  piano: `<svg viewBox="0 0 48 48"><rect x="5" y="12" width="38" height="26" rx="3" fill="none" stroke="currentColor" stroke-width="2.4"/><path d="M12.5 12v26M20 12v26M27.5 12v26M35 12v26" stroke="currentColor" stroke-width="1.8"/><path d="M10 12h5v14h-5zM17.5 12h5v14h-5zM32.5 12h5v14h-5z" fill="currentColor"/></svg>`,
-  flute: `<svg viewBox="0 0 48 48"><path d="M8 38 40 8" stroke="currentColor" stroke-width="5" stroke-linecap="round"/><circle cx="18" cy="28" r="1.8" fill="var(--bg-deep, #000)"/><circle cx="23" cy="23" r="1.8" fill="var(--bg-deep, #000)"/><circle cx="28" cy="18" r="1.8" fill="var(--bg-deep, #000)"/><path d="M36 30c3 1 5 3 6 6M33 35c2 .5 3.5 2 4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/></svg>`,
+  bowed: `<svg viewBox="0 0 48 48"><path d="M24 4v10M20 6h8" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/><path d="M24 14c-5 0-8 3-7 8 .6 2.6-3 3.5-3 9 0 6.5 4.5 11 10 11s10-4.5 10-11c0-5.5-3.6-6.4-3-9 1-5-2-8-7-8Z" fill="none" stroke="currentColor" stroke-width="2.4"/><path d="M21 27c1 1 5 1 6 0M21 33c1-1 5-1 6 0" stroke="currentColor" stroke-width="2"/><path d="M24 14v28" stroke="currentColor" stroke-width="1.6"/></svg>`,
+  keys: `<svg viewBox="0 0 48 48"><rect x="5" y="12" width="38" height="26" rx="3" fill="none" stroke="currentColor" stroke-width="2.4"/><path d="M12.5 12v26M20 12v26M27.5 12v26M35 12v26" stroke="currentColor" stroke-width="1.8"/><path d="M10 12h5v14h-5zM17.5 12h5v14h-5zM32.5 12h5v14h-5z" fill="currentColor"/></svg>`,
+  wind: `<svg viewBox="0 0 48 48"><path d="M8 38 40 8" stroke="currentColor" stroke-width="5" stroke-linecap="round"/><circle cx="18" cy="28" r="1.8" fill="var(--bg-deep, #000)"/><circle cx="23" cy="23" r="1.8" fill="var(--bg-deep, #000)"/><circle cx="28" cy="18" r="1.8" fill="var(--bg-deep, #000)"/><path d="M36 30c3 1 5 3 6 6M33 35c2 .5 3.5 2 4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/></svg>`,
   harp: `<svg viewBox="0 0 48 48"><path d="M12 42V8c10 0 14 6 18 12s8 8 8 8l-26 14Z" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linejoin="round"/><path d="M17 13v26M22 15v21M27 19v15M32 25v6" stroke="currentColor" stroke-width="1.6"/></svg>`,
+  mallet: `<svg viewBox="0 0 48 48"><path d="M6 30h36" stroke="currentColor" stroke-width="2"/><rect x="7" y="18" width="5" height="16" rx="1.5" fill="currentColor"/><rect x="14" y="19" width="5" height="14" rx="1.5" fill="currentColor"/><rect x="21" y="20" width="5" height="12" rx="1.5" fill="currentColor"/><rect x="28" y="21" width="5" height="10" rx="1.5" fill="currentColor"/><rect x="35" y="22" width="5" height="8" rx="1.5" fill="currentColor"/><path d="M14 6l8 10M34 6l-6 11" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="23" cy="17" r="2.6" fill="currentColor"/><circle cx="27.5" cy="18" r="2.6" fill="currentColor"/></svg>`,
+  pad: `<svg viewBox="0 0 48 48"><rect x="5" y="10" width="38" height="28" rx="4" fill="none" stroke="currentColor" stroke-width="2.4"/><path d="M10 26c3-8 6-8 9 0s6 8 9 0 6-8 9 0" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>`,
 };
 
 async function startExperience() {
@@ -336,6 +417,112 @@ function renderTicks(el, scale) {
     .join("");
 }
 
+// ---------------------------------------------------------------------------
+// Barra de cores tocável: passar o mouse (ou usar as setas) toca o valor daquela posição
+// com os mesmos instrumentos, notas e vibração que um pixel dessa cor no mapa
+// ---------------------------------------------------------------------------
+function legendReading(scale, pos) {
+  const value = scale.id === "generic" ? pos * 100 : scale.valueAtPos(pos);
+  const r = { valid: true, value, norm: pos, bright: 0.55, peak: 0.12, grad: 0, texture: 0, u: pos };
+  r.weights = scale.roles(r);
+  r.valueText = scale.format(value);
+  r.zone = scale.zoneOf(value);
+  const m = scale.colorAtPos(pos).match(/[\d.]+/g);
+  r.rgb = m && !scale.colorAtPos(pos).startsWith("hsl") ? m.slice(0, 3).map(Number) : [255, 255, 255];
+  return r;
+}
+
+function scaleSentence(r) {
+  const inst = activeInstruments(r);
+  return `${state.scale?.sentence(r.valueText) || r.valueText}, ${r.zone.label.toLowerCase()}${inst.length ? `: ${joinPt(inst)}` : ""}.`;
+}
+
+async function playScaleAt(pos) {
+  const scale = state.scale || SCALES.generic;
+  state.legendHover = clamp(pos);
+  if (!engine.started) {
+    try { await engine.start(); updateAudioUI(); } catch (err) { toast(err.message || "Áudio indisponível."); return null; }
+  }
+  if (state.legendHover === null) return null;
+  const r = legendReading(scale, state.legendHover);
+  engine.stopPreview();
+  engine.update({ active: true, pan: state.legendHover * 2 - 1, norm: state.legendHover, weights: r.weights, bright: r.bright, grad: 0 });
+  haptics.send(r, { active: true });
+  return r;
+}
+
+function stopScale() {
+  if (state.legendHover === null) return;
+  state.legendHover = null;
+  engine.update({ active: false });
+  haptics.send(null, { active: false });
+  state.readingDirty = true;
+}
+
+function attachScaleHover(track, marker, tip) {
+  track.tabIndex = 0;
+  track.setAttribute("role", "slider");
+  track.setAttribute("aria-valuemin", "0");
+  track.setAttribute("aria-valuemax", "100");
+  track.setAttribute("aria-label", "Escala de cores tocável: passe o mouse ou use as setas para ouvir cada valor");
+  let raf = 0;
+  let pending = null;
+  let kbPos = 0.5;
+  const show = (pos) => {
+    const scale = state.scale || SCALES.generic;
+    const r = legendReading(scale, pos);
+    marker.hidden = false;
+    marker.style.left = `${(pos * 100).toFixed(2)}%`;
+    tip.hidden = false;
+    tip.textContent = `${r.valueText} · ${r.zone.label}`;
+    tip.style.left = `${(pos * 100).toFixed(2)}%`;
+    tip.dataset.edge = pos < 0.12 ? "start" : pos > 0.88 ? "end" : "";
+    track.setAttribute("aria-valuenow", String(Math.round(pos * 100)));
+    track.setAttribute("aria-valuetext", scaleSentence(r));
+  };
+  const at = (e) => {
+    const rect = track.getBoundingClientRect();
+    return clamp((e.clientX - rect.left) / rect.width);
+  };
+  const move = (e) => {
+    pending = at(e);
+    if (raf) return;
+    raf = requestAnimationFrame(() => {
+      raf = 0;
+      if (pending === null) return;
+      show(pending);
+      playScaleAt(pending);
+    });
+  };
+  const leave = () => {
+    pending = null;
+    tip.hidden = true;
+    if (track.id === "dlgTrack") marker.hidden = true;
+    stopScale();
+  };
+  track.addEventListener("pointerenter", move);
+  track.addEventListener("pointermove", move);
+  track.addEventListener("pointerdown", (e) => {
+    if (e.pointerType !== "mouse") track.setPointerCapture(e.pointerId);
+    move(e);
+  });
+  track.addEventListener("pointerleave", leave);
+  track.addEventListener("pointercancel", leave);
+  track.addEventListener("pointerup", (e) => { if (e.pointerType !== "mouse") leave(); });
+  track.addEventListener("keydown", async (e) => {
+    const step = e.shiftKey ? 0.1 : 0.025;
+    const keys = { ArrowLeft: -step, ArrowDown: -step, ArrowRight: step, ArrowUp: step, Home: -1, End: 1 };
+    if (!(e.key in keys)) return;
+    e.preventDefault();
+    kbPos = clamp(kbPos + keys[e.key]);
+    show(kbPos);
+    const r = await playScaleAt(kbPos);
+    if (r) announce(scaleSentence(r), { speak: true, live: false }); // o leitor de tela já lê o aria-valuetext
+  });
+  track.addEventListener("focus", () => show(kbPos));
+  track.addEventListener("blur", leave);
+}
+
 function rebuildBase() {
   const s = state.sampler;
   if (!s) return;
@@ -411,16 +598,16 @@ function computeReading() {
     r.weights = scale.roles(r);
     r.valueText = scale.format(r.value);
   } else {
-    r.weights = { cello: 0, piano: 0, flute: 0, harp: 0 };
+    r.weights = { low: 0, mid: 0, high: 0, arp: 0 };
     r.valueText = "sem dado";
   }
   return r;
 }
 
 function activeInstruments(r) {
-  return INSTRUMENT_ORDER.filter((id) => (r.weights?.[id] ?? 0) >= 0.25)
+  return [...new Set(LAYER_ORDER.filter((id) => (r.weights?.[id] ?? 0) >= 0.25)
     .sort((a, b) => r.weights[b] - r.weights[a])
-    .map((id) => INSTRUMENTS[id].short);
+    .map(instLabel))];
 }
 
 function joinPt(list) {
@@ -451,6 +638,11 @@ function processReading() {
   const prev = state.reading;
   state.reading = r;
   const active = isActive();
+  // a barra de cores (pré-escuta da escala) e a legenda aberta têm prioridade sobre o mapa
+  if (state.legendHover !== null || $("legendDialog").open) {
+    updateReadingUI(r, prev);
+    return;
+  }
   engine.update({
     active: active && r.valid,
     pan: state.u * 2 - 1,
@@ -468,23 +660,25 @@ function updateReadingUI(r) {
   $("readCoord").textContent = r.geo ? formatCoord(r.geo.lat, r.geo.lon) : `x ${(r.u * 100).toFixed(0)}% · y ${(r.v * 100).toFixed(0)}%`;
   $("readValue").textContent = r.valid ? r.valueText : "Sem dado";
   $("readZone").textContent = r.valid ? r.zone.label : r.reason;
-  // nota do instrumento dominante (violoncelo grave, piano médio, flauta aguda, harpa)
-  const dom = INSTRUMENT_ORDER.reduce((a, b) => ((r.weights[b] ?? 0) > (r.weights[a] ?? 0) ? b : a));
+  // nota da camada dominante (grave, médio, agudo ou arpejo)
+  const dom = LAYER_ORDER.reduce((a, b) => ((r.weights[b] ?? 0) > (r.weights[a] ?? 0) ? b : a));
   const domOn = r.valid && (r.weights[dom] ?? 0) > 0.05;
   $("readNote").textContent = domOn ? midiName(engine.noteFor(dom, r.norm)) : "—";
   const pan = state.u * 2 - 1;
   const side = Math.abs(pan) < 0.12 ? "centro" : pan < 0 ? `esquerda ${Math.round(-pan * 100)}%` : `direita ${Math.round(pan * 100)}%`;
-  $("readPan").textContent = domOn ? `${INSTRUMENTS[dom].short} · ${side}` : side;
-  const marker = $("legendMarker");
-  marker.hidden = !r.valid;
-  if (r.valid) marker.style.left = `${(r.norm * 100).toFixed(2)}%`;
+  $("readPan").textContent = domOn ? `${instLabel(dom)} · ${side}` : side;
+  if (state.legendHover === null) {
+    const marker = $("legendMarker");
+    marker.hidden = !r.valid;
+    if (r.valid) marker.style.left = `${(r.norm * 100).toFixed(2)}%`;
+  }
   const meters = $("instMeters");
   if (!meters.children.length) {
-    meters.innerHTML = INSTRUMENT_ORDER.map(
-      (id) => `<li style="--inst:${INSTRUMENTS[id].color}"><span>${INSTRUMENTS[id].short}</span><i><b id="m-${id}"></b></i></li>`
+    meters.innerHTML = LAYER_ORDER.map(
+      (id) => `<li style="--inst:${LAYERS[id].color}"><span>${instLabel(id)}</span><i><b id="m-${id}"></b></i></li>`
     ).join("");
   }
-  for (const id of INSTRUMENT_ORDER) {
+  for (const id of LAYER_ORDER) {
     $(`m-${id}`).style.transform = `scaleX(${(r.weights[id] ?? 0).toFixed(3)})`;
   }
 }
@@ -673,19 +867,21 @@ async function toggleAudio() {
   state.readingDirty = true;
 }
 
-engine.onSamplesState = (s) => {
+engine.onSamplesState = (s, labels = []) => {
   const el = $("samplesState");
+  const list = labels.join(", ");
   el.textContent = {
     loading: "Carregando amostras gravadas… (sintetizador enquanto isso)",
-    ready: "Amostras gravadas prontas: piano Salamander, violoncelo, flauta e harpa",
+    ready: `Amostras gravadas prontas: ${list}`,
+    partial: `Parte das amostras carregou: ${list}`,
     failed: "Sem acesso às amostras: usando instrumentos sintetizados",
+    none: `Instrumentos sintetizados: ${list}`,
   }[s] || el.textContent;
 };
 
 // ---------------------------------------------------------------------------
 // Smartphone
 // ---------------------------------------------------------------------------
-let receiverBase = null;
 function onPhoneStatus(kind, info) {
   const st = $("phoneStatus");
   const dot = $("phoneDot");
@@ -699,61 +895,89 @@ function onPhoneStatus(kind, info) {
 }
 
 // O celular precisa abrir receiver.html de algum lugar:
-//  - "lan":    servidor deste computador na rede Wi-Fi (http://192.168.x.x:8000)
-//  - "public": cópia pública em HTTPS (GitHub Pages) — não depende de firewall/rede local
+//  - "lan":    servidor deste computador na rede Wi-Fi (endereço detectado automaticamente)
+//  - "public": cópia pública em HTTPS (GitHub Pages), se estiver publicada
 // Nos dois casos a ligação de dados é a mesma: PeerJS (sinalização) + WebRTC (P2P).
 function receiverUrl() {
   const id = haptics.peer?.id;
   if (!id) return null;
-  const mode = $("receiverMode").value;
   let base;
-  if (mode === "public") {
+  if ($("receiverMode").value === "public") {
     base = PUBLIC_RECEIVER_BASE;
   } else {
-    base = receiverBase.base;
-    const lan = $("lanInput").value.trim();
-    if (receiverBase.local) {
+    const sel = $("lanSelect").value;
+    if (sel === "__manual") {
+      const lan = $("lanInput").value.trim();
       if (!lan) return null;
       try { base = new URL(/^https?:\/\//.test(lan) ? lan : `http://${lan}`).href; } catch { return null; }
-      if (!base.endsWith("/")) base += "/";
+      if (!/\/$/.test(base)) base += "/";
+    } else {
+      base = sel;
     }
   }
+  if (!base) return null;
   return `${new URL("receiver.html", base).href}#${id}`;
 }
 
 function refreshQr() {
   const mode = $("receiverMode").value;
-  $("lanField").hidden = mode !== "lan" || !receiverBase?.local;
+  const manual = $("lanSelect").value === "__manual";
+  $("lanField").hidden = mode !== "lan";
+  $("lanInput").hidden = !manual;
   const url = receiverUrl();
   const warn = $("qrWarn");
   if (!url) {
     $("qrBox").innerHTML = "";
     $("qrUrl").textContent = "";
-    warn.hidden = false;
-    warn.textContent = haptics.peer?.id
-      ? "Digite o endereço deste computador na rede (ex.: 192.168.0.10:8000) ou escolha “Internet (GitHub Pages)”."
-      : "";
+    warn.hidden = !haptics.peer?.id;
+    warn.textContent = "Não encontrei o endereço deste computador na rede. Digite o IP (ex.: 192.168.0.10:8000) ou rode python3 servidor.py, que detecta sozinho.";
     return;
   }
   const host = new URL(url).hostname;
-  warn.hidden = !(mode === "lan" && /^(localhost|127\.|172\.(1[6-9]|2\d|3[01])\.)/.test(host));
-  warn.textContent = "Esse endereço parece interno (localhost/WSL/Docker) e o celular não vai alcançá-lo.";
+  const internal = mode === "lan" && /^(localhost|127\.|\[::1\])/.test(host);
+  warn.hidden = !(internal || (mode === "lan" && lanWarning));
+  warn.textContent = internal ? "Esse endereço é interno deste computador e o celular não vai alcançá-lo." : lanWarning || "";
   renderQr($("qrBox"), url);
   $("qrUrl").textContent = url;
   $("receiverLink").href = url;
+}
+
+let lanWarning = null;
+// Detecta (de novo) os endereços: chamado ao gerar o QR e quando a rede muda
+async function detectAddresses() {
+  const [info, pub] = await Promise.all([guessReceiverBase(), checkPublicReceiver()]);
+  lanWarning = info.warning || null;
+  const pubOpt = $("receiverMode").querySelector('option[value="public"]');
+  pubOpt.disabled = !pub;
+  pubOpt.textContent = pub ? "Internet: GitHub Pages (HTTPS)" : "Internet: GitHub Pages (não publicado)";
+  if (!pub && $("receiverMode").value === "public") $("receiverMode").value = "lan";
+
+  const sel = $("lanSelect");
+  const prevValue = sel.value;
+  sel.innerHTML =
+    info.candidates.map((c) => `<option value="${c.url}">${c.label}</option>`).join("") +
+    `<option value="__manual">Digitar outro endereço…</option>`;
+  const keep = [...sel.options].some((o) => o.value === prevValue) && prevValue !== "__manual";
+  sel.value = keep ? prevValue : info.candidates.length ? info.candidates[0].url : "__manual";
+  if (!info.candidates.length && pub) $("receiverMode").value = "public";
+  $("lanHelp").textContent = info.fromServer
+    ? `Detectado automaticamente pelo servidor.py${info.candidates.length > 1 ? ". Há mais de uma rede: escolha a mesma do celular" : ""}.`
+    : !info.local
+      ? "É o endereço desta página, que o celular também consegue abrir."
+      : info.candidates.length
+        ? "Detectado pelo navegador. Se o celular não abrir, rode python3 servidor.py ou digite o IP."
+        : "Não deu para detectar o IP neste navegador. Rode python3 servidor.py ou digite o IP local do computador.";
+  refreshQr();
 }
 
 async function connectPhone() {
   $("phoneBox").hidden = false;
   $("phoneStatus").textContent = "Conectando ao servidor de sinalização PeerJS…";
   try {
-    receiverBase = await guessReceiverBase();
-    if (receiverBase.local && !$("lanInput").value && prefs.lan) $("lanInput").value = prefs.lan;
-    // site já publicado em HTTPS: o próprio endereço serve para o celular
-    if (!receiverBase.local && location.protocol === "https:") $("receiverMode").value = "lan";
+    if (prefs.lan && !$("lanInput").value) $("lanInput").value = prefs.lan;
     await haptics.open();
     haptics.setLowSensory($("lowSensory").checked);
-    refreshQr();
+    await detectAddresses();
     $("phoneConnectLabel").textContent = "Gerar novo QR Code";
   } catch (err) {
     $("phoneStatus").textContent = `Não foi possível falar com o servidor PeerJS (${err?.type || err?.message || err}). Este computador está com internet? Alguma extensão/antivírus bloqueia 0.peerjs.com?`;
@@ -806,6 +1030,8 @@ function setupEvents() {
   $("audioToggle").addEventListener("click", toggleAudio);
   $("quickLowSensory").addEventListener("click", () => applyLowSensory(!$("lowSensory").checked));
   $("reviewLegend").addEventListener("click", openLegend);
+  attachScaleHover($("legendTrack"), $("legendMarker"), $("legendTip"));
+  attachScaleHover($("dlgTrack"), $("dlgMarker"), $("dlgTip"));
 
   // diálogo da legenda
   const dlg = $("legendDialog");
@@ -823,6 +1049,7 @@ function setupEvents() {
   $("scaleSelect").addEventListener("change", (e) => {
     state.scale = SCALES[e.target.value];
     if (state.group) state.group.scaleId = state.scale.id;
+    applyInstruments();
     updateLegendBar();
     rebuildBase();
     state.readingDirty = true;
@@ -899,7 +1126,15 @@ function setupEvents() {
     $("phoneConnectLabel").textContent = "Gerar QR Code";
   });
   $("lanInput").addEventListener("input", () => { refreshQr(); savePrefs(); });
+  $("lanSelect").addEventListener("change", () => {
+    refreshQr();
+    if ($("lanSelect").value === "__manual") $("lanInput").focus();
+  });
   $("receiverMode").addEventListener("change", () => { refreshQr(); savePrefs(); });
+  // rede mudou (outro Wi-Fi, cabo, VPN): refaz a detecção se o painel estiver aberto
+  const redetect = () => { if (!$("phoneBox").hidden && haptics.peer?.id) detectAddresses(); };
+  window.addEventListener("online", redetect);
+  navigator.connection?.addEventListener?.("change", redetect);
 
   // acessibilidade
   $("lowSensory").addEventListener("change", (e) => applyLowSensory(e.target.checked));

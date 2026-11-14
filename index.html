@@ -131,14 +131,16 @@
             </label>
           </div>
 
-          <div class="legend-bar" aria-hidden="true">
+          <div class="legend-bar">
             <div class="legend-bar__head"><span id="legendTitle">—</span><span id="legendUnit">—</span></div>
-            <div class="legend-bar__track">
+            <div class="legend-bar__track legend-bar__track--play" id="legendTrack">
               <div class="legend-bar__gradient" id="legendGradient"></div>
-              <div class="legend-bar__marker" id="legendMarker"></div>
+              <div class="legend-bar__marker" id="legendMarker" aria-hidden="true"></div>
+              <div class="legend-bar__tip" id="legendTip" aria-hidden="true" hidden></div>
             </div>
-            <div class="legend-bar__ticks" id="legendTicks"></div>
-            <div class="legend-bar__ends" id="legendEnds"></div>
+            <div class="legend-bar__ticks" id="legendTicks" aria-hidden="true"></div>
+            <div class="legend-bar__ends" id="legendEnds" aria-hidden="true"></div>
+            <p class="legend-bar__hint">Passe o mouse sobre a escala para ouvir cada valor.</p>
           </div>
 
           <div class="reading-grid" aria-label="Leitura atual">
@@ -216,9 +218,11 @@
                 </select>
               </label>
               <div class="field" id="lanField" hidden>
-                <label class="field__label" for="lanInput">Endereço deste computador na rede</label>
-                <input type="text" id="lanInput" placeholder="192.168.0.10:8000" inputmode="url" autocomplete="off" spellcheck="false">
-                <small class="help">“localhost” não abre no celular. Rode <code>python3 servidor.py</code> (detecta o IP sozinho) ou digite o IP local do computador.</small>
+                <label class="field__label" for="lanSelect">Endereço deste computador na rede</label>
+                <select id="lanSelect"></select>
+                <label class="sr-only" for="lanInput">Digite o endereço</label>
+                <input type="text" id="lanInput" placeholder="192.168.0.10:8000" inputmode="url" autocomplete="off" spellcheck="false" hidden>
+                <small class="help" id="lanHelp">Detectado automaticamente neste computador. Se houver mais de um, escolha o da mesma rede Wi-Fi do celular.</small>
               </div>
               <p class="qr-warn" id="qrWarn" role="alert" hidden></p>
               <div class="qr" id="qrBox"></div>
@@ -300,8 +304,12 @@
 
       <div class="legend-dialog__scale">
         <div class="legend-dialog__scale-head"><strong id="dlgScaleLabel">—</strong><span id="dlgScaleUnit">—</span></div>
-        <div class="legend-bar__gradient" id="dlgGradient"></div>
-        <div class="legend-bar__ticks" id="dlgTicks"></div>
+        <div class="legend-bar__track legend-bar__track--play" id="dlgTrack">
+          <div class="legend-bar__gradient legend-bar__gradient--big" id="dlgGradient"></div>
+          <div class="legend-bar__marker" id="dlgMarker" aria-hidden="true" hidden></div>
+          <div class="legend-bar__tip" id="dlgTip" aria-hidden="true" hidden></div>
+        </div>
+        <div class="legend-bar__ticks" id="dlgTicks" aria-hidden="true"></div>
       </div>
 
       <ul class="instrument-list" id="instrumentList"></ul>
@@ -310,7 +318,8 @@
         <div><strong>Eixo X</strong><span>Posição horizontal leva o som da esquerda para a direita (estéreo).</span></div>
         <div><strong>Cor → nota</strong><span>O valor sob o cursor escolhe a nota na <span id="dlgKey">pentatônica de Dó</span>: grave à esquerda da escala, agudo à direita.</span></div>
         <div><strong>Brilho</strong><span>Pixels mais claros abrem o timbre e reforçam as camadas secundárias.</span></div>
-        <div><strong>Celular</strong><span>Vibra mais forte em valores altos e dá pulso duplo ao cruzar zonas.</span></div>
+        <div><strong>Celular</strong><span>Cores quentes ou valores altos vibram em pulsos curtos e rápidos. Cores frias ou valores baixos vibram em pulsos longos e lentos. Há um pulso duplo ao cruzar zonas.</span></div>
+        <div><strong>Voz</strong><span>Quando a narração fala, os instrumentos abaixam 15 dB e voltam suavemente ao fim da frase.</span></div>
       </div>
 
       <footer class="legend-dialog__foot">

@@ -98,15 +98,13 @@ export class HapticBridge {
       this._broadcast({ type: "haptic", pulse: 0, gap: 0, strength: 0, event: "idle" });
       return;
     }
-    // intensidade: valor na barra + bordas (frentes térmicas, plumas, correntes)
-    const strength = clamp(0.25 + 0.55 * reading.norm + 0.4 * reading.grad) * (this.low ? 0.45 : 1);
-    const pulse = Math.round(10 + 45 * strength);
-    const gap = Math.round(lerpGap(strength, reading.grad));
+    // VIBRAÇÃO PROPORCIONAL À COR: a posição na barra (0 = azul/frio/baixo, 1 = vermelho/
+    // quente/alto) define o ritmo. Valores altos → pulsos curtos e de alta frequência
+    // (~16 Hz); valores baixos → pulsos longos e lentos (~1,3 Hz). Frentes aceleram um pouco.
+    const p = hapticPattern(reading.norm, reading.grad, this.low);
     this._broadcast({
       type: "haptic",
-      pulse,
-      gap,
-      strength,
+      ...p,
       event: transition ? "transition" : front ? "front" : "tick",
       norm: reading.norm,
       zone: reading.zone?.label,
@@ -117,9 +115,22 @@ export class HapticBridge {
   }
 }
 
-function lerpGap(strength, grad) {
-  // regiões intensas e frentes vibram com pulsos mais próximos
-  return 420 - 300 * clamp(0.6 * strength + 0.6 * grad);
+const lerp = (a, b, t) => a + (b - a) * t;
+
+// norm 0..1 → { pulse (ms), gap (ms), strength 0..1, hz }
+export function hapticPattern(norm, grad = 0, low = false) {
+  const n = clamp(norm);
+  let pulse = lerp(240, 22, n);
+  let gap = lerp(560, 38, n) * (1 - 0.35 * clamp(grad));
+  let strength = lerp(0.35, 1, n);
+  if (low) {
+    pulse = Math.min(pulse * 0.6, 140);
+    gap = Math.max(gap * 1.5, 140);
+    strength *= 0.45;
+  }
+  pulse = Math.round(pulse);
+  gap = Math.round(gap);
+  return { pulse, gap, strength, hz: 1000 / (pulse + gap) };
 }
 
 // ---------------- QR Code ----------------
@@ -142,18 +153,81 @@ export function renderQr(el, text) {
   el.setAttribute("aria-label", `QR Code para abrir o receptor tátil: ${text}`);
 }
 
-// Endereço base acessível pelo celular. "localhost" não funciona no telefone; nesse caso
-// tenta o endpoint /__lan do servidor.py, que informa o IP da rede local.
+// ---------------- Endereço que o celular deve abrir ----------------
+// Tudo é detectado na hora, em qualquer computador:
+//  1. Página aberta por um endereço de rede ou HTTPS (ex.: http://192.168.0.7:8000 ou um
+//     site publicado) → o próprio endereço da página serve para o celular.
+//  2. Página em localhost servida pelo servidor.py → /__lan lista os IPs desta máquina
+//     (refeito a cada pedido, acompanha troca de rede).
+//  3. Outro servidor estático → tenta descobrir o IP local pela WebRTC (alguns navegadores
+//     escondem o IP; nesse caso o usuário digita).
+// Retorna { candidates: [{url, label}], local: bool, warning? }
+const LOCAL_HOSTS = ["localhost", "127.0.0.1", "[::1]", ""];
+
 export async function guessReceiverBase() {
   const here = new URL(".", location.href);
-  const local = ["localhost", "127.0.0.1", "[::1]", ""].includes(location.hostname);
-  if (!local) return { base: here.href, local: false };
+  const local = LOCAL_HOSTS.includes(location.hostname) || location.protocol === "file:";
+  if (!local) {
+    return { local: false, candidates: [{ url: here.href, label: `${location.host} · endereço desta página` }] };
+  }
   try {
     const res = await fetch("__lan", { cache: "no-store" });
     if (res.ok) {
-      const { url } = await res.json();
-      if (url) return { base: new URL(here.pathname, url).href, local: false, fromServer: true };
+      const info = await res.json();
+      const list = info.candidates?.length ? info.candidates : info.url ? [{ url: info.url, ip: info.url, iface: "" }] : [];
+      if (list.length) {
+        return {
+          local: false,
+          fromServer: true,
+          warning: info.warning,
+          candidates: list.map((c) => ({ url: new URL(here.pathname, c.url).href, label: c.iface ? `${c.ip} · ${c.iface}` : c.ip })),
+        };
+      }
     }
   } catch { /* servidor sem /__lan */ }
-  return { base: here.href, local: true };
+  const port = location.port ? `:${location.port}` : "";
+  const ips = location.protocol === "file:" ? [] : await localIpsViaWebRTC();
+  return {
+    local: true,
+    candidates: ips.map((ip) => ({ url: `http://${ip}${port}${here.pathname}`, label: `${ip} · detectado pelo navegador` })),
+  };
+}
+
+function isPrivateIPv4(ip) {
+  return /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(ip) && ip !== "10.255.255.254";
+}
+
+// IPs locais via candidatos ICE (sem servidor STUN, nada sai da máquina)
+async function localIpsViaWebRTC(timeout = 1200) {
+  if (typeof RTCPeerConnection === "undefined") return [];
+  const ips = new Set();
+  let pc;
+  try {
+    pc = new RTCPeerConnection({ iceServers: [] });
+    pc.createDataChannel("ip");
+    pc.onicecandidate = (e) => {
+      const m = e.candidate?.candidate?.match(/(\d{1,3}(?:\.\d{1,3}){3})/);
+      if (m && isPrivateIPv4(m[1])) ips.add(m[1]);
+    };
+    await pc.setLocalDescription(await pc.createOffer());
+    await new Promise((r) => {
+      const t = setTimeout(r, timeout);
+      pc.onicegatheringstatechange = () => { if (pc.iceGatheringState === "complete") { clearTimeout(t); r(); } };
+    });
+  } catch { /* navegador bloqueou */ } finally {
+    pc?.close();
+  }
+  return [...ips].sort((a, b) => (b.startsWith("192.168.") ? 1 : 0) - (a.startsWith("192.168.") ? 1 : 0));
+}
+
+// A cópia pública do receptor (GitHub Pages) só aparece como opção se estiver no ar.
+// O GitHub Pages responde com CORS liberado, então dá para checar daqui.
+export async function checkPublicReceiver() {
+  if (location.href.startsWith(PUBLIC_RECEIVER_BASE)) return true;
+  try {
+    const res = await fetch(new URL("receiver.html", PUBLIC_RECEIVER_BASE), { method: "HEAD", cache: "no-store" });
+    return res.ok;
+  } catch {
+    return false;
+  }
 }

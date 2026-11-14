@@ -68,23 +68,51 @@ function handle(msg) {
     vibrate(low ? [25, 50, 25] : [55, 45, 70]);
     flash(1);
     nextTick = performance.now() + 220;
+    patternEnds = 0;
   } else if (msg.event === "front" && performance.now() > nextTick) {
     vibrate(low ? [20] : [35, 30, 20]);
     flash(0.8);
-    nextTick = performance.now() + msg.gap;
+    nextTick = performance.now() + 120;
+    patternEnds = 0;
   } else if (msg.event === "idle") {
     current = null;
     pulseEl.style.setProperty("--s", "0");
   }
 }
 
-// pulsação contínua proporcional à intensidade sob o cursor
+// Pulsação contínua no ritmo da cor sob o cursor: vermelho/quente = pulsos curtos e
+// rápidos, azul/frio = pulsos longos e lentos. Emite um padrão de ~0,6 s por vez
+// (navigator.vibrate([pulso, intervalo, pulso, ...])) e o reemite quando o ritmo muda.
+let patternStart = 0;
+let patternEnds = 0;
+let patternKey = "";
+let nextFlash = 0;
 function loop() {
   const now = performance.now();
-  if (current && current.pulse > 0 && now - lastPacket < 600 && now >= nextTick) {
-    vibrate(Math.round(current.pulse * (low ? 0.6 : 1)));
-    flash(current.strength);
-    nextTick = now + current.pulse + current.gap;
+  const live = current && current.pulse > 0 && now - lastPacket < 600;
+  if (live) {
+    const period = current.pulse + current.gap;
+    const key = `${current.pulse}|${current.gap}`;
+    const changed = key !== patternKey && now - patternStart > 120;
+    if (now >= nextTick && (now >= patternEnds || changed)) {
+      const reps = Math.max(1, Math.round(640 / period));
+      const pattern = [];
+      for (let i = 0; i < reps; i += 1) pattern.push(current.pulse, current.gap);
+      vibrate(pattern);
+      patternStart = now;
+      patternEnds = now + reps * period;
+      patternKey = key;
+    }
+    if (now >= nextFlash) {
+      flash(current.strength);
+      nextFlash = now + period;
+    }
+    $("rate").textContent = `${current.hz >= 10 ? Math.round(current.hz) : current.hz.toFixed(1).replace(".", ",")} pulsos/s · ${current.pulse} ms`;
+  } else if (patternEnds) {
+    if (enabled && canVibrate) navigator.vibrate(0);
+    patternEnds = 0;
+    patternKey = "";
+    $("rate").textContent = "—";
   }
   requestAnimationFrame(loop);
 }

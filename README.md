@@ -8,9 +8,13 @@ Experiência web que transforma mapas de dados terrestres da NASA (ou imagens en
 python3 servidor.py          # serve em http://localhost:8000 e na rede local
 ```
 
-Abra `http://localhost:8000`. O `servidor.py` escuta em todas as interfaces e mostra o endereço da rede (ex.: `http://192.168.0.10:8000`). O app consulta esse endereço sozinho para montar o QR Code do celular. Também dá para usar `python3 -m http.server 8000`. Nesse caso, digite o IP do computador no painel do smartphone.
+Abra `http://localhost:8000`. O `servidor.py` escuta em todas as interfaces e, se a porta 8000 estiver ocupada, usa a próxima livre. O QR Code do celular é montado **sozinho em qualquer computador**:
 
-> **WSL2:** o IP detectado é o da máquina virtual, que o celular não alcança. Rode o servidor pelo Python do Windows, ative o *mirrored networking* do WSL ou passe o IP do Windows: `python3 servidor.py 8000 --url http://IP-DO-WINDOWS:8000`.
+1. Se a página foi aberta por um endereço de rede ou HTTPS (ex.: `http://192.168.0.7:8000`), o QR usa esse mesmo endereço.
+2. Em `localhost`, o app pergunta ao `servidor.py` (`/__lan`). Ele lista os IPs da máquina (Linux, macOS, Windows e WSL), ignora Docker, VPN e loopback e coloca a rede Wi-Fi/cabo primeiro. A detecção é refeita a cada QR gerado, então trocar de rede não exige reiniciar. Se houver mais de uma rede, o painel deixa escolher.
+3. Com outro servidor estático (ex.: `python3 -m http.server`), o navegador tenta descobrir o IP pela WebRTC. Se não conseguir, basta digitar o IP no painel.
+
+> **WSL2 em modo NAT:** o IP interno do WSL não é visível na rede. O `servidor.py` detecta isso, oferece o IP do Windows e imprime os comandos (`networkingMode=mirrored` ou `netsh portproxy`). Para forçar um endereço: `python3 servidor.py 8000 --url http://IP:8000`.
 
 Na primeira execução é preciso internet: Tone.js, PeerJS, QRCode.js e as amostras dos instrumentos vêm de CDNs. Sem as amostras, o app usa instrumentos sintetizados.
 
@@ -21,7 +25,7 @@ Descompacte `dados.zip` na raiz para obter `dados/{temp,humidity,wind,co}_frames
 ## Fluxo da experiência
 
 1. **Galeria de escolha:** traz 6 mapas pré-carregados: ECCO2 (temperatura dos oceanos), GEDI (altura das florestas) e quatro mapas GMAO (temperatura, umidade, vento e CO). Também é possível carregar uma pasta (`webkitdirectory`), selecionar várias imagens ou arrastar e soltar. Cada pasta vira um grupo de miniaturas clicáveis com o nome do arquivo, carregadas sob demanda.
-2. **Legenda auditiva e sensorial (obrigatória):** é um diálogo modal que mostra a barra de cores da escala e os 4 instrumentos. Cada instrumento tem um botão **Ouvir** e a explicação de quais cores ou valores o acionam naquela imagem. O botão **Iniciar Experiência Multissensorial** abre o mapa.
+2. **Legenda auditiva e sensorial (obrigatória):** é um diálogo modal que mostra a barra de cores da escala e as 4 camadas. **Passar o mouse sobre um card toca o instrumento na hora** (`mouseenter`, sem clicar). Focar o card pelo teclado também toca. Cada card mostra a constante do `MAPPING_CONFIG`, quais cores o acionam e um seletor para testar qualquer um dos 10 instrumentos do `SAMPLE_SET`. **Passar o mouse sobre a barra de cores toca o valor daquela posição.** O botão **Iniciar Experiência Multissensorial** abre o mapa.
 3. **Exploração:** mouse, toque ou teclado sobre o mapa, com leitura em tempo real. Em sequências, a linha do tempo permite escutar o tempo passar com o cursor parado.
 
 ## Das cores aos números
@@ -46,6 +50,20 @@ Casos especiais:
 
 Validação (`python3 tools/extrair_escalas.py --validar`, 12 mil pixels por variável): ΔE mediano de 1,0 a 2,3. O Pacífico equatorial lê 28,8 °C, a Antártida −39,7 °C, a umidade da Amazônia 19 g/kg e o CO no leste da China 311 ppbv.
 
+## Constantes de mapeamento (`js/config.js`)
+
+```js
+const MAPPING_CONFIG = {
+  TEMPERATURE: 'CELLO',          // Águas frias a quentes
+  HUMIDITY: 'FLUTE',             // Nuvens e umidade atmosférica
+  VEGETATION_DENSITY: 'MARIMBA', // Altura do dossel (GEDI)
+  OCEAN_CURRENTS: 'HARP',        // Velocidade e fluxo de água
+  ALTITUDE_ELEVATION: 'PIANO'    // Relevo
+};
+```
+
+O `SAMPLE_SET` traz os 10 instrumentos: `CELLO`, `DOUBLE_BASS`, `GRAND_PIANO`, `MARIMBA`, `FLUTE`, `HARP`, `VIOLIN`, `CLARINET`, `SYNTH_PAD` e `STEEL_DRUM`. Cada um define a faixa de notas, se sustenta ou é percutido, o timbre sintetizado e, quando existem, as amostras gravadas (marimba, pad e steel drum são só sintetizados). Para trocar um instrumento, edite o nome no `MAPPING_CONFIG` e recarregue. `SCALE_LAYER_MAPPING` define qual variável alimenta cada camada (grave, médio, agudo, arpejo) em cada escala. Por exemplo, no GEDI a camada média usa `VEGETATION_DENSITY` (marimba).
+
 ## Sonificação (Tone.js)
 
 | Camada | Instrumento | Papel |
@@ -59,11 +77,13 @@ Validação (`python3 tools/extrair_escalas.py --validar`, 12 mil pixels por var
 - **Valor/cor → nota**, quantizada na **pentatônica maior de Dó ou Sol**. Todas as camadas usam o mesmo conjunto de notas e por isso nunca dissonam. Há histerese para a nota não oscilar na fronteira entre graus.
 - **Brilho → filtro passa-baixas** e camadas secundárias. **Intensidade (vento, corrente, gradiente) → velocidade e volume do arpejo.**
 - Todas as mudanças de volume, filtro e panorama usam `rampTo`. Violoncelo e flauta fazem glide ou legato, e o piano re-toca suavemente quando o cursor repousa.
-- As amostras são gravações reais (piano Salamander e violoncelo, flauta e harpa do *tonejs-instruments*), com fallback sintetizado.
+- As amostras são gravações reais (piano Salamander; violoncelo, contrabaixo, violino, clarinete, flauta e harpa do *tonejs-instruments*), carregadas só para os instrumentos em uso e com fallback sintetizado.
+- **Barra de cores tocável:** passar o mouse (ou usar as setas com a barra em foco) toca exatamente o que um pixel daquela cor tocaria no mapa e também vibra o celular.
+- **Audio ducking:** enquanto a narração por voz fala, os instrumentos caem 15 dB (rampa de 0,15 s). Ao fim da frase, voltam ao normal com rampa de 0,9 s.
 
 ## Smartphone (vibração tátil)
 
-O painel **Conectar Smartphone** gera um peer PeerJS com ID aleatório e um QR Code para `receiver.html#<id>`. O servidor público do PeerJS só faz a sinalização: os dados seguem via WebRTC, peer-to-peer. O computador envia até ~16 pacotes/s. O celular vibra com pulsos proporcionais ao valor, dá um pulso duplo ao cruzar zonas (ex.: "Ameno" → "Quente") e um pulso em frentes térmicas ou bordas de plumas. No iPhone/Safari, que não suporta `navigator.vibrate`, o receptor mostra pulsos visuais.
+O painel **Conectar Smartphone** gera um peer PeerJS com ID aleatório e um QR Code para `receiver.html#<id>`. O servidor público do PeerJS só faz a sinalização: os dados seguem via WebRTC, peer-to-peer. O computador envia até ~16 pacotes/s. **A vibração é proporcional à cor:** valores altos ou cores quentes (vermelho) dão pulsos curtos e rápidos (22 ms, ~16 por segundo), e valores baixos ou cores frias (azul) dão pulsos longos e lentos (240 ms, ~1,3 por segundo). O celular também dá um pulso duplo ao cruzar zonas (ex.: "Ameno" → "Quente") e um pulso em frentes térmicas ou bordas de plumas. No iPhone/Safari, que não suporta `navigator.vibrate`, o receptor mostra pulsos visuais.
 
 ## Acessibilidade
 
@@ -78,12 +98,13 @@ O painel **Conectar Smartphone** gera um peer PeerJS com ID aleatório e um QR C
 ```text
 index.html, receiver.html, servidor.py
 css/styles.css
+js/config.js     MAPPING_CONFIG, SAMPLE_SET (10 instrumentos) e camadas por escala
 js/app.js        orquestração: galeria → legenda → exploração, teclado, ARIA, voz
 js/scales.js     escalas, cor → valor, papéis dos instrumentos, paletas acessíveis
 js/colormaps.js  barras GMAO amostradas (gerado)
 js/sampler.js    leitura robusta de pixels, gradiente, recoloração
 js/geo.js        projeções, máscara terra/oceano, nomes de regiões
-js/audio.js      motor Tone.js em 4 camadas
+js/audio.js      motor Tone.js em 4 camadas, instrumentos trocáveis, pré-escuta e ducking
 js/haptics.js    PeerJS + QR Code
 js/receiver.js   página do celular
 js/gallery.js    pastas locais, presets, miniaturas
