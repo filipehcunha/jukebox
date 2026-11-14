@@ -1,0 +1,94 @@
+{
+  "_sobre": "Configuração da Sinfonia da Terra. Edite este arquivo à mão, salve e recarregue a página: nada aqui é alterado pela interface. Chaves que começam com _ são só comentários. Volumes em decibéis (dB): 0 = volume cheio, -6 = metade, valores positivos amplificam.",
+
+  "mapeamento": {
+    "_comentario": "Qual instrumento toca cada característica do planeta. Use um nome da seção 'instrumentos': CELLO, DOUBLE_BASS, GRAND_PIANO, MARIMBA, FLUTE, HARP, VIOLIN, CLARINET, SYNTH_PAD, STEEL_DRUM.",
+    "TEMPERATURE": "CELLO",
+    "HUMIDITY": "FLUTE",
+    "VEGETATION_DENSITY": "MARIMBA",
+    "OCEAN_CURRENTS": "HARP",
+    "ALTITUDE_ELEVATION": "GRAND_PIANO"
+  },
+
+  "camadasPorEscala": {
+    "_comentario": "A música tem 4 camadas: low (grave), mid (médio), high (agudo) e arp (arpejos). Aqui se escolhe qual característica alimenta cada camada. 'default' vale para todos os mapas; as outras chaves (temp, humidity, wind, co, sst, gedi, generic) trocam só as camadas indicadas naquele mapa.",
+    "default": {
+      "low": "TEMPERATURE",
+      "mid": "ALTITUDE_ELEVATION",
+      "high": "HUMIDITY",
+      "arp": "OCEAN_CURRENTS"
+    },
+    "gedi": {
+      "mid": "VEGETATION_DENSITY"
+    }
+  },
+
+  "instrumentos": {
+    "_comentario": "volumeDb = volume do instrumento na mixagem, em decibéis. notaMaisGrave e notaMaisAguda = faixa tocada, em número MIDI (60 = Dó central; 12 a mais = uma oitava acima). nome = como o instrumento aparece na tela e na narração.",
+    "CELLO":       { "nome": "Violoncelo",         "volumeDb": -1,   "notaMaisGrave": 36, "notaMaisAguda": 57 },
+    "DOUBLE_BASS": { "nome": "Contrabaixo",        "volumeDb": -0.5, "notaMaisGrave": 28, "notaMaisAguda": 50 },
+    "GRAND_PIANO": { "nome": "Piano de cauda",     "volumeDb": -1.5, "notaMaisGrave": 55, "notaMaisAguda": 84 },
+    "MARIMBA":     { "nome": "Marimba",            "volumeDb": -1,   "notaMaisGrave": 48, "notaMaisAguda": 84 },
+    "FLUTE":       { "nome": "Flauta",             "volumeDb": -5,   "notaMaisGrave": 72, "notaMaisAguda": 93 },
+    "HARP":        { "nome": "Harpa",              "volumeDb": -4.5, "notaMaisGrave": 55, "notaMaisAguda": 88 },
+    "VIOLIN":      { "nome": "Violino",            "volumeDb": -5,   "notaMaisGrave": 62, "notaMaisAguda": 88 },
+    "CLARINET":    { "nome": "Clarinete",          "volumeDb": -4.5, "notaMaisGrave": 52, "notaMaisAguda": 81 },
+    "SYNTH_PAD":   { "nome": "Sintetizador (pad)", "volumeDb": -6,   "notaMaisGrave": 48, "notaMaisAguda": 72 },
+    "STEEL_DRUM":  { "nome": "Steel drum",         "volumeDb": -3,   "notaMaisGrave": 57, "notaMaisAguda": 81 }
+  },
+
+  "audio": {
+    "_comentario": "volumeGeralDb = posição inicial do controle de volume (-30 a 6). tonalidade = C (pentatônica de Dó) ou G (de Sol). limitadorDb = teto de segurança da saída. reverberacao = 0 (seco) a 1 (muito eco).",
+    "volumeGeralDb": 0,
+    "tonalidade": "C",
+    "usarAmostrasGravadas": true,
+    "limitadorDb": -3,
+    "reverberacao": 0.3
+  },
+
+  "narracao": {
+    "_comentario": "pausarMusica = true: a música para por completo enquanto a voz fala e volta quando ela termina. Com false, a música só abaixa 'reducaoDb' decibéis. tempoParaSilenciarS e tempoParaVoltarS = duração das rampas, em segundos. esperaParadoMs = tempo com o cursor parado antes de a voz ler o lugar. lerControlesAoFocar = a voz também lê botões e controles ao navegar com Tab.",
+    "ligadaAoAbrir": false,
+    "pausarMusica": true,
+    "reducaoDb": -15,
+    "tempoParaSilenciarS": 0.12,
+    "tempoParaVoltarS": 0.5,
+    "velocidade": 1.05,
+    "volume": 1,
+    "esperaParadoMs": 700,
+    "lerControlesAoFocar": true
+  },
+
+  "baixaSensibilidade": {
+    "_comentario": "Valores usados quando o Modo de baixa sensibilidade está ligado. reducaoDb = quanto o volume geral cai. filtroMinHz e filtroMaxHz = faixa do filtro que corta os agudos. forcaVibracao = fração da vibração normal no celular (0 a 1).",
+    "reducaoDb": -10,
+    "limitadorDb": -16,
+    "filtroMinHz": 700,
+    "filtroMaxHz": 1700,
+    "velocidadeVoz": 0.94,
+    "volumeVoz": 0.7,
+    "forcaVibracao": 0.45
+  },
+
+  "teclado": {
+    "_comentario": "Tamanho do passo do cursor no mapa, como fração da largura (0.0125 = 1,25% do mapa por toque de seta).",
+    "passo": 0.0125,
+    "passoComShift": 0.05
+  },
+
+  "vibracao": {
+    "_comentario": "Vibração do celular. 'Frio' é o valor mais baixo da escala e 'Quente' o mais alto; os valores intermediários são interpolados. Tempos em milissegundos, forças de 0 a 1.",
+    "pulsoFrioMs": 240,
+    "pulsoQuenteMs": 22,
+    "intervaloFrioMs": 560,
+    "intervaloQuenteMs": 38,
+    "forcaFrio": 0.35,
+    "forcaQuente": 1
+  },
+
+  "acessibilidade": {
+    "_comentario": "Valores iniciais para quem abre o site pela primeira vez. tamanhoTexto = normal, grande ou enorme. altoContraste = true, false ou null (null segue a preferência do sistema).",
+    "tamanhoTexto": "normal",
+    "altoContraste": null
+  }
+}

@@ -40,6 +40,16 @@ class Narrator {
     this.current = null;
     this.audio = null;
     this.clips = {}; // id -> { src, texto }
+    this.onBusyChange = null; // (falando: boolean) => void — o app pausa a música enquanto true
+    this._wasBusy = false;
+  }
+
+  // avisa quando a narração começa ou termina (uma vez por mudança)
+  _emit() {
+    const b = this.busy();
+    if (b === this._wasBusy) return;
+    this._wasBusy = b;
+    try { this.onBusyChange?.(b); } catch (err) { console.error(err); }
   }
 
   /** Registra as gravações disponíveis: id -> { src, texto }. */
@@ -53,17 +63,19 @@ class Narrator {
   /** Fala um texto com a voz do navegador. */
   say(text, { queue = false, rate = 1, volume = 1, tag = null } = {}) {
     if (!text) return;
-    if (!queue) this.cancel();
+    if (!queue) this._clear();
     this.queue.push({ kind: "tts", text, rate, volume, tag });
     this._next();
+    this._emit();
   }
 
   /** Toca a gravação `id` se ela corresponder ao texto; senão fala o texto. */
   clip(id, text, { queue = false, rate = 1, volume = 1, tag = null } = {}) {
     if (!this.hasClip(id, text)) return this.say(text, { queue, rate, volume, tag });
-    if (!queue) this.cancel();
+    if (!queue) this._clear();
     this.queue.push({ kind: "clip", src: this.clips[id].src, text, rate, volume, tag });
     this._next();
+    this._emit();
   }
 
   /** Tira da fila (sem interromper a fala atual) os itens com esta etiqueta. */
@@ -72,6 +84,11 @@ class Narrator {
   }
 
   cancel() {
+    this._clear();
+    this._emit();
+  }
+
+  _clear() {
     this.queue = [];
     this.current = null;
     if (this.audio) { this.audio.pause(); this.audio = null; }
@@ -88,6 +105,7 @@ class Narrator {
       if (this.current !== item) return; // item antigo (cancelado)
       this.current = null;
       this._next();
+      this._emit();
     };
     if (item.kind === "clip") this._playClip(item, done);
     else this._speak(item, done);

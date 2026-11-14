@@ -2,15 +2,15 @@
 //
 //   low  (grave)    ─┐
 //   mid  (médio)    ─┤→ filtro passa-baixas (brilho) → panner (eixo X) → reverb → volume
-//   high (agudo)    ─┤     → ducking (voz) → compressor → limitador
+//   high (agudo)    ─┤     → pausa/ducking (voz) → compressor → limitador
 //   arp  (arpejos)  ─┘
 //
-// O instrumento de cada camada vem do MAPPING_CONFIG / SAMPLE_SET (js/config.js) e pode ser
-// trocado em tempo real. Todas as notas são quantizadas na escala pentatônica maior (Dó ou
+// O instrumento de cada camada, o volume de cada instrumento (dB) e os demais parâmetros
+// vêm de config.json (lido por js/config.js). Todas as notas são quantizadas na escala pentatônica maior (Dó ou
 // Sol), então qualquer combinação de camadas é consonante. Volumes, filtro e panorama mudam
 // sempre com rampas (rampTo) para evitar estalos.
 
-import { SAMPLE_SET, LAYER_ORDER, layerInstruments } from "./config.js";
+import { SAMPLE_SET, LAYER_ORDER, SETTINGS, dbToGain, layerInstruments } from "./config.js";
 
 const T = () => window.Tone;
 const NOTE_NAMES = ["Dó", "Dó♯", "Ré", "Ré♯", "Mi", "Fá", "Fá♯", "Sol", "Sol♯", "Lá", "Lá♯", "Si"];
@@ -18,8 +18,9 @@ const PENTATONIC = [0, 2, 4, 7, 9];
 const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
 const lerp = (a, b, t) => a + (b - a) * t;
 
-// Redução de volume dos instrumentos enquanto a voz sintetizada fala (audio ducking)
-export const DUCK_DB = -15;
+// Ganho dos instrumentos enquanto a narração fala: silêncio total (narracao.pausarMusica)
+// ou só uma redução de narracao.reducaoDb decibéis.
+const duckedGain = () => (SETTINGS.narration.pauseMusic ? 0 : dbToGain(SETTINGS.narration.duckDb));
 
 export const MUSICAL_KEYS = {
   C: { label: "Pentatônica Maior de Dó", root: 0 },
@@ -134,9 +135,9 @@ export class SonificationEngine {
     this.started = false;
     this.paused = false;
     this.low = false;
-    this.key = "C";
-    this.userVolumeDb = 0;
-    this.useSamples = true;
+    this.key = SETTINGS.audio.key;
+    this.userVolumeDb = SETTINGS.audio.volumeDb;
+    this.useSamples = SETTINGS.audio.useSamples;
     this.samplesState = "idle"; // idle | loading | ready | partial | failed | none
     this.onSamplesState = null;
     this.layers = {};
@@ -168,14 +169,14 @@ export class SonificationEngine {
 
   _build() {
     const Tone = T();
-    // saída: volume do usuário → ducking (voz) → compressor → ganho de compensação → limitador
+    // saída: volume do usuário → pausa/ducking (voz) → compressor → ganho de compensação → limitador
     // (o compressor nivela camadas fracas e fortes; o limitador impede clipping)
-    this.limiter = new Tone.Limiter(-3).toDestination();
+    this.limiter = new Tone.Limiter(SETTINGS.audio.limiterDb).toDestination();
     this.makeup = new Tone.Gain(Tone.dbToGain(9)).connect(this.limiter);
     this.compressor = new Tone.Compressor({ threshold: -26, ratio: 3.5, attack: 0.01, release: 0.25, knee: 8 }).connect(this.makeup);
-    this.duckGain = new Tone.Gain(this.ducked ? Tone.dbToGain(DUCK_DB) : 1).connect(this.compressor);
+    this.duckGain = new Tone.Gain(this.ducked ? duckedGain() : 1).connect(this.compressor);
     this.volume = new Tone.Volume(this.userVolumeDb).connect(this.duckGain);
-    this.reverb = new Tone.Reverb({ decay: 5, preDelay: 0.03, wet: 0.3 }).connect(this.volume);
+    this.reverb = new Tone.Reverb({ decay: 5, preDelay: 0.03, wet: SETTINGS.audio.reverb }).connect(this.volume);
     this.panner = new Tone.Panner(0).connect(this.reverb);
     this.filter = new Tone.Filter({ type: "lowpass", frequency: 6000, rolloff: -12, Q: 0.4 }).connect(this.panner);
     this.waveform = new Tone.Waveform(512);
@@ -346,24 +347,30 @@ export class SonificationEngine {
 
   _applyLow() {
     const low = this.low;
-    this.limiter.threshold.rampTo(low ? -16 : -3, 0.3);
-    this.reverb.wet.rampTo(low ? 0.42 : 0.3, 0.5);
-    this.volume.volume.rampTo(this.paused ? -Infinity : this.userVolumeDb + (low ? -10 : 0), 0.4);
+    this.limiter.threshold.rampTo(low ? SETTINGS.low.limiterDb : SETTINGS.audio.limiterDb, 0.3);
+    this.reverb.wet.rampTo(low ? Math.min(1, SETTINGS.audio.reverb + 0.12) : SETTINGS.audio.reverb, 0.5);
+    this.volume.volume.rampTo(this.paused ? -Infinity : this._outDb(), 0.4);
+  }
+
+  // volume de saída: controle do usuário + redução do modo de baixa sensibilidade
+  _outDb() {
+    return this.userVolumeDb + (this.low ? SETTINGS.low.reduceDb : 0);
   }
 
   setVolume(db) {
     this.userVolumeDb = db;
-    if (this.started && !this.paused) this.volume.volume.rampTo(db + (this.low ? -10 : 0), 0.15);
+    if (this.started && !this.paused) this.volume.volume.rampTo(this._outDb(), 0.15);
   }
 
-  // Audio ducking: abaixa os instrumentos enquanto a voz fala e restaura suavemente depois
+  // A voz tem prioridade: enquanto a narração fala, a música para por completo (ou só
+  // abaixa, conforme config.json → narracao) e volta com uma rampa quando a fala termina.
   duck(on) {
     if (this.ducked === on) return;
     this.ducked = on;
     if (!this.started) return;
     const g = this.duckGain.gain;
     g.cancelScheduledValues(T().now());
-    g.rampTo(on ? T().dbToGain(DUCK_DB) : 1, on ? 0.15 : 0.9);
+    g.rampTo(on ? duckedGain() : 1, on ? SETTINGS.narration.fadeOutS : SETTINGS.narration.fadeInS);
   }
 
   pause() {
@@ -376,7 +383,7 @@ export class SonificationEngine {
   resume() {
     if (!this.started) return;
     this.paused = false;
-    this.volume.volume.rampTo(this.userVolumeDb + (this.low ? -10 : 0), 0.3);
+    this.volume.volume.rampTo(this._outDb(), 0.3);
   }
 
   // ---------------- atualização contínua ----------------
@@ -390,7 +397,7 @@ export class SonificationEngine {
 
     this.panner.pan.rampTo(clamp(s.pan ?? 0, -1, 1) * 0.85, this.low ? 0.4 : 0.08);
     const bright = clamp(s.bright ?? 0.5);
-    const cutoff = this.low ? lerp(700, 1700, bright) : lerp(2000, 12000, bright ** 0.8);
+    const cutoff = this.low ? lerp(SETTINGS.low.filterMinHz, SETTINGS.low.filterMaxHz, bright) : lerp(2000, 12000, bright ** 0.8);
     this.filter.frequency.rampTo(cutoff, this.low ? 0.8 : 0.2);
 
     if (this._previewLayer && s.active) this.stopPreview();

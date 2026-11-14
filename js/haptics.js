@@ -5,6 +5,8 @@
 // receiver.html#<id>; o celular conecta e recebe pacotes {pulse, gap, strength, event...}
 // que viram padrões de navigator.vibrate().
 
+import { SETTINGS } from "./config.js";
+
 const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
 
 // Cópia pública do receptor (GitHub Pages do repositório). O receptor é uma página
@@ -120,13 +122,14 @@ const lerp = (a, b, t) => a + (b - a) * t;
 // norm 0..1 → { pulse (ms), gap (ms), strength 0..1, hz }
 export function hapticPattern(norm, grad = 0, low = false) {
   const n = clamp(norm);
-  let pulse = lerp(240, 22, n);
-  let gap = lerp(560, 38, n) * (1 - 0.35 * clamp(grad));
-  let strength = lerp(0.35, 1, n);
+  const h = SETTINGS.haptics; // config.json → vibracao
+  let pulse = lerp(h.pulseColdMs, h.pulseHotMs, n);
+  let gap = lerp(h.gapColdMs, h.gapHotMs, n) * (1 - 0.35 * clamp(grad));
+  let strength = lerp(h.strengthCold, h.strengthHot, n);
   if (low) {
     pulse = Math.min(pulse * 0.6, 140);
     gap = Math.max(gap * 1.5, 140);
-    strength *= 0.45;
+    strength *= SETTINGS.low.hapticStrength;
   }
   pulse = Math.round(pulse);
   gap = Math.round(gap);

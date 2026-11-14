@@ -8,3 +8,6 @@ Thumbs.db
 dados/
 dados.zip
 referencias/
+
+# Python
+__pycache__/

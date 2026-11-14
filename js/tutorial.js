@@ -4,7 +4,7 @@
 // Textos em assets/tutorial/roteiro.json; falas fixas em MP3 neural (tools/gerar_audio_tutorial.py),
 // com a voz do navegador como alternativa (js/voz.js).
 
-import { INSTRUMENTS, INSTRUMENT_ORDER } from "./scales.js";
+import { LAYER_ORDER, SAMPLE_SET, SETTINGS, layerInstruments } from "./config.js";
 import { narrator } from "./voz.js";
 
 const $ = (id) => document.getElementById(id);
@@ -30,6 +30,7 @@ function load(key) {
  * @param {() => void} api.backToGallery
  * @param {() => boolean} api.inExplore
  * @param {(msg: string) => void} api.toast
+ * @param {(info: { started: boolean, voice: boolean }) => void} [api.onClose]  started: passou da tela inicial
  */
 export function createTutorial(api) {
   const dlg = $("tutorialPanel");
@@ -51,6 +52,7 @@ export function createTutorial(api) {
   let demoUntil = 0; // enquanto > agora, o app não sobrescreve o motor de áudio
   let lastFocus = null;
   let moveCount = 0;
+  let started = false; // a pessoa passou da tela de boas-vindas (não pulou o tutorial)
 
   voiceBox.checked = load(VOICE_KEY) !== "0";
 
@@ -74,7 +76,7 @@ export function createTutorial(api) {
     return active && voiceBox.checked;
   }
 
-  const voiceOpts = () => ({ rate: api.isLowSensory() ? 0.94 : 1, volume: api.isLowSensory() ? 0.75 : 1 });
+  const voiceOpts = () => ({ rate: api.isLowSensory() ? SETTINGS.low.voiceRate : 1, volume: api.isLowSensory() ? SETTINGS.low.voiceVolume : 1 });
 
   // fala uma gravação do roteiro (ou o texto, com a voz do navegador)
   function speakId(id, text, { queue = false, tag = null } = {}) {
@@ -127,7 +129,7 @@ export function createTutorial(api) {
       api.engine.update({ active: true, bright: 0.5, grad: 0, ...f });
       await wait(stepMs);
     }
-    api.engine.update({ active: false, weights: { cello: 0, piano: 0, flute: 0, harp: 0 } });
+    api.engine.update({ active: false, weights: { low: 0, mid: 0, high: 0, arp: 0 } });
   }
 
   function demoColdToHot() {
@@ -138,10 +140,10 @@ export function createTutorial(api) {
         pan: 0,
         norm: t,
         weights: {
-          cello: Math.max(0, 1 - t * 2.2),
-          piano: Math.min(1, Math.max(0, (t - 0.25) * 2.5)),
-          flute: Math.max(0, (t - 0.7) * 2),
-          harp: 0,
+          low: Math.max(0, 1 - t * 2.2),
+          mid: Math.min(1, Math.max(0, (t - 0.25) * 2.5)),
+          high: Math.max(0, (t - 0.7) * 2),
+          arp: 0,
         },
       });
     }
@@ -151,7 +153,7 @@ export function createTutorial(api) {
   function demoLeftRight() {
     const melody = [0.45, 0.55, 0.62, 0.55, 0.45, 0.55, 0.62, 0.7, 0.62, 0.55, 0.45, 0.55];
     return runDemo(
-      melody.map((norm, i) => ({ pan: -1 + (2 * i) / (melody.length - 1), norm, weights: { cello: 0, piano: 1, flute: 0, harp: 0 } })),
+      melody.map((norm, i) => ({ pan: -1 + (2 * i) / (melody.length - 1), norm, weights: { low: 0, mid: 1, high: 0, arp: 0 } })),
       420
     );
   }
@@ -160,7 +162,7 @@ export function createTutorial(api) {
     const frames = [];
     for (let i = 0; i <= 10; i += 1) {
       const w = i <= 5 ? i / 5 : (10 - i) / 5;
-      frames.push({ pan: 0, norm: 0.55, weights: { cello: 0, piano: 0.5, flute: 0, harp: w } });
+      frames.push({ pan: 0, norm: 0.55, weights: { low: 0, mid: 0.5, high: 0, arp: w } });
     }
     return runDemo(frames, 450);
   }
@@ -192,8 +194,9 @@ export function createTutorial(api) {
       { id: "boas-vindas" },
       {
         id: "instrumentos",
-        actions: () => INSTRUMENT_ORDER.map((id) => {
-          const b = button(`Ouvir ${INSTRUMENTS[id].short.toLowerCase()}`, () => playInstrument(id, b));
+        actions: () => LAYER_ORDER.map((id) => {
+          const inst = api.engine.layerInstrument(id) || layerInstruments("temp")[id];
+          const b = button(`Ouvir ${(SAMPLE_SET[inst]?.label || id).toLowerCase()}`, () => playInstrument(id, b));
           return b;
         }),
       },
@@ -217,7 +220,7 @@ export function createTutorial(api) {
       {
         id: "desafio-frio",
         mission: true,
-        check: (type, r) => type === "reading" && r?.valid && (r.weights?.cello ?? 0) >= 0.6,
+        check: (type, r) => type === "reading" && r?.valid && (r.weights?.low ?? 0) >= 0.6,
         success: "ok-frio",
       },
       { id: "desafio-centro", mission: true, check: (type) => type === "home", success: "ok-centro" },
@@ -275,6 +278,7 @@ export function createTutorial(api) {
     const step = steps[index];
     const { titulo, texto } = content(step);
     missionDone = false;
+    if (!step.gate) started = true;
 
     const missions = steps.filter((s) => s.mission);
     const guides = steps.filter((s) => !s.mission && !s.gate);
@@ -359,6 +363,7 @@ export function createTutorial(api) {
     if ($("legendDialog").open) $("legendDialog").close();
     lastFocus = document.activeElement;
     active = true;
+    started = false;
     document.body.classList.add("tutorial-open");
     steps = buildSteps({ gate });
     render(0);
@@ -375,6 +380,7 @@ export function createTutorial(api) {
     if (focusMap && api.inExplore()) api.focusMap();
     else if (lastFocus && document.contains(lastFocus) && lastFocus !== document.body && !lastFocus.closest("#tutorialPanel")) lastFocus.focus();
     else $("main").focus({ preventScroll: true });
+    api.onClose?.({ started, voice: voiceBox.checked });
   }
 
   function repeat() {
