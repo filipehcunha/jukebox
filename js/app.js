@@ -3,7 +3,7 @@
 
 import { SCALES, SCALE_LIST, LAYERS, LAYER_ORDER, GMAO_T0_UTC, scaleFromPixels, paletteColor } from "./scales.js";
 import { MAPPING_CONFIG, SAMPLE_SET, SETTINGS, CONFIG_PROBLEMS, layerInstruments, layerVariable, VARIABLE_LABELS } from "./config.js";
-import { loadLandMask, formatCoord } from "./geo.js";
+import { loadLandMask, loadCountries, formatCoord } from "./geo.js";
 import { ImageSampler, loadBitmap } from "./sampler.js";
 import { SonificationEngine, MUSICAL_KEYS, midiName } from "./audio.js";
 import { HapticBridge, renderQr, guessReceiverBase, checkPublicReceiver, PUBLIC_RECEIVER_BASE } from "./haptics.js";
@@ -706,12 +706,11 @@ function mapOverview() {
     announce(`Visão geral de ${group.title}: não encontrei dados legíveis nesta imagem.`);
     return;
   }
-  const where = (r) => `${r.region?.name ? `na região ${r.region.name}, ` : ""}${placeWords(r.u, r.v)}`;
-  announce(
-    `Visão geral de ${group.title}. ${scale.sentence(scale.format(hi.value))} é o valor mais alto, ${where(hi)}. ` +
-    `${scale.sentence(scale.format(lo.value))} é o mais baixo, ${where(lo)}. Média do mapa: ${scale.format(sum / n)}. ` +
-    "Use as teclas de 1 a 9 para saltar entre as regiões."
-  );
+  const where = (r) => {
+    const reg = r.region;
+    const prefix = reg?.country ? `${reg.country}, ` : reg?.name ? `na região ${reg.name}, ` : "";
+    return `${prefix}${placeWords(r.u, r.v)}`;
+  };
 }
 
 // Tecla C: onde o cursor está
@@ -1428,7 +1427,7 @@ async function init() {
   // primeira visita: o guia em áudio é a primeira coisa na tela (e no leitor de tela)
   if (!tutorial.seen()) tutorial.open({ gate: true });
 
-  await loadLandMask();
+  await Promise.all([loadLandMask(), loadCountries()]);
   await upgradeGmaoSequences(state.presets);
   if (state.presets.some((g) => g.sequence)) {
     $("presetsNote").textContent = "Prontos para uso imediato. A pasta dados/ foi encontrada: os mapas GMAO abrem como sequências de 372 horas com linha do tempo.";

@@ -1,4 +1,4 @@
-// Geografia: projeções, máscara terra/oceano e nomes de regiões.
+// Geografia: projeções, máscara terra/oceano, países e nomes de regiões.
 
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 
@@ -31,6 +31,177 @@ export function isLand(lat, lon) {
   return landMask.data[y * landMask.width + x] === 1;
 }
 
+// ---------------------------------------------------------------------------
+// Países (GeoJSON do Natural Earth, Admin 0 – Countries)
+// ---------------------------------------------------------------------------
+
+let countries = null; // [{ name, bbox, parts: [{ bbox, poly }] }]
+const countryCache = new Map();
+const CACHE_MAX = 5000;
+
+let ptNames = null;
+try {
+  ptNames = new Intl.DisplayNames(["pt-BR"], { type: "region" });
+} catch {
+  ptNames = null;
+}
+
+// Nome em português a partir do código ISO; se não der, usa o nome do arquivo.
+function countryName(props) {
+  const p = props || {};
+  const fallback = p.NAME_PT || p.NAME || p.ADMIN || null;
+  const iso = p.ISO_A2_EH && p.ISO_A2_EH !== "-99" ? p.ISO_A2_EH : p.ISO_A2;
+  if (ptNames && iso && iso !== "-99") {
+    try {
+      const n = ptNames.of(iso);
+      // Quando o código é desconhecido, o Intl devolve o próprio código.
+      if (n && n !== iso) return n;
+    } catch {
+      /* código inválido: cai no fallback */
+    }
+  }
+  return fallback;
+}
+
+function ringBBox(ring) {
+  let minLo = 180, maxLo = -180, minLa = 90, maxLa = -90;
+  for (const [lo, la] of ring) {
+    if (lo < minLo) minLo = lo;
+    if (lo > maxLo) maxLo = lo;
+    if (la < minLa) minLa = la;
+    if (la > maxLa) maxLa = la;
+  }
+  return [minLo, minLa, maxLo, maxLa];
+}
+
+export async function loadCountries(url = "assets/countries.geojson") {
+  try {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const gj = await res.json();
+    const list = [];
+    for (const f of gj.features || []) {
+      const g = f.geometry;
+      if (!g) continue;
+      let polys = [];
+      if (g.type === "Polygon") polys = [g.coordinates];
+      else if (g.type === "MultiPolygon") polys = g.coordinates;
+      else continue;
+
+      const name = countryName(f.properties);
+      if (!name) continue;
+
+      const parts = polys.map((poly) => ({ bbox: ringBBox(poly[0]), poly }));
+      const bbox = [
+        Math.min(...parts.map((p) => p.bbox[0])),
+        Math.min(...parts.map((p) => p.bbox[1])),
+        Math.max(...parts.map((p) => p.bbox[2])),
+        Math.max(...parts.map((p) => p.bbox[3])),
+      ];
+      list.push({ name, bbox, parts });
+    }
+    countries = list.length ? list : null;
+  } catch {
+    countries = null;
+  }
+  countryCache.clear();
+}
+
+// Ponto dentro de anel (ray casting)
+function inRing(ring, lon, lat) {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [xi, yi] = ring[i];
+    const [xj, yj] = ring[j];
+    if (yi > lat !== yj > lat && lon < ((xj - xi) * (lat - yi)) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
+}
+
+// poly[0] = anel externo; poly[1..] = buracos (lagos, enclaves)
+function inPoly(poly, lon, lat) {
+  if (!inRing(poly[0], lon, lat)) return false;
+  for (let k = 1; k < poly.length; k += 1) if (inRing(poly[k], lon, lat)) return false;
+  return true;
+}
+
+// Nome do país em (lat, lon), ou null (oceano, fora de qualquer polígono, ou dados não carregados).
+export function countryAt(lat, lon) {
+  if (!countries) return null;
+  const key = `${lat.toFixed(2)},${lon.toFixed(2)}`;
+  if (countryCache.has(key)) return countryCache.get(key);
+
+  let found = null;
+  outer: for (const c of countries) {
+    const b = c.bbox;
+    if (lon < b[0] || lon > b[2] || lat < b[1] || lat > b[3]) continue;
+    for (const part of c.parts) {
+      const pb = part.bbox;
+      if (lon < pb[0] || lon > pb[2] || lat < pb[1] || lat > pb[3]) continue;
+      if (inPoly(part.poly, lon, lat)) {
+        found = c.name;
+        break outer;
+      }
+    }
+  }
+
+  if (countryCache.size >= CACHE_MAX) countryCache.clear();
+  countryCache.set(key, found);
+  return found;
+}
+
+// Distância (km) de um ponto a um segmento, em plano local (boa para distâncias curtas).
+function distToSegKm(px, py, ax, ay, bx, by, kx, ky) {
+  const x0 = (px - ax) * kx, y0 = (py - ay) * ky;
+  const dx = (bx - ax) * kx, dy = (by - ay) * ky;
+  const len2 = dx * dx + dy * dy;
+  const t = len2 === 0 ? 0 : clamp((x0 * dx + y0 * dy) / len2, 0, 1);
+  return Math.hypot(x0 - t * dx, y0 - t * dy);
+}
+
+const NEAR_KM = 15; // tolerância padrão do fallback de costa
+const nearCache = new Map();
+
+// País mais próximo dentro de `maxKm` (para pontos que caem logo fora da costa do GeoJSON).
+// Só olha para os anéis externos (costas e fronteiras), ignorando lagos e enclaves.
+export function nearestCountry(lat, lon, maxKm = NEAR_KM) {
+  if (!countries) return null;
+  const key = `${lat.toFixed(2)},${lon.toFixed(2)},${maxKm}`;
+  if (nearCache.has(key)) return nearCache.get(key);
+
+  const ky = 111;
+  const kx = 111 * Math.max(Math.cos((lat * Math.PI) / 180), 0.01);
+  const padLat = maxKm / ky;
+  const padLon = maxKm / kx;
+
+  let best = null;
+  let bestD = maxKm;
+  for (const c of countries) {
+    const b = c.bbox;
+    if (lon < b[0] - padLon || lon > b[2] + padLon || lat < b[1] - padLat || lat > b[3] + padLat) continue;
+    for (const part of c.parts) {
+      const pb = part.bbox;
+      if (lon < pb[0] - padLon || lon > pb[2] + padLon || lat < pb[1] - padLat || lat > pb[3] + padLat) continue;
+      const ring = part.poly[0];
+      for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+        const d = distToSegKm(lon, lat, ring[j][0], ring[j][1], ring[i][0], ring[i][1], kx, ky);
+        if (d < bestD) {
+          bestD = d;
+          best = c.name;
+        }
+      }
+    }
+  }
+
+  if (nearCache.size >= CACHE_MAX) nearCache.clear();
+  nearCache.set(key, best);
+  return best;
+}
+
+// ---------------------------------------------------------------------------
+// Projeção
+// ---------------------------------------------------------------------------
+
 // u,v (0..1 na imagem) -> {lat, lon} ou null
 export function project(projection, u, v) {
   if (!projection || projection.type === "none") return null;
@@ -57,7 +228,10 @@ export function project(projection, u, v) {
   return null;
 }
 
+// ---------------------------------------------------------------------------
 // Regiões nomeadas (verificadas antes dos continentes/oceanos genéricos)
+// ---------------------------------------------------------------------------
+
 const NAMED = [
   { name: "Antártida", test: (la) => la <= -64 },
   { name: "Groenlândia", test: (la, lo, land) => land && la >= 59 && lo >= -74 && lo <= -11 },
@@ -106,13 +280,26 @@ function landRegion(lat, lon) {
   return lat >= 0 ? "Ásia" : "Oceania";
 }
 
+// Retorna { name, land, country, region }.
+// - Em terra, `name` é o nome do PAÍS (a região genérica vai para `region`).
+// - No oceano (ou se não houver país), `name` continua sendo a região/oceano.
+// - `country` é o país em português, ou null (oceano / GeoJSON não carregado).
 export function regionName(lat, lon) {
-  const land = isLand(lat, lon);
-  for (const r of NAMED) {
-    if (r.test(lat, lon, land)) return { name: r.name, land };
-  }
-  if (land === null) return { name: lat >= 0 ? "Hemisfério Norte" : "Hemisfério Sul", land: null };
-  return { name: land ? landRegion(lat, lon) : oceanRegion(lat, lon), land };
+  const maskLand = isLand(lat, lon);
+  let country = countryAt(lat, lon);
+  // Máscara diz terra, mas o ponto caiu logo fora do polígono (costa): usa o país mais próximo.
+  if (!country && maskLand === true) country = nearestCountry(lat, lon);
+  // Se há país no ponto, é terra, mesmo que a máscara divirja um pouco na costa.
+  const land = country ? true : maskLand;
+
+  let region;
+  const named = NAMED.find((r) => r.test(lat, lon, land));
+  if (named) region = named.name;
+  else if (land === null) region = lat >= 0 ? "Hemisfério Norte" : "Hemisfério Sul";
+  else region = land ? landRegion(lat, lon) : oceanRegion(lat, lon);
+
+  // Prioriza o país: é o que a narração deve falar.
+  return { name: country || region, land, country, region };
 }
 
 export function formatCoord(lat, lon) {

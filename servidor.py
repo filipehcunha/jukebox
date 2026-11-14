@@ -199,7 +199,7 @@ def main():
             super().end_headers()
 
         def log_message(self, fmt, *a):
-            if "/dados/" not in (a[0] if a else ""):
+            if "/dados/" not in str(a[0] if a else ""):
                 super().log_message(fmt, *a)
 
     server = http.server.ThreadingHTTPServer(("0.0.0.0", port), partial(Handler, directory=str(ROOT)))
