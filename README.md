@@ -1,140 +1,97 @@
-# A Sinfonia da Terra: Earth Jukebox Interativo
+# A Sinfonia da Terra: Earth Jukebox Multissensorial
 
-Experiência web multissensorial que transforma visualizações científicas da NASA em som, imagem e navegação acessível. O projeto usa HTML, CSS e JavaScript puros, Canvas 2D e Web Audio API, sem build, dependências externas ou arquivos de áudio.
+Experiência web que transforma mapas de dados terrestres da NASA (ou imagens enviadas pelo usuário) em **música instrumental em tempo real**, **vibração no smartphone** e **narração acessível**. É HTML, CSS e JavaScript puros (módulos ES), com Tone.js, PeerJS e QRCode.js via CDN. Não há etapa de build.
 
 ## Como executar
 
-O projeto precisa ser servido por HTTP, pois usa módulos JavaScript e leitura de pixels do Canvas. Abra um terminal na pasta do projeto e execute:
-
 ```bash
-python3 -m http.server 8000
+python3 servidor.py          # serve em http://localhost:8000 e na rede local
 ```
 
-Depois acesse:
+Abra `http://localhost:8000`. O `servidor.py` escuta em todas as interfaces e mostra o endereço da rede (ex.: `http://192.168.0.10:8000`). O app consulta esse endereço sozinho para montar o QR Code do celular. Também dá para usar `python3 -m http.server 8000`. Nesse caso, digite o IP do computador no painel do smartphone.
 
-```text
-http://localhost:8000
-```
+> **WSL2:** o IP detectado é o da máquina virtual, que o celular não alcança. Rode o servidor pelo Python do Windows, ative o *mirrored networking* do WSL ou passe o IP do Windows: `python3 servidor.py 8000 --url http://IP-DO-WINDOWS:8000`.
 
-Também é possível usar qualquer servidor HTTP estático de sua preferência. Abrir o `index.html` diretamente como arquivo pode bloquear os módulos e a leitura das imagens.
+Na primeira execução é preciso internet: Tone.js, PeerJS, QRCode.js e as amostras dos instrumentos vêm de CDNs. Sem as amostras, o app usa instrumentos sintetizados.
 
-## Como explorar
+### Dados GMAO (pasta `dados/`)
 
-1. Clique em **Ativar áudio e explorar**. O áudio só inicia após um gesto do usuário, conforme as regras dos navegadores.
-2. Mova o ponteiro, toque ou arraste sobre o mapa.
-3. Use o botão **Pausar áudio** ou **Retomar áudio** no topo para controlar o som.
-4. Troque entre os datasets **ECCO2** e **GEDI** no painel lateral.
-5. Em **Imagem analisada**, escolha entre as nove cenas NASA: três do ECCO2 e seis do GEDI.
-6. Ajuste a escala musical, o modo de baixa sensibilidade, o alto contraste e os filtros de cor.
+Descompacte `dados.zip` na raiz para obter `dados/{temp,humidity,wind,co}_frames/frame_000000.jpg … frame_000371.jpg`. São 372 frames horários, de 30/out/2026 09:00 UTC a 14/nov/2026 20:00 UTC. Se a pasta existir, os cartões GMAO da galeria abrem a **sequência completa com linha do tempo**. Sem ela, abrem um frame de amostra (`assets/gmao_*.jpg`). A pasta e o zip ficam fora do git por causa do tamanho.
 
-### Teclado
+## Fluxo da experiência
 
-| Tecla | Ação |
-| --- | --- |
-| `Tab` | Navega até o mapa e os controles |
-| Setas | Move a grade focal virtual sobre o mapa |
-| `Shift` + setas | Move a grade focal mais rápido |
-| `Espaço` | Ativa, pausa ou retoma o áudio |
-| `Enter` | Repete a leitura sonora e o anúncio atual |
+1. **Galeria de escolha:** traz 6 mapas pré-carregados: ECCO2 (temperatura dos oceanos), GEDI (altura das florestas) e quatro mapas GMAO (temperatura, umidade, vento e CO). Também é possível carregar uma pasta (`webkitdirectory`), selecionar várias imagens ou arrastar e soltar. Cada pasta vira um grupo de miniaturas clicáveis com o nome do arquivo, carregadas sob demanda.
+2. **Legenda auditiva e sensorial (obrigatória):** é um diálogo modal que mostra a barra de cores da escala e os 4 instrumentos. Cada instrumento tem um botão **Ouvir** e a explicação de quais cores ou valores o acionam naquela imagem. O botão **Iniciar Experiência Multissensorial** abre o mapa.
+3. **Exploração:** mouse, toque ou teclado sobre o mapa, com leitura em tempo real. Em sequências, a linha do tempo permite escutar o tempo passar com o cursor parado.
 
-## Mapeamento sonoro
+## Das cores aos números
 
-| Entrada | Saída |
-| --- | --- |
-| Cor/temperatura ou altura do dossel sob o cursor | Pitch quantizado entre aproximadamente 100 Hz e 800 Hz |
-| Posição horizontal (X) | Panorama estéreo, da esquerda para a direita |
-| Brilho/intensidade das correntes ou densidade do dossel | Cutoff do filtro passa-baixas e ressonância |
-| Transições de posição | Rampas suaves com `linearRampToValueAtTime`, sem cliques |
-| Textura | Osciladores senoidal, triangular e sub, reverb convolucional, drone e ruído de surfe |
+As legendas oficiais (`referencias/escalas/*.jpeg`) foram amostradas coluna a coluna por `tools/extrair_escalas.py`, que gera `js/colormaps.js`. Cada posição da barra vira um valor físico de acordo com os rótulos:
 
-As notas são quantizadas em uma das escalas disponíveis:
+| Escala | Faixa | Mapeamento da barra |
+| --- | --- | --- |
+| Temperatura T2M | −40 a 40 °C | linear |
+| Umidade Q2M | 0 a 22 g/kg | linear |
+| Vento | 0 a 40 m/s | linear; 0–3,4 m/s é transparente (ver abaixo) |
+| CO | 40 a 500 ppbv | **não linear**: marcas 40/100/130/200/500 medidas nos pixels 72,5 / 188,5 / 279,5 / 370,5 / 463,5 |
 
-- Pentatônica Maior de Dó
-- Modo Lídio de Dó
-- Pentatônica Menor de Lá
+No navegador, cada pixel é convertido para CIELAB e associado à cor mais próxima da barra, com projeção no segmento vizinho para obter um valor contínuo. A leitura usa a **mediana de uma janela 5×5**, o que elimina linhas de costa, fronteiras e ruído JPEG. O logotipo GMAO e o carimbo de data são mascarados.
 
-O modo de baixa sensibilidade reduz volume, abertura de filtro, ressonância e intensidade da vibração. A preferência do sistema por movimento reduzido também é respeitada. O volume padrão foi calibrado para escuta em alto-falantes; o modo de baixa sensibilidade reduz os níveis para ambientes mais silenciosos.
+Casos especiais:
 
-## Datasets
+- **Vento:** a faixa calma é transparente. No frame ela aparece como relevo cinza nos continentes ou fundo escuro no oceano. Pixels quase neutros contam como calmaria (< 4 m/s), e a transição púrpura sobre o oceano foi medida empiricamente.
+- **ECCO2:** as correntes são estrias brilhantes. A **matiz** dá a temperatura (decodificada pela cromaticidade, ignorando o brilho) e o **brilho** dá a intensidade da corrente, que aciona a harpa.
+- **GEDI:** o oceano azul é descartado. O globo inclinado usa uma projeção ortográfica ajustada por mínimos quadrados a 6 pontos de controle.
+- **Imagens desconhecidas:** a escala é detectada pelo nome da pasta (`temp`, `humid`, `wind`, `co`, `sst`, `gedi`…) ou pelas cores. Sem correspondência, usa o matiz (azul = frio, vermelho = quente). A escala pode ser trocada manualmente.
 
-### ECCO2: Temperatura e Correntes
+Validação (`python3 tools/extrair_escalas.py --validar`, 12 mil pixels por variável): ΔE mediano de 1,0 a 2,3. O Pacífico equatorial lê 28,8 °C, a Antártida −39,7 °C, a umidade da Amazônia 19 g/kg e o CO no leste da China 311 ppbv.
 
-- Título NASA: *Global Sea Surface Currents and Temperature*
-- Faixa de leitura: 0–32 °C
-- Página de origem: <https://svs.gsfc.nasa.gov/3912>
-- Cenas disponíveis:
-  - **Global · 2008** — visual equirretangular global, `assets/ecco2_sst.jpg`
-  - **Atlântico Norte** — recorte regional das correntes, `assets/ecco2_atlantic.jpg`
-  - **Pacífico Oriental** — recorte regional das correntes, `assets/ecco2_pacific.jpg`
-- Áreas continentais são identificadas como **Continente** e não geram nota, pois o dataset representa apenas o oceano.
-- Nas cenas regionais, a área é fixa e o app mostra **Cena regional** em vez de coordenadas geográficas inventadas.
+## Sonificação (Tone.js)
 
-### GEDI: Altura das Florestas
+| Camada | Instrumento | Papel |
+| --- | --- | --- |
+| Grave | Violoncelo / Contrabaixo | águas frias, baixas temperaturas, regiões polares (e ar seco, calmaria, CO alto) |
+| Médio | Piano de cauda / Marimba | temperaturas amenas, vegetação moderada |
+| Agudo | Flauta / Madeiras | alta umidade, ar limpo, dossel elevado, pixels claros |
+| Arpejos | Harpa / Percussão leve | ventos fortes, correntes marítimas, frentes (gradientes) |
 
-- Título NASA: *GEDI Global Forest Canopy Height*
-- Faixa de leitura: 0–75 m
-- Página de origem: <https://svs.gsfc.nasa.gov/4950>
-- Cenas disponíveis:
-  - **Globo global** — globo ortográfico, `assets/gedi_forest.jpg`
-  - **Califórnia, EUA** — closeup regional, `assets/gedi_california.jpg`
-  - **Flórida, EUA** — closeup regional, `assets/gedi_florida.jpg`
-  - **Goddard, Maryland** — closeup regional, `assets/gedi_goddard.jpg`
-  - **Laurentides, Canadá** — closeup regional, `assets/gedi_laurentides.jpg`
-  - **Senegal** — closeup regional, `assets/gedi_senegal.jpg`
+- **Eixo X → panorama estéreo** (`Panner`, com rampa).
+- **Valor/cor → nota**, quantizada na **pentatônica maior de Dó ou Sol**. Todas as camadas usam o mesmo conjunto de notas e por isso nunca dissonam. Há histerese para a nota não oscilar na fronteira entre graus.
+- **Brilho → filtro passa-baixas** e camadas secundárias. **Intensidade (vento, corrente, gradiente) → velocidade e volume do arpejo.**
+- Todas as mudanças de volume, filtro e panorama usam `rampTo`. Violoncelo e flauta fazem glide ou legato, e o piano re-toca suavemente quando o cursor repousa.
+- As amostras são gravações reais (piano Salamander e violoncelo, flauta e harpa do *tonejs-instruments*), com fallback sintetizado.
 
-No globo global, as coordenadas e regiões do GEDI são aproximadas, calculadas a partir da projeção ortográfica. O globo da imagem original está centralizado sobre a África/Eurásia; por isso, partes das Américas não aparecem na face visível. Nos closeups regionais, a região é fixa e não há cálculo de latitude/longitude.
+## Smartphone (vibração tátil)
+
+O painel **Conectar Smartphone** gera um peer PeerJS com ID aleatório e um QR Code para `receiver.html#<id>`. O servidor público do PeerJS só faz a sinalização: os dados seguem via WebRTC, peer-to-peer. O computador envia até ~16 pacotes/s. O celular vibra com pulsos proporcionais ao valor, dá um pulso duplo ao cruzar zonas (ex.: "Ameno" → "Quente") e um pulso em frentes térmicas ou bordas de plumas. No iPhone/Safari, que não suporta `navigator.vibrate`, o receptor mostra pulsos visuais.
 
 ## Acessibilidade
 
-- Navegação completa por teclado com grade focal virtual.
-- Região `aria-live="polite"` que anuncia região, valor, intensidade e nota musical.
-- Texto alternativo e descrição do mapa no Canvas.
-- Foco visível, link para pular ao conteúdo e controles com rótulos.
-- Alto contraste.
-- Filtros para deuteranopia, protanopia e tritanopia.
-- Feedback tátil opcional em dispositivos compatíveis com a Vibration API.
-- Respeito a `prefers-reduced-motion`.
-- Modo de baixa sensibilidade auditiva.
+- **Modo de baixa sensibilidade:** limitador em −18 dB, volume −10 dB, filtro até 1,7 kHz, rampas lentas, arpejos mais lentos, vibração a 45% e animações desligadas.
+- **Teclado:** setas movem o cursor focal (Shift = passo maior), `Enter` anuncia, `Espaço` liga/pausa, `[` `]` trocam a hora, `P` reproduz a linha do tempo, `L` abre a legenda e `Home` centraliza.
+- **ARIA live + narração por voz** (`speechSynthesis`, pt-BR). Exemplo: "Atlântico Norte: Violoncelo e Piano. Temperatura 22,0 °C, quente."
+- **Alto contraste** (respeita `prefers-contrast`) e **filtros de cor**: paletas seguras que recolorem a imagem *pelos dados decodificados* (Cividis, Viridis, cinza) e simulações de deuteranopia, protanopia e tritanopia.
+- O layout é responsivo, respeita `prefers-reduced-motion` e usa um `<dialog>` modal com foco gerenciado.
 
-O feedback tátil depende de suporte do navegador/dispositivo, especialmente em navegadores móveis baseados em Chromium. Em desktop, a API de vibração normalmente não está disponível.
-
-## Estrutura do projeto
+## Estrutura
 
 ```text
-jukebox/
-├── index.html
-├── requisitos.txt
-├── README.md
-├── assets/
-│   ├── ecco2_sst.jpg
-│   ├── ecco2_atlantic.jpg
-│   ├── ecco2_pacific.jpg
-│   ├── gedi_forest.jpg
-│   ├── gedi_california.jpg
-│   ├── gedi_florida.jpg
-│   ├── gedi_goddard.jpg
-│   ├── gedi_laurentides.jpg
-│   └── gedi_senegal.jpg
-├── css/
-│   └── styles.css
-└── js/
-    ├── app.js
-    ├── audio.js
-    └── datasets.js
+index.html, receiver.html, servidor.py
+css/styles.css
+js/app.js        orquestração: galeria → legenda → exploração, teclado, ARIA, voz
+js/scales.js     escalas, cor → valor, papéis dos instrumentos, paletas acessíveis
+js/colormaps.js  barras GMAO amostradas (gerado)
+js/sampler.js    leitura robusta de pixels, gradiente, recoloração
+js/geo.js        projeções, máscara terra/oceano, nomes de regiões
+js/audio.js      motor Tone.js em 4 camadas
+js/haptics.js    PeerJS + QR Code
+js/receiver.js   página do celular
+js/gallery.js    pastas locais, presets, miniaturas
+tools/extrair_escalas.py     legendas → js/colormaps.js (+ --validar)
+tools/gerar_mascara_terra.py frames de vento → assets/landmask.png
+referencias/escalas/         legendas oficiais usadas como referência
 ```
-
-- `index.html`: estrutura da interface, controles, regiões ARIA e filtros SVG.
-- `css/styles.css`: tema visual, layout responsivo, alto contraste, baixa sensibilidade e filtros de cor.
-- `js/audio.js`: síntese Web Audio, escalas, quantização, filtros, reverb, drone e análise do sinal.
-- `js/datasets.js`: carregamento das imagens, cenas, renderização, paletas, grade de dados, projeções e amostragem.
-- `js/app.js`: integração da interface, interação por ponteiro/teclado, anúncios, vibração e loop de desenho.
 
 ## Créditos
 
-Dados e visualizações:
-
-- NASA Scientific Visualization Studio, ECCO2: <https://svs.gsfc.nasa.gov/3912>
-- NASA Scientific Visualization Studio, GEDI: <https://svs.gsfc.nasa.gov/4950>
-- As nove imagens locais são recortes e visualizações derivadas dessas duas fontes públicas.
-
-A sonificação, a interface e a síntese de áudio foram criadas para este projeto com a Web Audio API. Nenhum arquivo de áudio externo é utilizado.
+NASA GMAO (GEOS), NASA Scientific Visualization Studio (ECCO2 <https://svs.gsfc.nasa.gov/3912>, GEDI <https://svs.gsfc.nasa.gov/4950>). Amostras: Salamander Grand Piano (Alexander Holm, CC-BY 3.0) e *tonejs-instruments* (Nicholaus Brosowsky).

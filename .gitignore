@@ -3,3 +3,8 @@ Thumbs.db
 *.swp
 .vscode/
 .idea/
+
+# Dados
+dados/
+dados.zip
+referencias/

@@ -1,1168 +1,952 @@
-import {
-  DATASET_CONFIGS,
-  loadDataset,
-  paletteGradient,
-} from "./datasets.js";
-import {
-  EarthAudioEngine,
-  SCALES,
-  quantizeNote,
-} from "./audio.js";
+// A Sinfonia da Terra · Earth Jukebox Multissensorial
+// Orquestra galeria, legenda sensorial, leitura de pixels, áudio, háptica e acessibilidade.
 
-const canvas = document.getElementById("visualCanvas");
-const canvasShell = document.getElementById("canvasShell");
+import { SCALES, SCALE_LIST, INSTRUMENTS, INSTRUMENT_ORDER, GMAO_T0_UTC, scaleFromPixels, paletteColor } from "./scales.js";
+import { loadLandMask, formatCoord } from "./geo.js";
+import { ImageSampler, loadBitmap } from "./sampler.js";
+import { SonificationEngine, MUSICAL_KEYS, midiName } from "./audio.js";
+import { HapticBridge, renderQr, guessReceiverBase, PUBLIC_RECEIVER_BASE } from "./haptics.js";
+import { presetGroups, upgradeGmaoSequences, groupFiles, filesFromDrop, renderPresets, renderLocalGroups } from "./gallery.js";
+
+const $ = (id) => document.getElementById(id);
+const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
+const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+
+const canvas = $("mapCanvas");
 const ctx = canvas.getContext("2d");
-const scopeCanvas = document.getElementById("scopeCanvas");
-const scopeCtx = scopeCanvas.getContext("2d");
+const scope = $("scopeCanvas");
+const scopeCtx = scope.getContext("2d");
 
-const ui = {
-  playButton: document.getElementById("playButton"),
-  playLabel: document.getElementById("playLabel"),
-  startButton: document.getElementById("startButton"),
-  startOverlay: document.getElementById("startOverlay"),
-  loadingVeil: document.getElementById("loadingVeil"),
-  liveText: document.getElementById("liveText"),
-  audioStatusText: document.getElementById("audioStatusText"),
-  datasetKicker: document.getElementById("datasetKicker"),
-  vizHeading: document.getElementById("vizHeading"),
-  datasetMeta: document.getElementById("datasetMeta"),
-  sourceLink: document.getElementById("sourceLink"),
-  legendTitle: document.getElementById("legendTitle"),
-  legendRange: document.getElementById("legendRange"),
-  legendBar: document.getElementById("legendBar"),
-  legendTicks: document.getElementById("legendTicks"),
-  readRegion: document.getElementById("readRegion"),
-  readValueLabel: document.getElementById("readValueLabel"),
-  readValue: document.getElementById("readValue"),
-  readIntensityLabel: document.getElementById("readIntensityLabel"),
-  readIntensity: document.getElementById("readIntensity"),
-  readNote: document.getElementById("readNote"),
-  coordReadout: document.getElementById("coordReadout"),
-  canvasHint: document.getElementById("canvasHint"),
-  pitchMarker: document.getElementById("pitchMarker"),
-  ariaStatus: document.getElementById("ariaStatus"),
-  toast: document.getElementById("toast"),
-  lowSensory: document.getElementById("lowSensory"),
-  highContrast: document.getElementById("highContrast"),
-  vibrationToggle: document.getElementById("vibrationToggle"),
-  colorMode: document.getElementById("colorMode"),
-  scaleSelect: document.getElementById("scaleSelect"),
-  sceneSelect: document.getElementById("sceneSelect"),
-  sceneHelp: document.getElementById("sceneHelp"),
-};
-
-const audio = new EarthAudioEngine();
-const motionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+const engine = new SonificationEngine();
+window.sinfonia = { engine }; // acesso para depuração no console do navegador
+const haptics = new HapticBridge({ onStatus: onPhoneStatus });
 
 const state = {
-  datasetId: "sst",
-  sceneId: "global",
-  scenesByDataset: { sst: "global", gedi: "global" },
-  dataset: null,
-  scaleId: "pentatonicC",
-  audioStarted: false,
-  audioOn: false,
-  lowSensory: false,
-  highContrast: false,
-  vibration: true,
-  colorMode: "none",
-  prefersReducedMotion: motionQuery.matches,
-  position: { x: 0.5, y: 0.5 },
+  presets: presetGroups(),
+  locals: [],
+  group: null,
+  index: 0,
+  scale: null,
+  projection: null,
+  sampler: null,
+  baseCanvas: null, // imagem exibida (original ou recolorida)
+  u: 0.5,
+  v: 0.5,
   pointerInside: false,
-  pointerType: "mouse",
-  keyboardMode: false,
-  active: false,
-  needsUpdate: true,
-  forceAnnounce: false,
-  lastReading: null,
-  lastNote: null,
-  lastAnnouncementAt: 0,
-  lastAnnouncementKey: "",
-  lastVibrateValue: null,
-  lastVibrateAt: 0,
+  keyboardActive: false,
+  reading: null,
+  readingDirty: false,
+  lastMove: 0,
+  announcedKey: "",
   trail: [],
-  view: { width: 1200, height: 600, dpr: 1 },
-  scopeView: { width: 360, height: 80, dpr: 1 },
-  loading: false,
+  playing: false,
   loadToken: 0,
-  toastTimer: 0,
-  announceParity: false,
-  idleTick: 0,
+  colorMode: "none",
+  pendingStart: false,
 };
 
-function clamp(value, min, max) {
-  return Math.min(max, Math.max(min, value));
+// ---------------------------------------------------------------------------
+// Preferências
+// ---------------------------------------------------------------------------
+const prefs = (() => {
+  try { return JSON.parse(localStorage.getItem("sinfonia-prefs") || "{}"); } catch { return {}; }
+})();
+function savePrefs() {
+  try {
+    localStorage.setItem("sinfonia-prefs", JSON.stringify({
+      low: $("lowSensory").checked, voice: $("voiceToggle").checked, hc: $("highContrast").checked,
+      color: $("colorMode").value, volume: Number($("volumeSlider").value), key: $("keySelect").value,
+      samples: $("samplesToggle").checked, lan: $("lanInput").value, receiver: $("receiverMode").value, v: 2,
+    }));
+  } catch { /* armazenamento indisponível */ }
 }
 
-function formatNumber(value, decimals) {
-  return value.toLocaleString("pt-BR", {
-    minimumFractionDigits: decimals,
-    maximumFractionDigits: decimals,
+// ---------------------------------------------------------------------------
+// Anúncios (ARIA live + voz) e toasts
+// ---------------------------------------------------------------------------
+let toastTimer;
+function toast(msg, ms = 3800) {
+  const el = $("toast");
+  el.textContent = msg;
+  el.classList.add("is-visible");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove("is-visible"), ms);
+}
+
+function announce(text, { speak = true } = {}) {
+  const live = $("ariaLive");
+  live.textContent = "";
+  requestAnimationFrame(() => { live.textContent = text; });
+  if (speak && $("voiceToggle").checked && "speechSynthesis" in window) {
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = "pt-BR";
+    u.rate = $("lowSensory").checked ? 0.92 : 1.05;
+    u.volume = $("lowSensory").checked ? 0.7 : 1;
+    const voice = speechSynthesis.getVoices().find((v) => v.lang?.toLowerCase().startsWith("pt"));
+    if (voice) u.voice = voice;
+    speechSynthesis.speak(u);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Views
+// ---------------------------------------------------------------------------
+function showView(name) {
+  const gallery = name === "gallery";
+  $("galleryView").hidden = !gallery;
+  $("exploreView").hidden = gallery;
+  document.body.dataset.view = name;
+  if (gallery) {
+    stopTimeline();
+    engine.update({ active: false });
+    haptics.send(null, { active: false });
+  }
+}
+
+function backToGallery() {
+  showView("gallery");
+  $("main").focus({ preventScroll: true });
+  window.scrollTo({ top: 0, behavior: reducedMotion.matches ? "auto" : "smooth" });
+}
+
+// ---------------------------------------------------------------------------
+// Galeria
+// ---------------------------------------------------------------------------
+function renderGallery() {
+  renderPresets($("presetGrid"), state.presets, selectGroup);
+  const hasLocal = state.locals.length > 0;
+  $("localSection").hidden = !hasLocal;
+  if (hasLocal) {
+    const total = state.locals.reduce((n, g) => n + g.frames.length, 0);
+    $("localSummary").textContent = `${total} ${total === 1 ? "imagem" : "imagens"} em ${state.locals.length} ${state.locals.length === 1 ? "pasta" : "pastas"}. Clique em uma miniatura para explorar.`;
+    renderLocalGroups($("localGroups"), state.locals, {
+      onSelect: selectGroup,
+      onScaleChange: (g, id) => { g.scaleId = id; },
+    });
+  }
+}
+
+function addFiles(files) {
+  const groups = groupFiles(files);
+  if (!groups.length) {
+    toast("Nenhuma imagem JPG, PNG ou WebP encontrada.");
+    return;
+  }
+  state.locals = [...groups, ...state.locals];
+  renderGallery();
+  $("localSection").scrollIntoView({ behavior: reducedMotion.matches ? "auto" : "smooth", block: "start" });
+  const total = groups.reduce((n, g) => n + g.frames.length, 0);
+  announce(`${total} imagens carregadas em ${groups.length} pastas.`, { speak: false });
+}
+
+// ---------------------------------------------------------------------------
+// Seleção de imagem -> Legenda sensorial -> Exploração
+// ---------------------------------------------------------------------------
+async function selectGroup(group, index = 0) {
+  state.group = group;
+  state.index = index;
+  state.scale = group.scaleId ? SCALES[group.scaleId] : null;
+  state.u = 0.5;
+  state.v = 0.5;
+  state.trail = [];
+  state.announcedKey = "";
+  const loading = loadFrame(index, { initial: true });
+  if (!state.scale) await loading; // precisa detectar a escala antes de montar a legenda
+  openLegend();
+  await loading;
+}
+
+function openLegend() {
+  const scale = state.scale || SCALES.generic;
+  const g = state.group;
+  $("legendDialogTitle").textContent = "Legenda auditiva e sensorial";
+  $("legendDialogIntro").textContent = `${g.title}: ouça cada instrumento antes de explorar. ${scale.label}.`;
+  $("dlgScaleLabel").textContent = scale.label;
+  $("dlgScaleUnit").textContent = scale.unit;
+  $("dlgGradient").style.background = scale.gradientCss();
+  renderTicks($("dlgTicks"), scale);
+  $("dlgKey").textContent = MUSICAL_KEYS[engine.key].label.replace("Pentatônica Maior", "pentatônica maior");
+
+  const list = $("instrumentList");
+  list.innerHTML = "";
+  for (const id of INSTRUMENT_ORDER) {
+    const inst = INSTRUMENTS[id];
+    const li = document.createElement("li");
+    li.className = "instrument";
+    li.style.setProperty("--inst", inst.color);
+    const swatch = instrumentSwatch(scale, id);
+    li.innerHTML = `
+      <span class="instrument__icon" aria-hidden="true">${INSTRUMENT_ICONS[id]}</span>
+      <div class="instrument__body">
+        <p class="instrument__register">${inst.register}</p>
+        <h3 class="instrument__name" id="inst-${id}">${inst.name}</h3>
+        <p class="instrument__role">${inst.role}</p>
+        <p class="instrument__here"><span class="instrument__swatch" style="background:${swatch}"></span>${scale.legend[id]}</p>
+      </div>`;
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "button button--ghost instrument__play";
+    btn.setAttribute("aria-describedby", `inst-${id}`);
+    btn.innerHTML = `<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l10-6.5-10-6.5Z" fill="currentColor"/></svg> Ouvir`;
+    btn.addEventListener("click", async () => {
+      try {
+        btn.classList.add("is-playing");
+        const secs = await engine.preview(id);
+        updateAudioUI();
+        setTimeout(() => btn.classList.remove("is-playing"), secs * 1000);
+      } catch (err) {
+        btn.classList.remove("is-playing");
+        toast(err.message || "Não foi possível iniciar o áudio.");
+      }
+    });
+    li.append(btn);
+    list.append(li);
+  }
+
+  const dlg = $("legendDialog");
+  if (!dlg.open) dlg.showModal();
+  $("legendDialogTitle").focus();
+}
+
+// gradiente com as cores da escala onde o instrumento domina (ou um ícone de brilho/borda)
+function instrumentSwatch(scale, id) {
+  const stops = [];
+  for (let i = 0; i <= 60; i += 1) {
+    const pos = i / 60;
+    const value = scale.id === "generic" ? pos * 100 : scale.valueAtPos(pos);
+    const w = scale.roles({ value, norm: pos, bright: 0.45, peak: 0.1, grad: 0, texture: 0 })[id];
+    if (w >= 0.5) stops.push(scale.colorAtPos(pos));
+  }
+  if (stops.length >= 2) {
+    const pick = stops.filter((_, i) => i % Math.ceil(stops.length / 8) === 0);
+    return `linear-gradient(90deg, ${pick.join(", ")})`;
+  }
+  return id === "harp"
+    ? "repeating-linear-gradient(90deg, #fff 0 3px, #222 3px 7px)"
+    : "linear-gradient(90deg, #333, #fff)";
+}
+
+const INSTRUMENT_ICONS = {
+  cello: `<svg viewBox="0 0 48 48"><path d="M24 4v10M20 6h8" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/><path d="M24 14c-5 0-8 3-7 8 .6 2.6-3 3.5-3 9 0 6.5 4.5 11 10 11s10-4.5 10-11c0-5.5-3.6-6.4-3-9 1-5-2-8-7-8Z" fill="none" stroke="currentColor" stroke-width="2.4"/><path d="M21 27c1 1 5 1 6 0M21 33c1-1 5-1 6 0" stroke="currentColor" stroke-width="2"/><path d="M24 14v28" stroke="currentColor" stroke-width="1.6"/></svg>`,
+  piano: `<svg viewBox="0 0 48 48"><rect x="5" y="12" width="38" height="26" rx="3" fill="none" stroke="currentColor" stroke-width="2.4"/><path d="M12.5 12v26M20 12v26M27.5 12v26M35 12v26" stroke="currentColor" stroke-width="1.8"/><path d="M10 12h5v14h-5zM17.5 12h5v14h-5zM32.5 12h5v14h-5z" fill="currentColor"/></svg>`,
+  flute: `<svg viewBox="0 0 48 48"><path d="M8 38 40 8" stroke="currentColor" stroke-width="5" stroke-linecap="round"/><circle cx="18" cy="28" r="1.8" fill="var(--bg-deep, #000)"/><circle cx="23" cy="23" r="1.8" fill="var(--bg-deep, #000)"/><circle cx="28" cy="18" r="1.8" fill="var(--bg-deep, #000)"/><path d="M36 30c3 1 5 3 6 6M33 35c2 .5 3.5 2 4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/></svg>`,
+  harp: `<svg viewBox="0 0 48 48"><path d="M12 42V8c10 0 14 6 18 12s8 8 8 8l-26 14Z" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linejoin="round"/><path d="M17 13v26M22 15v21M27 19v15M32 25v6" stroke="currentColor" stroke-width="1.6"/></svg>`,
+};
+
+async function startExperience() {
+  showView("explore");
+  try {
+    await engine.start();
+    engine.resume();
+  } catch (err) {
+    toast(err.message || "Áudio indisponível neste navegador.");
+  }
+  updateAudioUI();
+  canvas.focus({ preventScroll: true });
+  state.keyboardActive = true;
+  state.readingDirty = true;
+  layoutCanvas();
+  if (state.reading) announceReading(true);
+}
+
+// ---------------------------------------------------------------------------
+// Carregamento de quadros
+// ---------------------------------------------------------------------------
+const frameCache = new Map(); // src(string) -> Promise<bitmap> (pré-busca da linha do tempo)
+function fetchBitmap(src) {
+  if (typeof src !== "string") return loadBitmap(src);
+  if (!frameCache.has(src)) {
+    frameCache.set(src, loadBitmap(src).catch((e) => { frameCache.delete(src); throw e; }));
+    if (frameCache.size > 8) frameCache.delete(frameCache.keys().next().value);
+  }
+  return frameCache.get(src);
+}
+
+async function loadFrame(index, { initial = false } = {}) {
+  const g = state.group;
+  if (!g) return;
+  const token = ++state.loadToken;
+  const frame = g.frames[index];
+  if (initial || !state.playing) $("loadingVeil").hidden = false;
+  try {
+    const bmp = await fetchBitmap(frame.src);
+    if (token !== state.loadToken) return;
+    const sampler = new ImageSampler(bmp);
+    state.sampler = sampler;
+    state.index = index;
+    if (!state.scale) {
+      const id = scaleFromPixels(sampler.imageData);
+      state.scale = SCALES[id];
+      g.scaleId = id;
+      if (id === "generic") toast("Escala não reconhecida: usando o matiz da cor (azul = frio, vermelho = quente). Você pode trocar a escala acima do mapa.", 6000);
+    }
+    state.projection = g.projection || (Math.abs(sampler.width / sampler.height - 2) < 0.05 ? { type: "equirectangular" } : { type: "none" });
+    if (initial) setupExplorerFor(g);
+    rebuildBase();
+    updateTimelineUI();
+    state.readingDirty = true;
+    // pré-busca dos próximos quadros
+    if (g.frames.length > 1) {
+      for (let k = 1; k <= 3; k += 1) {
+        const nf = g.frames[(index + k) % g.frames.length];
+        if (typeof nf.src === "string") fetchBitmap(nf.src).catch(() => {});
+      }
+    }
+  } catch (err) {
+    console.error(err);
+    toast(`Não foi possível abrir ${frame.name}.`);
+  } finally {
+    if (token === state.loadToken) $("loadingVeil").hidden = true;
+  }
+}
+
+function setupExplorerFor(g) {
+  const scale = state.scale;
+  $("exploreKicker").textContent = g.source;
+  $("exploreHeading").textContent = g.title;
+  $("scaleSelect").value = scale.id;
+  updateLegendBar();
+  $("timeline").hidden = g.frames.length < 2;
+  const slider = $("frameSlider");
+  slider.max = String(g.frames.length - 1);
+  canvas.setAttribute(
+    "aria-label",
+    `Mapa sonoro de ${g.title}, ${scale.label}. Use as setas para mover o cursor focal; cada posição toca instrumentos conforme o valor.`
+  );
+  layoutCanvas();
+}
+
+function updateLegendBar() {
+  const s = state.scale;
+  $("legendTitle").textContent = s.label;
+  $("legendUnit").textContent = s.unit;
+  const pal = ["cividis", "viridis", "gray"].includes(state.colorMode) ? state.colorMode : null;
+  $("legendGradient").style.background = pal
+    ? `linear-gradient(90deg, ${[0, 0.2, 0.4, 0.6, 0.8, 1].map((t) => `rgb(${paletteColor(pal, t).join(" ")})`).join(", ")})`
+    : s.gradientCss();
+  renderTicks($("legendTicks"), s);
+  $("legendEnds").innerHTML = s.ends.map((e) => `<span>${e}</span>`).join("");
+  $("readValueLabel").textContent = s.short;
+}
+
+function renderTicks(el, scale) {
+  el.innerHTML = scale.ticks
+    .map((t) => `<span style="left:${(t.pos * 100).toFixed(2)}%">${String(t.value).replace("-", "−")}</span>`)
+    .join("");
+}
+
+function rebuildBase() {
+  const s = state.sampler;
+  if (!s) return;
+  const pal = ["cividis", "viridis", "gray"].includes(state.colorMode) ? state.colorMode : null;
+  state.baseCanvas = pal ? s.recolor(state.scale, pal) : s.canvas;
+  canvas.dataset.filter = ["deuteranopia", "protanopia", "tritanopia"].includes(state.colorMode) ? state.colorMode : "";
+}
+
+// ---------------------------------------------------------------------------
+// Linha do tempo (sequências horárias)
+// ---------------------------------------------------------------------------
+function frameTimeText(frame) {
+  if (frame?.gmaoIndex === undefined) return frame?.name || "—";
+  const d = new Date(GMAO_T0_UTC + frame.gmaoIndex * 3600 * 1000);
+  const fmt = (tz) =>
+    new Intl.DateTimeFormat("pt-BR", { timeZone: tz, day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }).format(d);
+  return `${fmt("UTC")} UTC · ${fmt("America/Sao_Paulo").split(", ").pop()} em Brasília`;
+}
+
+function updateTimelineUI() {
+  const g = state.group;
+  if (!g) return;
+  const f = g.frames[state.index];
+  $("frameSlider").value = String(state.index);
+  $("frameSlider").setAttribute("aria-valuetext", `${state.index + 1} de ${g.frames.length}, ${frameTimeText(f)}`);
+  $("frameLabel").textContent = `${f.name} · ${state.index + 1}/${g.frames.length}`;
+  $("frameTime").textContent = frameTimeText(f);
+}
+
+let playTimer = null;
+function startTimeline() {
+  const g = state.group;
+  if (!g || g.frames.length < 2) return;
+  state.playing = true;
+  $("playTimeline").setAttribute("aria-pressed", "true");
+  $("playTimeline").setAttribute("aria-label", "Pausar linha do tempo");
+  const step = async () => {
+    if (!state.playing) return;
+    const t0 = performance.now();
+    await loadFrame((state.index + 1) % g.frames.length);
+    const interval = 1000 / Number($("speedSelect").value);
+    playTimer = setTimeout(step, Math.max(0, interval - (performance.now() - t0)));
+  };
+  step();
+}
+function stopTimeline() {
+  state.playing = false;
+  clearTimeout(playTimer);
+  $("playTimeline").setAttribute("aria-pressed", "false");
+  $("playTimeline").setAttribute("aria-label", "Reproduzir linha do tempo");
+}
+function stepFrame(delta) {
+  const g = state.group;
+  if (!g || g.frames.length < 2) return;
+  stopTimeline();
+  loadFrame((state.index + delta + g.frames.length) % g.frames.length).then(() => {
+    announce(frameTimeText(g.frames[state.index]), { speak: true });
   });
 }
 
-function formatReadingValue(reading, config) {
-  if (!reading) return "—";
-  return `${formatNumber(reading.value, config.valueDecimals)} ${config.valueUnit}`;
+// ---------------------------------------------------------------------------
+// Leitura e sonificação
+// ---------------------------------------------------------------------------
+function isActive() {
+  return !$("exploreView").hidden && (state.pointerInside || state.keyboardActive) && !$("legendDialog").open;
 }
 
-function formatNote(note) {
-  if (!note) return "—";
-  return `${note.name} · ${Math.round(note.frequency)} Hz`;
-}
-
-function intensityInfo(intensity, config, reading) {
-  if (config.id === "gedi") {
-    if (reading && reading.isWater) {
-      return { short: "Oceano", full: "oceano, sem dossel florestal" };
-    }
-    if (intensity < 0.2) return { short: "Esparso", full: "dossel esparso" };
-    if (intensity < 0.48) return { short: "Moderado", full: "dossel moderado" };
-    if (intensity < 0.76) return { short: "Denso", full: "dossel denso" };
-    return { short: "Muito denso", full: "dossel muito denso" };
-  }
-
-  if (intensity < 0.22) return { short: "Fraca", full: "corrente fraca" };
-  if (intensity < 0.5) return { short: "Moderada", full: "corrente moderada" };
-  if (intensity < 0.78) return { short: "Forte", full: "corrente forte" };
-  return { short: "Muito intensa", full: "corrente muito intensa" };
-}
-
-function announce(text, force = false) {
-  let output = text;
-  if (force) {
-    state.announceParity = !state.announceParity;
-    output += state.announceParity ? "\u200B" : "\u200C";
-  }
-  ui.ariaStatus.textContent = output;
-}
-
-function showToast(message, duration = 3200) {
-  window.clearTimeout(state.toastTimer);
-  ui.toast.textContent = message;
-  ui.toast.classList.add("is-visible");
-  state.toastTimer = window.setTimeout(() => {
-    ui.toast.classList.remove("is-visible");
-  }, duration);
-}
-
-function updateAudioUI() {
-  const playing = state.audioStarted && state.audioOn;
-  document.body.classList.toggle("is-playing", playing);
-  ui.playButton.setAttribute("aria-pressed", String(playing));
-
-  if (!state.audioStarted) {
-    ui.playLabel.textContent = "Iniciar experiência";
-    ui.audioStatusText.textContent = "Áudio aguardando ativação";
-    ui.startOverlay.hidden = false;
-  } else if (playing) {
-    ui.playLabel.textContent = "Pausar áudio";
-    ui.audioStatusText.textContent = state.lowSensory
-      ? "Som ativo em modo de baixa sensibilidade"
-      : "Som ativo · dados em tempo real";
-    ui.startOverlay.hidden = true;
+function computeReading() {
+  const { sampler, scale } = state;
+  if (!sampler || !scale) return null;
+  const r = sampler.read(state.u, state.v, scale, state.projection);
+  if (r.valid) {
+    r.weights = scale.roles(r);
+    r.valueText = scale.format(r.value);
   } else {
-    ui.playLabel.textContent = "Retomar áudio";
-    ui.audioStatusText.textContent = "Áudio pausado";
-    ui.startOverlay.hidden = true;
+    r.weights = { cello: 0, piano: 0, flute: 0, harp: 0 };
+    r.valueText = "sem dado";
   }
+  return r;
+}
 
-  if (!state.lastReading) {
-    ui.liveText.textContent = playing ? "Áudio ativo · mova o ponteiro" : "Pronto para explorar";
+function activeInstruments(r) {
+  return INSTRUMENT_ORDER.filter((id) => (r.weights?.[id] ?? 0) >= 0.25)
+    .sort((a, b) => r.weights[b] - r.weights[a])
+    .map((id) => INSTRUMENTS[id].short);
+}
+
+function joinPt(list) {
+  if (list.length <= 1) return list[0] || "";
+  return `${list.slice(0, -1).join(", ")} e ${list[list.length - 1]}`;
+}
+
+function readingSentence(r) {
+  const place = r.region?.name || state.group?.title || "Imagem";
+  if (!r.valid) return `${place}: sem dados. ${r.reason}.`;
+  const inst = activeInstruments(r);
+  const instText = inst.length ? joinPt(inst) : "silêncio suave";
+  return `${place}: ${instText}. ${state.scale.sentence(r.valueText)}, ${r.zone.label.toLowerCase()}.`;
+}
+
+function announceReading(force = false) {
+  const r = state.reading;
+  if (!r) return;
+  const key = r.valid ? `${r.region?.name}|${r.zone?.index}|${Math.round(r.norm * 40)}` : `x|${r.reason}`;
+  if (!force && key === state.announcedKey) return;
+  state.announcedKey = key;
+  announce(readingSentence(r));
+}
+
+function processReading() {
+  const r = computeReading();
+  if (!r) return;
+  const prev = state.reading;
+  state.reading = r;
+  const active = isActive();
+  engine.update({
+    active: active && r.valid,
+    pan: state.u * 2 - 1,
+    norm: r.valid ? r.norm : 0.5,
+    weights: r.weights,
+    bright: r.bright ?? 0.5,
+    grad: r.grad ?? 0,
+  });
+  haptics.send(r, { active });
+  updateReadingUI(r, prev);
+}
+
+function updateReadingUI(r) {
+  $("readRegion").textContent = r.region?.name || (state.projection?.type === "none" ? "Imagem livre" : "—");
+  $("readCoord").textContent = r.geo ? formatCoord(r.geo.lat, r.geo.lon) : `x ${(r.u * 100).toFixed(0)}% · y ${(r.v * 100).toFixed(0)}%`;
+  $("readValue").textContent = r.valid ? r.valueText : "Sem dado";
+  $("readZone").textContent = r.valid ? r.zone.label : r.reason;
+  // nota do instrumento dominante (violoncelo grave, piano médio, flauta aguda, harpa)
+  const dom = INSTRUMENT_ORDER.reduce((a, b) => ((r.weights[b] ?? 0) > (r.weights[a] ?? 0) ? b : a));
+  const domOn = r.valid && (r.weights[dom] ?? 0) > 0.05;
+  $("readNote").textContent = domOn ? midiName(engine.noteFor(dom, r.norm)) : "—";
+  const pan = state.u * 2 - 1;
+  const side = Math.abs(pan) < 0.12 ? "centro" : pan < 0 ? `esquerda ${Math.round(-pan * 100)}%` : `direita ${Math.round(pan * 100)}%`;
+  $("readPan").textContent = domOn ? `${INSTRUMENTS[dom].short} · ${side}` : side;
+  const marker = $("legendMarker");
+  marker.hidden = !r.valid;
+  if (r.valid) marker.style.left = `${(r.norm * 100).toFixed(2)}%`;
+  const meters = $("instMeters");
+  if (!meters.children.length) {
+    meters.innerHTML = INSTRUMENT_ORDER.map(
+      (id) => `<li style="--inst:${INSTRUMENTS[id].color}"><span>${INSTRUMENTS[id].short}</span><i><b id="m-${id}"></b></i></li>`
+    ).join("");
+  }
+  for (const id of INSTRUMENT_ORDER) {
+    $(`m-${id}`).style.transform = `scaleX(${(r.weights[id] ?? 0).toFixed(3)})`;
   }
 }
 
-function refreshActivity() {
-  const keyboardActive = state.keyboardMode && document.activeElement === canvas;
-  const nextActive = state.pointerInside || keyboardActive;
+// ---------------------------------------------------------------------------
+// Canvas: layout, ponteiro, teclado e desenho
+// ---------------------------------------------------------------------------
+function layoutCanvas() {
+  const s = state.sampler;
+  const shell = $("canvasShell");
+  const aspect = s ? s.width / s.height : 2;
+  const maxH = Math.max(260, window.innerHeight * 0.66);
+  const cssW = Math.min(shell.clientWidth, maxH * aspect);
+  const cssH = cssW / aspect;
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  canvas.style.width = `${cssW}px`;
+  canvas.style.height = `${cssH}px`;
+  canvas.width = Math.round(cssW * dpr);
+  canvas.height = Math.round(cssH * dpr);
+}
 
-  if (nextActive === state.active) {
-    if (!nextActive) audio.setActive(false);
-    return;
+function setFromPointer(e) {
+  const rect = canvas.getBoundingClientRect();
+  state.u = clamp((e.clientX - rect.left) / rect.width);
+  state.v = clamp((e.clientY - rect.top) / rect.height);
+  state.lastMove = performance.now();
+  state.readingDirty = true;
+  state.trail.push({ u: state.u, v: state.v, t: state.lastMove });
+  if (state.trail.length > 28) state.trail.shift();
+}
+
+function moveFocal(du, dv) {
+  state.u = clamp(state.u + du);
+  state.v = clamp(state.v + dv);
+  state.keyboardActive = true;
+  state.lastMove = performance.now();
+  state.readingDirty = true;
+  state.trail.push({ u: state.u, v: state.v, t: state.lastMove });
+  if (state.trail.length > 28) state.trail.shift();
+}
+
+function draw(time) {
+  const w = canvas.width;
+  const h = canvas.height;
+  ctx.clearRect(0, 0, w, h);
+  if (state.baseCanvas) {
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(state.baseCanvas, 0, 0, w, h);
+  }
+  const hc = document.documentElement.classList.contains("hc");
+  const dpr = w / canvas.clientWidth || 1;
+  const x = state.u * w;
+  const y = state.v * h;
+
+  // rastro
+  const now = performance.now();
+  ctx.lineCap = "round";
+  for (let i = 1; i < state.trail.length; i += 1) {
+    const a = state.trail[i - 1];
+    const b = state.trail[i];
+    const age = (now - b.t) / 1200;
+    if (age > 1) continue;
+    ctx.strokeStyle = `rgba(255,255,255,${0.5 * (1 - age)})`;
+    ctx.lineWidth = 2 * dpr * (1 - age);
+    ctx.beginPath();
+    ctx.moveTo(a.u * w, a.v * h);
+    ctx.lineTo(b.u * w, b.v * h);
+    ctx.stroke();
   }
 
-  state.active = nextActive;
-  state.needsUpdate = true;
+  // retícula do cursor focal
+  const active = isActive();
+  const pulse = reducedMotion.matches || $("lowSensory").checked ? 0 : Math.sin(time / 380) * 2;
+  const R = (14 + pulse) * dpr;
+  ctx.lineWidth = (hc ? 3 : 2) * dpr;
+  ctx.strokeStyle = hc ? "#ffff00" : "rgba(255,255,255,.95)";
+  ctx.shadowColor = "rgba(0,0,0,.7)";
+  ctx.shadowBlur = 6 * dpr;
+  ctx.beginPath();
+  ctx.arc(x, y, R, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.beginPath();
+  for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+    ctx.moveTo(x + dx * (R + 4 * dpr), y + dy * (R + 4 * dpr));
+    ctx.lineTo(x + dx * (R + 14 * dpr), y + dy * (R + 14 * dpr));
+  }
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+  if (state.reading?.valid) {
+    ctx.fillStyle = `rgb(${state.reading.rgb.join(",")})`;
+    ctx.beginPath();
+    ctx.arc(x, y, 5 * dpr, 0, Math.PI * 2);
+    ctx.fill();
+  }
 
-  if (!nextActive) {
-    audio.setActive(false);
-    ui.liveText.textContent =
-      state.audioStarted && state.audioOn
-        ? "Áudio ativo · explore o mapa"
-        : state.audioStarted
-          ? "Áudio pausado"
-          : "Pronto para explorar";
+  // etiqueta com o valor
+  if (state.reading && (active || hc)) {
+    const r = state.reading;
+    const label = r.valid ? `${r.valueText} · ${r.region?.name || r.zone.label}` : "sem dado";
+    ctx.font = `600 ${12.5 * dpr}px system-ui, sans-serif`;
+    const tw = ctx.measureText(label).width + 16 * dpr;
+    const th = 24 * dpr;
+    let lx = x + R + 12 * dpr;
+    let ly = y - R - th;
+    if (lx + tw > w - 4) lx = x - R - 12 * dpr - tw;
+    if (ly < 4) ly = y + R + 8 * dpr;
+    ctx.fillStyle = hc ? "#000" : "rgba(3,8,15,.82)";
+    ctx.strokeStyle = hc ? "#ffff00" : "rgba(255,255,255,.25)";
+    ctx.lineWidth = 1 * dpr;
+    ctx.beginPath();
+    ctx.roundRect?.(lx, ly, tw, th, 8 * dpr);
+    if (!ctx.roundRect) ctx.rect(lx, ly, tw, th);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = hc ? "#ffff00" : "#eef8ff";
+    ctx.fillText(label, lx + 8 * dpr, ly + 16.5 * dpr);
   }
 }
 
-async function startAudio(options = {}) {
-  if (state.audioStarted && state.audioOn) {
-    if (options.focusCanvas) canvas.focus({ preventScroll: true });
-    return true;
+function drawScope() {
+  const w = scope.width;
+  const h = scope.height;
+  scopeCtx.clearRect(0, 0, w, h);
+  const data = engine.getWaveform();
+  const color = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim() || "#67e8f9";
+  scopeCtx.strokeStyle = color;
+  scopeCtx.lineWidth = 2;
+  scopeCtx.beginPath();
+  if (!data || engine.paused) {
+    scopeCtx.moveTo(0, h / 2);
+    scopeCtx.lineTo(w, h / 2);
+  } else {
+    for (let i = 0; i < data.length; i += 1) {
+      const px = (i / (data.length - 1)) * w;
+      const py = h / 2 - clamp(data[i] * 2.2, -1, 1) * (h / 2 - 4);
+      if (i) scopeCtx.lineTo(px, py);
+      else scopeCtx.moveTo(px, py);
+    }
   }
-
-  try {
-    if (!state.audioStarted) {
-      await audio.start();
-      state.audioStarted = true;
-    }
-
-    state.audioOn = true;
-    audio.setPlaying(true);
-    audio.setLowSensory(state.lowSensory);
-    audio.setScale(state.scaleId);
-
-    ui.startOverlay.hidden = true;
-    updateAudioUI();
-
-    if (options.center) {
-      state.position = { x: 0.5, y: 0.5 };
-      state.pointerInside = false;
-      state.keyboardMode = true;
-      state.active = true;
-    }
-
-    if (options.focusCanvas) {
-      canvas.focus({ preventScroll: true });
-    }
-
-    if (state.active) {
-      state.needsUpdate = true;
-      audio.setActive(true);
-    }
-
-    return true;
-  } catch (error) {
-    showToast(
-      error && error.message
-        ? error.message
-        : "Não foi possível iniciar o áudio neste navegador.",
-      5200
-    );
-    return false;
-  }
+  scopeCtx.stroke();
 }
 
-function pauseAudio() {
-  state.audioOn = false;
-  audio.setPlaying(false);
-  audio.setActive(false);
-  updateAudioUI();
-  ui.liveText.textContent = "Áudio pausado";
+let lastReadingTime = 0;
+function frame(time) {
+  if (!$("exploreView").hidden) {
+    if (state.readingDirty || time - lastReadingTime > 250) {
+      state.readingDirty = false;
+      lastReadingTime = time;
+      processReading();
+    }
+    draw(time);
+    drawScope();
+    // anuncia quando o cursor para por ~0,7 s
+    if (isActive() && performance.now() - state.lastMove > 700 && state.lastMove) announceReading();
+  }
+  requestAnimationFrame(frame);
+}
+
+// ---------------------------------------------------------------------------
+// Áudio UI
+// ---------------------------------------------------------------------------
+function updateAudioUI() {
+  const on = engine.started && !engine.paused;
+  const btn = $("audioToggle");
+  btn.setAttribute("aria-pressed", String(on));
+  btn.classList.toggle("is-on", on);
+  $("audioToggleLabel").textContent = on ? "Pausar áudio" : engine.started ? "Retomar áudio" : "Ativar áudio";
+  $("liveText").textContent = on ? "Som ao vivo" : engine.started ? "Áudio pausado" : "Áudio desligado";
+  $("livePill").classList.toggle("is-live", on);
+  $("audioDot").classList.toggle("is-on", on);
+  $("audioStatus").textContent = !engine.available
+    ? "Tone.js não carregou: verifique a conexão com a internet."
+    : on ? `Tocando · ${MUSICAL_KEYS[engine.key].label}${engine.low ? " · baixa sensibilidade" : ""}` : engine.started ? "Áudio pausado" : "Áudio aguardando ativação";
 }
 
 async function toggleAudio() {
-  if (!state.audioStarted || !state.audioOn) {
-    const center = document.activeElement !== canvas;
-    await startAudio({ center });
-  } else {
-    pauseAudio();
-  }
-}
-
-async function startExperienceFromButton() {
-  const started = await startAudio({ center: true, focusCanvas: true });
-  if (started) {
-    state.needsUpdate = true;
-    announce("Experiência sonora iniciada. Use as setas ou mova o ponteiro sobre o mapa.", true);
-  }
-}
-
-function showLoading(visible) {
-  state.loading = visible;
-  ui.loadingVeil.hidden = !visible;
-  canvasShell.setAttribute("aria-busy", String(visible));
-  ui.startButton.disabled = visible;
-  ui.sceneSelect.disabled = visible;
-}
-
-function populateSceneSelect(datasetId, selectedId) {
-  const dataset = DATASET_CONFIGS[datasetId];
-  if (!dataset) return;
-
-  ui.sceneSelect.replaceChildren(
-    ...dataset.scenes.map((scene) => {
-      const option = document.createElement("option");
-      option.value = scene.id;
-      option.textContent = scene.label;
-      return option;
-    })
-  );
-  ui.sceneSelect.value = selectedId;
-  ui.sceneSelect.disabled = state.loading;
-}
-
-function updateDatasetUI(config) {
-  ui.datasetKicker.textContent = config.kicker;
-  ui.vizHeading.textContent = config.title;
-  ui.datasetMeta.textContent = config.meta;
-  ui.sourceLink.href = config.sourceUrl;
-  ui.sourceLink.textContent = config.sourceLabel;
-  ui.legendTitle.textContent = config.legendTitle;
-  ui.legendRange.textContent = config.legendRange;
-  ui.legendBar.style.background = paletteGradient(config);
-  ui.legendTicks.replaceChildren(
-    ...config.legendTicks.map((tick) => {
-      const span = document.createElement("span");
-      span.textContent = String(tick);
-      return span;
-    })
-  );
-  ui.readValueLabel.textContent = config.valueLabel;
-  ui.readIntensityLabel.textContent = config.intensityLabel;
-  ui.sceneHelp.textContent =
-    config.description || "Escolha uma visão global ou um recorte regional para explorar.";
-  ui.startButton.disabled = state.loading;
-
-  canvas.setAttribute(
-    "aria-label",
-    `A Sinfonia da Terra. ${config.ariaSubject}. Use o ponteiro ou as setas do teclado para explorar. Cada posição produz uma nota musical quantizada.`
-  );
-}
-
-async function selectDataset(id, options = {}) {
-  const datasetConfig = DATASET_CONFIGS[id];
-  if (!datasetConfig) return;
-
-  const fallbackScene = datasetConfig.defaultScene || datasetConfig.scenes[0].id;
-  const requestedScene =
-    options.sceneId || state.scenesByDataset[id] || fallbackScene;
-  const sceneId = datasetConfig.scenes.some((scene) => scene.id === requestedScene)
-    ? requestedScene
-    : fallbackScene;
-  const previousDatasetId = state.datasetId;
-  const previousSceneId = state.sceneId;
-  const previousScenesByDataset = { ...state.scenesByDataset };
-  const token = ++state.loadToken;
-
-  populateSceneSelect(id, sceneId);
-  showLoading(true);
-
   try {
-    const dataset = await loadDataset(id, sceneId);
-    if (token !== state.loadToken) return;
-
-    state.datasetId = id;
-    state.sceneId = sceneId;
-    state.scenesByDataset[id] = sceneId;
-    state.dataset = dataset;
-    state.lastVibrateValue = null;
-    updateDatasetUI(dataset.config);
-    populateSceneSelect(id, sceneId);
-
-    const radio = document.querySelector(`input[name="dataset"][value="${id}"]`);
-    if (radio) radio.checked = true;
-
-    if (!options.initial) {
-      showToast(`${dataset.config.title}: ${dataset.config.meta}.`);
-      announce(
-        `${dataset.config.title}. ${dataset.config.meta}. Use as setas para explorar.`,
-        true
-      );
-    }
-
-    state.needsUpdate = true;
-    state.forceAnnounce = Boolean(options.initial);
-    updateReading(true);
-  } catch (error) {
-    if (token !== state.loadToken) return;
-    showToast(error.message || "Falha ao carregar o dataset.", 5200);
-    const radio = document.querySelector(
-      `input[name="dataset"][value="${previousDatasetId}"]`
-    );
-    if (radio) radio.checked = true;
-    state.scenesByDataset = previousScenesByDataset;
-    populateSceneSelect(previousDatasetId, previousSceneId);
-  } finally {
-    if (token === state.loadToken) {
-      showLoading(false);
-      updateAudioUI();
-    }
+    if (!engine.started) await engine.start();
+    else if (engine.paused) engine.resume();
+    else engine.pause();
+  } catch (err) {
+    toast(err.message || "Não foi possível iniciar o áudio.");
   }
-}
-
-function updateReading(force = false, options = {}) {
-  const dataset = state.dataset;
-  if (!dataset) return;
-
-  const reading = dataset.sample(state.position.x, state.position.y);
-  const config = dataset.config;
-  const note = reading
-    ? quantizeNote(reading.normalized, state.scaleId)
-    : null;
-
-  state.lastReading = reading;
-  state.lastNote = note;
-
-  if (!reading) {
-    const isLocalScene = config.projection === "local";
-    const reason = dataset.reasonAt(state.position.x, state.position.y);
-    const isLand = reason === 1;
-    const missingLabel = isLand
-      ? "Continente"
-      : isLocalScene
-        ? "Sem dados"
-        : "Fora do globo";
-    ui.readRegion.textContent = missingLabel;
-    ui.readValue.textContent = "—";
-    ui.readIntensity.textContent = "—";
-    ui.readNote.textContent = "—";
-    ui.coordReadout.textContent = isLocalScene
-      ? "Cena regional"
-      : isLand
-        ? dataset.coordinateAt(state.position.x, state.position.y)
-        : "Fora do globo";
-    ui.pitchMarker.style.left = "50%";
-    audio.setActive(false);
-
-    if (state.active) {
-      const now = performance.now();
-      if (now - state.lastAnnouncementAt > 1200) {
-        announce(
-          isLand
-            ? "Continente. Sem dados de temperatura oceânica nesta posição."
-            : isLocalScene
-              ? "Sem dados nesta posição da imagem."
-              : "Fora da cobertura de dados deste dataset.",
-          force
-        );
-        state.lastAnnouncementAt = now;
-      }
-    }
-    state.needsUpdate = false;
-    state.forceAnnounce = false;
-    return;
-  }
-
-  const valueText = formatReadingValue(reading, config);
-  const intensity = intensityInfo(reading.intensity, config, reading);
-
-  ui.readRegion.textContent = reading.region;
-  ui.readValue.textContent = valueText;
-  ui.readIntensity.textContent = intensity.short;
-  ui.readNote.textContent = note.name;
-  ui.coordReadout.textContent = reading.coordinateLabel;
-  ui.pitchMarker.style.left = `${(reading.normalized * 100).toFixed(1)}%`;
-
-  if (state.active) {
-    audio.update(
-      {
-        valueNorm: reading.normalized,
-        intensity: reading.intensity,
-        pan: reading.x * 2 - 1,
-      },
-      true
-    );
-  }
-
-  if (state.audioStarted && state.audioOn && state.active) {
-    ui.liveText.textContent = `Sonificando · ${reading.region}`;
-    ui.canvasHint.textContent = "Som ativo · mova devagar para ouvir as transições";
-  } else if (state.audioStarted && state.audioOn) {
-    ui.liveText.textContent = "Áudio ativo · explore o mapa";
-  } else if (state.audioStarted) {
-    ui.liveText.textContent = "Áudio pausado";
-  } else {
-    ui.liveText.textContent = "Pronto para explorar";
-  }
-
-  const now = performance.now();
-  const band = Math.round(reading.normalized * 20);
-  const announcementKey = `${reading.region}|${band}|${intensity.short}`;
-  const shouldAnnounce =
-    force ||
-    options.forceAnnounce ||
-    (state.active &&
-      announcementKey !== state.lastAnnouncementKey &&
-      now - state.lastAnnouncementAt > (state.keyboardMode ? 300 : 900));
-
-  if (shouldAnnounce) {
-    let description = `${reading.region}. `;
-
-    if (config.id === "gedi") {
-      description += reading.isWater
-        ? "Oceano, sem dossel florestal. "
-        : `${intensity.full}, ${valueText}. `;
-    } else {
-      description += `${valueText}. ${intensity.full}. `;
-    }
-
-    description += `Nota ${note.name}.`;
-    announce(description, force || options.forceAnnounce);
-    state.lastAnnouncementAt = now;
-    state.lastAnnouncementKey = announcementKey;
-  }
-
-  maybeVibrate(reading, config);
-
-  if (state.active) {
-    const motionReduced = state.prefersReducedMotion || state.lowSensory;
-    const last = state.trail[state.trail.length - 1];
-    const distance = last
-      ? Math.hypot(reading.x - last.x, reading.y - last.y)
-      : Infinity;
-
-    if (!motionReduced && distance > 0.006) {
-      state.trail.push({
-        x: reading.x,
-        y: reading.y,
-        color: reading.color,
-        intensity: reading.intensity,
-        time: now,
-      });
-      if (state.trail.length > 22) state.trail.shift();
-    }
-  }
-
-  state.needsUpdate = false;
-  state.forceAnnounce = false;
-}
-
-function maybeVibrate(reading, config) {
-  if (!state.vibration || !navigator.vibrate) return;
-  if (state.pointerType !== "touch" && state.pointerType !== "pen") return;
-  if (reading.isWater) return;
-
-  const now = performance.now();
-  const threshold = config.id === "sst" ? 1.6 : 7;
-  const previous = state.lastVibrateValue;
-
-  if (
-    previous !== null &&
-    Math.abs(reading.value - previous) >= threshold &&
-    now - state.lastVibrateAt > 280
-  ) {
-    state.lastVibrateAt = now;
-    try {
-      navigator.vibrate(state.lowSensory ? 6 : 10);
-    } catch {
-      /* A API de vibração é opcional. */
-    }
-  }
-
-  state.lastVibrateValue = reading.value;
-}
-
-function getNormalizedPosition(event) {
-  const rect = canvas.getBoundingClientRect();
-  return {
-    x: clamp((event.clientX - rect.left) / rect.width, 0, 1),
-    y: clamp((event.clientY - rect.top) / rect.height, 0, 1),
-  };
-}
-
-function setPositionFromPointer(event) {
-  state.pointerType = event.pointerType || "mouse";
-  state.position = getNormalizedPosition(event);
-  state.pointerInside = true;
-  state.keyboardMode = false;
-  state.active = true;
-  state.needsUpdate = true;
-}
-
-function moveFocusedPoint(dx, dy) {
-  state.position = {
-    x: clamp(state.position.x + dx, 0, 1),
-    y: clamp(state.position.y + dy, 0, 1),
-  };
-  state.keyboardMode = true;
-  state.active = true;
-  state.needsUpdate = true;
-  state.forceAnnounce = true;
-}
-
-function setupCanvasSizing() {
-  const resize = () => {
-    const rect = canvas.getBoundingClientRect();
-    if (rect.width < 1 || rect.height < 1) return;
-
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    const width = Math.round(rect.width * dpr);
-    const height = Math.round(rect.height * dpr);
-
-    if (canvas.width !== width || canvas.height !== height) {
-      canvas.width = width;
-      canvas.height = height;
-    }
-
-    state.view = { width: rect.width, height: rect.height, dpr };
-  };
-
-  resize();
-  if ("ResizeObserver" in window) {
-    new ResizeObserver(resize).observe(canvasShell);
-  } else {
-    window.addEventListener("resize", resize);
-  }
-}
-
-function setupScopeSizing() {
-  const resize = () => {
-    const rect = scopeCanvas.getBoundingClientRect();
-    if (rect.width < 1 || rect.height < 1) return;
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    const width = Math.round(rect.width * dpr);
-    const height = Math.round(rect.height * dpr);
-    if (scopeCanvas.width !== width || scopeCanvas.height !== height) {
-      scopeCanvas.width = width;
-      scopeCanvas.height = height;
-    }
-    state.scopeView = { width: rect.width, height: rect.height, dpr };
-  };
-
-  resize();
-  if ("ResizeObserver" in window) {
-    new ResizeObserver(resize).observe(scopeCanvas);
-  } else {
-    window.addEventListener("resize", resize);
-  }
-}
-
-function roundedRect(context, x, y, width, height, radius) {
-  const r = Math.min(radius, width / 2, height / 2);
-  context.beginPath();
-  context.moveTo(x + r, y);
-  context.arcTo(x + width, y, x + width, y + height, r);
-  context.arcTo(x + width, y + height, x, y + height, r);
-  context.arcTo(x, y + height, x, y, r);
-  context.arcTo(x, y, x + width, y, r);
-  context.closePath();
-}
-
-function truncateText(context, text, maxWidth) {
-  if (context.measureText(text).width <= maxWidth) return text;
-  let output = text;
-  while (output.length > 1 && context.measureText(`${output}…`).width > maxWidth) {
-    output = output.slice(0, -1);
-  }
-  return `${output}…`;
-}
-
-function drawGraticule(context, width, height, projection, time) {
-  context.save();
-  context.lineWidth = 1;
-
-  if (projection === "globe") {
-    const cx = (804 / 1600) * width;
-    const cy = (399 / 800) * height;
-    const rx = (391 / 1600) * width;
-    const ry = (391 / 800) * height;
-
-    context.beginPath();
-    context.ellipse(cx, cy, rx + 9, ry + 9, 0, 0, Math.PI * 2);
-    context.strokeStyle = "rgba(148, 229, 255, 0.1)";
-    context.setLineDash([3, 9]);
-    context.lineDashOffset = -time / 80;
-    context.stroke();
-
-    context.setLineDash([]);
-    context.beginPath();
-    context.ellipse(cx, cy, rx * 0.66, ry, 0, 0, Math.PI * 2);
-    context.strokeStyle = "rgba(148, 229, 255, 0.035)";
-    context.stroke();
-    return;
-  }
-
-  if (projection === "local") {
-    const rect = state.dataset ? state.dataset.drawRect : null;
-    if (!rect) {
-      context.restore();
-      return;
-    }
-
-    const x = (rect.x / 1600) * width;
-    const y = (rect.y / 800) * height;
-    const rectWidth = (rect.width / 1600) * width;
-    const rectHeight = (rect.height / 800) * height;
-
-    context.save();
-    context.beginPath();
-    context.rect(x, y, rectWidth, rectHeight);
-    context.clip();
-    context.strokeStyle = "rgba(154, 222, 255, 0.04)";
-
-    for (let i = 1; i < 8; i += 1) {
-      const lineX = x + (rectWidth / 8) * i;
-      context.beginPath();
-      context.moveTo(lineX, y);
-      context.lineTo(lineX, y + rectHeight);
-      context.stroke();
-    }
-
-    for (let i = 1; i < 4; i += 1) {
-      const lineY = y + (rectHeight / 4) * i;
-      context.beginPath();
-      context.moveTo(x, lineY);
-      context.lineTo(x + rectWidth, lineY);
-      context.stroke();
-    }
-
-    context.restore();
-    context.restore();
-    return;
-  }
-
-  context.strokeStyle = "rgba(154, 222, 255, 0.045)";
-  for (let i = 1; i < 12; i += 1) {
-    const x = (width / 12) * i;
-    context.beginPath();
-    context.moveTo(x, 0);
-    context.lineTo(x, height);
-    context.stroke();
-  }
-
-  for (let i = 1; i < 6; i += 1) {
-    const y = (height / 6) * i;
-    context.beginPath();
-    context.moveTo(0, y);
-    context.lineTo(width, y);
-    context.stroke();
-  }
-
-  context.beginPath();
-  context.moveTo(0, height / 2);
-  context.lineTo(width, height / 2);
-  context.strokeStyle = "rgba(196, 244, 255, 0.09)";
-  context.stroke();
-
-  context.beginPath();
-  context.moveTo(width / 2, 0);
-  context.lineTo(width / 2, height);
-  context.strokeStyle = "rgba(196, 244, 255, 0.065)";
-  context.stroke();
-  context.restore();
-}
-
-function drawTrail(context, width, height, time) {
-  if (!state.trail.length) return;
-
-  const cutoff = time - 1400;
-  state.trail = state.trail.filter((point) => point.time >= cutoff);
-  context.save();
-  context.globalCompositeOperation = "lighter";
-
-  for (const point of state.trail) {
-    const age = clamp((time - point.time) / 1400, 0, 1);
-    const alpha = (1 - age) * 0.2;
-    const radius = 2 + (1 - age) * 4;
-    const color = point.color || [103, 232, 249];
-    context.beginPath();
-    context.arc(point.x * width, point.y * height, radius, 0, Math.PI * 2);
-    context.fillStyle = `rgba(${color.join(", ")}, ${alpha.toFixed(3)})`;
-    context.fill();
-  }
-
-  context.restore();
-}
-
-function drawReticle(context, width, height, time) {
-  if (!state.active) return;
-
-  const reading = state.lastReading;
-  const x = state.position.x * width;
-  const y = state.position.y * height;
-  const motionReduced = state.prefersReducedMotion || state.lowSensory;
-  const color = reading && reading.color ? reading.color : [103, 232, 249];
-  const colorCss = `rgb(${color.join(", ")})`;
-  const accent = state.highContrast ? "#ffffff" : colorCss;
-
-  context.save();
-  context.globalCompositeOperation = "lighter";
-
-  const glow = context.createRadialGradient(x, y, 0, x, y, 46);
-  glow.addColorStop(0, `rgba(${color.join(", ")}, 0.22)`);
-  glow.addColorStop(0.45, `rgba(${color.join(", ")}, 0.08)`);
-  glow.addColorStop(1, `rgba(${color.join(", ")}, 0)`);
-  context.fillStyle = glow;
-  context.beginPath();
-  context.arc(x, y, 46, 0, Math.PI * 2);
-  context.fill();
-  context.restore();
-
-  context.save();
-  context.strokeStyle = state.highContrast
-    ? "rgba(255, 255, 255, 0.3)"
-    : "rgba(184, 239, 255, 0.18)";
-  context.lineWidth = 1;
-  context.setLineDash([2, 7]);
-  context.beginPath();
-  context.moveTo(x, 0);
-  context.lineTo(x, height);
-  context.moveTo(0, y);
-  context.lineTo(width, y);
-  context.stroke();
-
-  context.setLineDash([4, 6]);
-  context.lineDashOffset = motionReduced ? 0 : -time / 90;
-  context.strokeStyle = accent;
-  context.lineWidth = state.highContrast ? 2 : 1.35;
-  context.beginPath();
-  context.arc(x, y, 18, 0, Math.PI * 2);
-  context.stroke();
-
-  if (!motionReduced) {
-    const phase = (time % 1500) / 1500;
-    context.setLineDash([]);
-    context.strokeStyle = `rgba(${color.join(", ")}, ${(0.26 * (1 - phase)).toFixed(3)})`;
-    context.beginPath();
-    context.arc(x, y, 20 + phase * 22, 0, Math.PI * 2);
-    context.stroke();
-  }
-
-  context.setLineDash([]);
-  context.fillStyle = state.highContrast ? "#fff" : colorCss;
-  context.beginPath();
-  context.arc(x, y, 3, 0, Math.PI * 2);
-  context.fill();
-  context.restore();
-
-  drawReadingChip(context, x, y, width, height, reading);
-}
-
-function drawReadingChip(context, x, y, width, height, reading) {
-  const config = state.dataset ? state.dataset.config : null;
-  if (!config) return;
-
-  const lineOne = reading ? reading.region : "Fora da cobertura";
-  const lineTwo = reading
-    ? `${formatReadingValue(reading, config)} · ${state.lastNote ? state.lastNote.name : "—"}`
-    : "Sem dados aqui";
-
-  context.save();
-  context.font = '600 10px "Inter", system-ui, sans-serif';
-  const lineOneWidth = context.measureText(lineOne).width;
-  context.font = '700 12px "Inter", system-ui, sans-serif';
-  const lineTwoWidth = context.measureText(lineTwo).width;
-  const chipWidth = clamp(Math.max(lineOneWidth, lineTwoWidth) + 22, 108, 258);
-  const chipHeight = 46;
-  const legendGuard = 72;
-
-  let chipX = x + 24;
-  let chipY = y + 20;
-
-  if (chipX + chipWidth > width - 12) chipX = x - chipWidth - 24;
-  if (chipY + chipHeight > height - legendGuard) chipY = y - chipHeight - 22;
-
-  chipX = clamp(chipX, 12, width - chipWidth - 12);
-  chipY = clamp(chipY, 12, height - chipHeight - 12);
-
-  roundedRect(context, chipX, chipY, chipWidth, chipHeight, 11);
-  context.fillStyle = state.highContrast ? "rgba(0, 0, 0, 0.92)" : "rgba(2, 9, 16, 0.84)";
-  context.fill();
-  context.strokeStyle = state.highContrast
-    ? "rgba(255, 255, 255, 0.72)"
-    : "rgba(151, 225, 255, 0.2)";
-  context.lineWidth = 1;
-  context.stroke();
-
-  context.font = '600 10px "Inter", system-ui, sans-serif';
-  context.fillStyle = state.highContrast ? "#fff" : "rgba(194, 224, 241, 0.86)";
-  context.textBaseline = "middle";
-  context.fillText(
-    truncateText(context, lineOne, chipWidth - 20),
-    chipX + 11,
-    chipY + 15
-  );
-
-  context.font = '700 12px "Inter", system-ui, sans-serif';
-  context.fillStyle = state.highContrast ? "#fff" : "rgb(232, 250, 255)";
-  context.fillText(
-    truncateText(context, lineTwo, chipWidth - 20),
-    chipX + 11,
-    chipY + 31
-  );
-  context.restore();
-}
-
-function drawFrame(time) {
-  const { width, height, dpr } = state.view;
-  if (!state.dataset || width < 1 || height < 1) return;
-
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  ctx.clearRect(0, 0, width, height);
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = "high";
-  ctx.drawImage(state.dataset.visualCanvas, 0, 0, width, height);
-
-  drawGraticule(ctx, width, height, state.dataset.config.projection, time);
-
-  if (!state.prefersReducedMotion && !state.lowSensory) {
-    drawTrail(ctx, width, height, time);
-  }
-
-  drawReticle(ctx, width, height, time);
-}
-
-function drawScope(time) {
-  const { width, height, dpr } = state.scopeView;
-  if (width < 1 || height < 1) return;
-
-  scopeCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  scopeCtx.clearRect(0, 0, width, height);
-
-  const background = scopeCtx.createLinearGradient(0, 0, 0, height);
-  background.addColorStop(0, "rgba(3, 12, 21, 0.55)");
-  background.addColorStop(1, "rgba(3, 12, 21, 0.08)");
-  scopeCtx.fillStyle = background;
-  scopeCtx.fillRect(0, 0, width, height);
-
-  const mid = height / 2;
-  scopeCtx.strokeStyle = "rgba(143, 168, 189, 0.14)";
-  scopeCtx.lineWidth = 1;
-  scopeCtx.beginPath();
-  scopeCtx.moveTo(0, mid);
-  scopeCtx.lineTo(width, mid);
-  scopeCtx.stroke();
-
-  const data = audio.getScopeData();
-  const active = state.audioStarted && state.audioOn;
-  const amplitude = height * 0.34;
-  const points = Math.max(42, Math.floor(width / 3));
-  const path = new Path2D();
-
-  for (let i = 0; i < points; i += 1) {
-    const progress = i / (points - 1);
-    let sample = 0;
-
-    if (data && active) {
-      const index = Math.floor(progress * (data.length - 1));
-      sample = (data[index] - 128) / 128;
-    } else {
-      const wave =
-        Math.sin(progress * Math.PI * 6 + time / 720) * 0.14 +
-        Math.sin(progress * Math.PI * 13 - time / 1000) * 0.045;
-      sample = active ? wave * 0.45 : wave;
-    }
-
-    const x = progress * width;
-    const y = mid - sample * amplitude;
-
-    if (i === 0) path.moveTo(x, y);
-    else path.lineTo(x, y);
-  }
-
-  const fillPath = new Path2D(path);
-  fillPath.lineTo(width, mid);
-  fillPath.lineTo(0, mid);
-  fillPath.closePath();
-
-  const fill = scopeCtx.createLinearGradient(0, 0, 0, height);
-  fill.addColorStop(0, active ? "rgba(103, 232, 249, 0.2)" : "rgba(143, 168, 189, 0.08)");
-  fill.addColorStop(1, "rgba(103, 232, 249, 0)");
-  scopeCtx.fillStyle = fill;
-  scopeCtx.fill(fillPath);
-
-  scopeCtx.strokeStyle = active ? "rgba(142, 247, 255, 0.92)" : "rgba(143, 168, 189, 0.34)";
-  scopeCtx.lineWidth = 1.4;
-  scopeCtx.stroke(path);
-
-  const marker = state.lastReading ? state.lastReading.x : 0.5;
-  scopeCtx.fillStyle = active ? "rgba(251, 113, 133, 0.88)" : "rgba(143, 168, 189, 0.28)";
-  scopeCtx.beginPath();
-  scopeCtx.arc(marker * width, mid, 2.2, 0, Math.PI * 2);
-  scopeCtx.fill();
-}
-
-function animate(time) {
-  state.idleTick = time;
-
-  if (state.needsUpdate) {
-    updateReading();
-  }
-
-  drawFrame(time);
-  drawScope(time);
-  requestAnimationFrame(animate);
-}
-
-function setupEvents() {
-  ui.playButton.addEventListener("click", () => {
-    toggleAudio();
-  });
-
-  ui.startButton.addEventListener("click", () => {
-    startExperienceFromButton();
-  });
-
-  canvas.addEventListener("pointerenter", (event) => {
-    setPositionFromPointer(event);
-    refreshActivity();
-  });
-
-  canvas.addEventListener("pointermove", (event) => {
-    setPositionFromPointer(event);
-    refreshActivity();
-  });
-
-  canvas.addEventListener("pointerdown", (event) => {
-    setPositionFromPointer(event);
-    canvas.focus({ preventScroll: true });
-    refreshActivity();
-
-    if (!state.audioStarted) {
-      startAudio({ center: false });
-    }
-  });
-
-  canvas.addEventListener("pointerleave", () => {
-    state.pointerInside = false;
-    refreshActivity();
-  });
-
-  canvas.addEventListener("focus", () => {
-    requestAnimationFrame(() => {
-      if (document.activeElement === canvas && canvas.matches(":focus-visible")) {
-        state.keyboardMode = true;
-        if (state.position.x === 0.5 && state.position.y === 0.5 && !state.pointerInside) {
-          state.needsUpdate = true;
-        }
-        refreshActivity();
-      }
-    });
-  });
-
-  canvas.addEventListener("blur", () => {
-    state.keyboardMode = false;
-    refreshActivity();
-  });
-
-  canvas.addEventListener("keydown", async (event) => {
-    const arrows = ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"];
-
-    if (arrows.includes(event.key)) {
-      event.preventDefault();
-
-      if (!state.audioStarted) {
-        await startAudio({ center: false });
-      }
-
-      const step = event.shiftKey ? 0.05 : 0.015;
-      if (event.key === "ArrowLeft") moveFocusedPoint(-step, 0);
-      if (event.key === "ArrowRight") moveFocusedPoint(step, 0);
-      if (event.key === "ArrowUp") moveFocusedPoint(0, -step);
-      if (event.key === "ArrowDown") moveFocusedPoint(0, step);
-      state.forceAnnounce = true;
-      return;
-    }
-
-    if (event.key === " " || event.key === "Spacebar") {
-      event.preventDefault();
-      toggleAudio();
-      return;
-    }
-
-    if (event.key === "Enter") {
-      event.preventDefault();
-      updateReading(true, { forceAnnounce: true });
-    }
-  });
-
-  document.querySelectorAll('input[name="dataset"]').forEach((input) => {
-    input.addEventListener("change", (event) => {
-      if (event.target.checked) {
-        selectDataset(event.target.value, {
-          sceneId: state.scenesByDataset[event.target.value],
-        });
-      }
-    });
-  });
-
-  ui.sceneSelect.addEventListener("change", () => {
-    if (ui.sceneSelect.value && ui.sceneSelect.value !== state.sceneId) {
-      selectDataset(state.datasetId, { sceneId: ui.sceneSelect.value });
-    }
-  });
-
-  ui.scaleSelect.addEventListener("change", () => {
-    state.scaleId = ui.scaleSelect.value;
-    audio.setScale(state.scaleId);
-    updateReading(true, { forceAnnounce: true });
-  });
-
-  ui.lowSensory.addEventListener("change", () => {
-    state.lowSensory = ui.lowSensory.checked;
-    document.body.classList.toggle("is-low-sensory", state.lowSensory);
-    audio.setLowSensory(state.lowSensory);
-    updateReading(true);
-    showToast(
-      state.lowSensory
-        ? "Modo de baixa sensibilidade ativado: volume e filtros suavizados."
-        : "Modo de baixa sensibilidade desativado."
-    );
-  });
-
-  ui.highContrast.addEventListener("change", () => {
-    state.highContrast = ui.highContrast.checked;
-    document.body.classList.toggle("is-high-contrast", state.highContrast);
-    showToast(
-      state.highContrast
-        ? "Alto contraste ativado."
-        : "Alto contraste desativado."
-    );
-  });
-
-  ui.vibrationToggle.addEventListener("change", () => {
-    state.vibration = ui.vibrationToggle.checked;
-    showToast(
-      state.vibration
-        ? "Feedback tátil ativado em dispositivos compatíveis."
-        : "Feedback tátil desativado."
-    );
-  });
-
-  ui.colorMode.addEventListener("change", () => {
-    state.colorMode = ui.colorMode.value;
-    document.body.dataset.colorMode = state.colorMode;
-    showToast(
-      state.colorMode === "none"
-        ? "Filtro de cor desativado."
-        : `Filtro de cor: ${ui.colorMode.options[ui.colorMode.selectedIndex].text}.`
-    );
-  });
-
-  const handleMotionChange = (event) => {
-    state.prefersReducedMotion = event.matches;
-  };
-
-  if (typeof motionQuery.addEventListener === "function") {
-    motionQuery.addEventListener("change", handleMotionChange);
-  } else if (typeof motionQuery.addListener === "function") {
-    motionQuery.addListener(handleMotionChange);
-  }
-
-  window.addEventListener("pointerup", () => {
-    if (state.pointerType === "touch" && !state.keyboardMode) {
-      window.setTimeout(() => {
-        if (!state.pointerInside) refreshActivity();
-      }, 120);
-    }
-  });
-
-  document.addEventListener("visibilitychange", () => {
-    if (document.hidden && state.audioStarted && state.audioOn) {
-      state.needsUpdate = false;
-      audio.setActive(false);
-    } else if (!document.hidden && state.active) {
-      state.needsUpdate = true;
-    }
-  });
-}
-
-async function init() {
-  ui.startButton.disabled = true;
-  document.body.dataset.colorMode = "none";
-  setupCanvasSizing();
-  setupScopeSizing();
-  setupEvents();
   updateAudioUI();
+  state.readingDirty = true;
+}
 
-  try {
-    await selectDataset("sst", { initial: true, sceneId: "global" });
-  } catch {
-    /* A mensagem de erro é apresentada por selectDataset. */
+engine.onSamplesState = (s) => {
+  const el = $("samplesState");
+  el.textContent = {
+    loading: "Carregando amostras gravadas… (sintetizador enquanto isso)",
+    ready: "Amostras gravadas prontas: piano Salamander, violoncelo, flauta e harpa",
+    failed: "Sem acesso às amostras: usando instrumentos sintetizados",
+  }[s] || el.textContent;
+};
+
+// ---------------------------------------------------------------------------
+// Smartphone
+// ---------------------------------------------------------------------------
+let receiverBase = null;
+function onPhoneStatus(kind, info) {
+  const st = $("phoneStatus");
+  const dot = $("phoneDot");
+  dot.className = "status-dot";
+  if (kind === "waiting") { st.textContent = "Aguardando o celular escanear o QR Code…"; dot.classList.add("is-wait"); }
+  if (kind === "connected") { st.textContent = `Smartphone conectado ✓ · mova o mouse sobre o mapa`; dot.classList.add("is-on"); announce("Smartphone conectado para vibração.", { speak: false }); }
+  if (kind === "caps" && info && info.vibrate === false) toast("O celular conectado não suporta vibração (ex.: iPhone). Ele mostrará pulsos visuais.", 6000);
+  if (kind === "reconnecting") st.textContent = "Reconectando ao serviço de sinalização…";
+  if (kind === "error") { st.textContent = `Erro na conexão WebRTC (${info}).`; dot.classList.add("is-err"); }
+  if (kind === "closed") st.textContent = "Desconectado.";
+}
+
+// O celular precisa abrir receiver.html de algum lugar:
+//  - "lan":    servidor deste computador na rede Wi-Fi (http://192.168.x.x:8000)
+//  - "public": cópia pública em HTTPS (GitHub Pages) — não depende de firewall/rede local
+// Nos dois casos a ligação de dados é a mesma: PeerJS (sinalização) + WebRTC (P2P).
+function receiverUrl() {
+  const id = haptics.peer?.id;
+  if (!id) return null;
+  const mode = $("receiverMode").value;
+  let base;
+  if (mode === "public") {
+    base = PUBLIC_RECEIVER_BASE;
+  } else {
+    base = receiverBase.base;
+    const lan = $("lanInput").value.trim();
+    if (receiverBase.local) {
+      if (!lan) return null;
+      try { base = new URL(/^https?:\/\//.test(lan) ? lan : `http://${lan}`).href; } catch { return null; }
+      if (!base.endsWith("/")) base += "/";
+    }
   }
+  return `${new URL("receiver.html", base).href}#${id}`;
+}
 
-  requestAnimationFrame(animate);
+function refreshQr() {
+  const mode = $("receiverMode").value;
+  $("lanField").hidden = mode !== "lan" || !receiverBase?.local;
+  const url = receiverUrl();
+  const warn = $("qrWarn");
+  if (!url) {
+    $("qrBox").innerHTML = "";
+    $("qrUrl").textContent = "";
+    warn.hidden = false;
+    warn.textContent = haptics.peer?.id
+      ? "Digite o endereço deste computador na rede (ex.: 192.168.0.10:8000) ou escolha “Internet (GitHub Pages)”."
+      : "";
+    return;
+  }
+  const host = new URL(url).hostname;
+  warn.hidden = !(mode === "lan" && /^(localhost|127\.|172\.(1[6-9]|2\d|3[01])\.)/.test(host));
+  warn.textContent = "Esse endereço parece interno (localhost/WSL/Docker) e o celular não vai alcançá-lo.";
+  renderQr($("qrBox"), url);
+  $("qrUrl").textContent = url;
+  $("receiverLink").href = url;
+}
+
+async function connectPhone() {
+  $("phoneBox").hidden = false;
+  $("phoneStatus").textContent = "Conectando ao servidor de sinalização PeerJS…";
+  try {
+    receiverBase = await guessReceiverBase();
+    if (receiverBase.local && !$("lanInput").value && prefs.lan) $("lanInput").value = prefs.lan;
+    // site já publicado em HTTPS: o próprio endereço serve para o celular
+    if (!receiverBase.local && location.protocol === "https:") $("receiverMode").value = "lan";
+    await haptics.open();
+    haptics.setLowSensory($("lowSensory").checked);
+    refreshQr();
+    $("phoneConnectLabel").textContent = "Gerar novo QR Code";
+  } catch (err) {
+    $("phoneStatus").textContent = `Não foi possível falar com o servidor PeerJS (${err?.type || err?.message || err}). Este computador está com internet? Alguma extensão/antivírus bloqueia 0.peerjs.com?`;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Acessibilidade
+// ---------------------------------------------------------------------------
+function applyLowSensory(on) {
+  $("lowSensory").checked = on;
+  $("quickLowSensory").setAttribute("aria-pressed", String(on));
+  document.documentElement.classList.toggle("low-sensory", on);
+  engine.setLowSensory(on);
+  haptics.setLowSensory(on);
+  updateAudioUI();
+  savePrefs();
+}
+
+function applyColorMode(mode) {
+  state.colorMode = mode;
+  if (state.sampler) {
+    $("loadingVeil").hidden = false;
+    // deixa o véu aparecer antes de recolorir (pode levar ~100 ms na 1ª vez)
+    setTimeout(() => {
+      rebuildBase();
+      updateLegendBar();
+      $("loadingVeil").hidden = true;
+    }, 16);
+  }
+  savePrefs();
+}
+
+// ---------------------------------------------------------------------------
+// Eventos
+// ---------------------------------------------------------------------------
+function setupEvents() {
+  $("folderInput").addEventListener("change", (e) => { addFiles([...e.target.files]); e.target.value = ""; });
+  $("filesInput").addEventListener("change", (e) => { addFiles([...e.target.files]); e.target.value = ""; });
+  const dz = $("dropzone");
+  ["dragenter", "dragover"].forEach((t) => dz.addEventListener(t, (e) => { e.preventDefault(); dz.classList.add("is-drag"); }));
+  ["dragleave", "drop"].forEach((t) => dz.addEventListener(t, () => dz.classList.remove("is-drag")));
+  dz.addEventListener("drop", async (e) => {
+    e.preventDefault();
+    addFiles(await filesFromDrop(e.dataTransfer));
+  });
+
+  $("brandLink").addEventListener("click", (e) => { e.preventDefault(); backToGallery(); });
+  $("backButton").addEventListener("click", backToGallery);
+  $("audioToggle").addEventListener("click", toggleAudio);
+  $("quickLowSensory").addEventListener("click", () => applyLowSensory(!$("lowSensory").checked));
+  $("reviewLegend").addEventListener("click", openLegend);
+
+  // diálogo da legenda
+  const dlg = $("legendDialog");
+  dlg.addEventListener("close", () => {
+    if (dlg.returnValue === "start") startExperience();
+    else if (dlg.returnValue === "back" || dlg.returnValue === "") {
+      if ($("exploreView").hidden) backToGallery();
+    }
+    dlg.returnValue = "";
+  });
+  dlg.addEventListener("cancel", () => { dlg.returnValue = ""; });
+
+  // escala manual
+  $("scaleSelect").innerHTML = SCALE_LIST.map((s) => `<option value="${s.id}">${s.label}</option>`).join("");
+  $("scaleSelect").addEventListener("change", (e) => {
+    state.scale = SCALES[e.target.value];
+    if (state.group) state.group.scaleId = state.scale.id;
+    updateLegendBar();
+    rebuildBase();
+    state.readingDirty = true;
+    announce(`Escala alterada para ${state.scale.label}.`, { speak: false });
+  });
+
+  // canvas: ponteiro
+  canvas.addEventListener("pointerenter", (e) => { state.pointerInside = true; setFromPointer(e); });
+  canvas.addEventListener("pointermove", (e) => {
+    state.pointerInside = true;
+    const events = e.getCoalescedEvents ? e.getCoalescedEvents() : [e];
+    setFromPointer(events[events.length - 1] || e);
+  });
+  canvas.addEventListener("pointerdown", (e) => {
+    canvas.focus({ preventScroll: true });
+    if (!engine.started) toggleAudio();
+    if (e.pointerType !== "mouse") canvas.setPointerCapture(e.pointerId);
+    state.pointerInside = true;
+    setFromPointer(e);
+  });
+  canvas.addEventListener("pointerleave", () => { state.pointerInside = false; state.readingDirty = true; });
+  canvas.addEventListener("pointerup", (e) => { if (e.pointerType !== "mouse") { state.pointerInside = false; state.readingDirty = true; } });
+  canvas.addEventListener("focus", () => { state.keyboardActive = true; state.readingDirty = true; });
+  canvas.addEventListener("blur", () => { state.keyboardActive = false; state.readingDirty = true; });
+
+  // canvas: teclado
+  canvas.addEventListener("keydown", (e) => {
+    const big = e.shiftKey ? 0.05 : 0.0125;
+    const map = { ArrowLeft: [-big, 0], ArrowRight: [big, 0], ArrowUp: [0, -big * 2], ArrowDown: [0, big * 2] };
+    if (map[e.key]) {
+      e.preventDefault();
+      moveFocal(...map[e.key]);
+      return;
+    }
+    switch (e.key) {
+      case " ": e.preventDefault(); toggleAudio(); break;
+      case "Enter": e.preventDefault(); state.readingDirty = true; processReading(); announceReading(true); break;
+      case "Home": e.preventDefault(); state.u = 0.5; state.v = 0.5; moveFocal(0, 0); break;
+      case "[": e.preventDefault(); stepFrame(-1); break;
+      case "]": e.preventDefault(); stepFrame(1); break;
+      case "p": case "P": e.preventDefault(); state.playing ? stopTimeline() : startTimeline(); break;
+      case "l": case "L": e.preventDefault(); openLegend(); break;
+      default:
+    }
+  });
+
+  // linha do tempo
+  let sliderTimer;
+  $("frameSlider").addEventListener("input", (e) => {
+    stopTimeline();
+    const i = Number(e.target.value);
+    $("frameLabel").textContent = `${state.group.frames[i].name} · ${i + 1}/${state.group.frames.length}`;
+    $("frameTime").textContent = frameTimeText(state.group.frames[i]);
+    clearTimeout(sliderTimer);
+    sliderTimer = setTimeout(() => loadFrame(i), 60);
+  });
+  $("playTimeline").addEventListener("click", () => (state.playing ? stopTimeline() : startTimeline()));
+
+  // áudio
+  $("volumeSlider").addEventListener("input", (e) => {
+    const db = Number(e.target.value);
+    $("volumeOut").textContent = `${db} dB`;
+    engine.setVolume(db);
+    savePrefs();
+  });
+  $("keySelect").addEventListener("change", (e) => { engine.setKey(e.target.value); updateAudioUI(); savePrefs(); });
+  $("samplesToggle").addEventListener("change", (e) => { engine.setUseSamples(e.target.checked); savePrefs(); });
+
+  // smartphone
+  $("phoneConnect").addEventListener("click", connectPhone);
+  $("phoneDisconnect").addEventListener("click", () => {
+    haptics.close();
+    $("phoneBox").hidden = true;
+    $("phoneConnectLabel").textContent = "Gerar QR Code";
+  });
+  $("lanInput").addEventListener("input", () => { refreshQr(); savePrefs(); });
+  $("receiverMode").addEventListener("change", () => { refreshQr(); savePrefs(); });
+
+  // acessibilidade
+  $("lowSensory").addEventListener("change", (e) => applyLowSensory(e.target.checked));
+  $("highContrast").addEventListener("change", (e) => { document.documentElement.classList.toggle("hc", e.target.checked); savePrefs(); });
+  $("voiceToggle").addEventListener("change", (e) => {
+    savePrefs();
+    if (e.target.checked) announce("Narração por voz ativada.");
+    else speechSynthesis?.cancel();
+  });
+  $("colorMode").addEventListener("change", (e) => applyColorMode(e.target.value));
+
+  window.addEventListener("resize", () => { if (!$("exploreView").hidden) layoutCanvas(); });
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden && engine.started && !engine.paused) { engine.pause(); updateAudioUI(); }
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Inicialização
+// ---------------------------------------------------------------------------
+async function init() {
+  setupEvents();
+  // preferências salvas
+  if (prefs.receiver) $("receiverMode").value = prefs.receiver;
+  if (prefs.volume !== undefined && prefs.v === 2) { $("volumeSlider").value = prefs.volume; $("volumeOut").textContent = `${prefs.volume} dB`; engine.setVolume(prefs.volume); }
+  if (prefs.key) { $("keySelect").value = prefs.key; engine.setKey(prefs.key); }
+  if (prefs.samples === false) { $("samplesToggle").checked = false; engine.setUseSamples(false); }
+  if (prefs.voice) $("voiceToggle").checked = true;
+  const hc = prefs.hc ?? window.matchMedia("(prefers-contrast: more)").matches;
+  $("highContrast").checked = !!hc;
+  document.documentElement.classList.toggle("hc", !!hc);
+  if (prefs.color) { $("colorMode").value = prefs.color; state.colorMode = prefs.color; }
+  if (prefs.lan) $("lanInput").value = prefs.lan;
+  applyLowSensory(!!prefs.low);
+
+  showView("gallery");
+  renderGallery();
+  updateAudioUI();
+  requestAnimationFrame(frame);
+
+  await loadLandMask();
+  await upgradeGmaoSequences(state.presets);
+  if (state.presets.some((g) => g.sequence)) {
+    $("presetsNote").textContent = "Prontos para uso imediato. A pasta dados/ foi encontrada: os mapas GMAO abrem como sequências de 372 horas com linha do tempo.";
+    renderGallery();
+  }
+  if (!engine.available) toast("Tone.js não carregou: o áudio precisa de internet na primeira vez.", 6000);
 }
 
 init();

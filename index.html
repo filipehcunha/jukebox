@@ -4,295 +4,336 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#03080f">
-  <meta name="description" content="A Sinfonia da Terra: uma experiência multissensorial que transforma dados oceânicos e florestais da NASA em som, imagem e navegação acessível.">
-  <title>A Sinfonia da Terra · Earth Jukebox Interativo</title>
+  <meta name="description" content="A Sinfonia da Terra: Earth Jukebox Multissensorial. Transforma mapas de dados da NASA em música instrumental, vibração no smartphone e narração acessível.">
+  <title>A Sinfonia da Terra · Earth Jukebox Multissensorial</title>
   <link rel="stylesheet" href="css/styles.css">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='29' fill='%23060d18' stroke='%2367e8f9' stroke-width='2'/%3E%3Cpath d='M8 36c8-9 16-3 24-10s16-3 24 6' fill='none' stroke='%2367e8f9' stroke-width='2.5' stroke-linecap='round'/%3E%3Ccircle cx='32' cy='32' r='4' fill='%23fb7185'/%3E%3C/svg%3E">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js" defer></script>
+  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js" defer></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" defer></script>
+  <script type="module" src="js/app.js"></script>
 </head>
 <body>
   <a class="skip-link" href="#main">Pular para o conteúdo principal</a>
 
-  <div class="ambient" aria-hidden="true">
-    <div class="ambient__orb ambient__orb--cyan"></div>
-    <div class="ambient__orb ambient__orb--coral"></div>
-    <div class="ambient__orb ambient__orb--green"></div>
-    <div class="ambient__grain"></div>
-  </div>
-
   <header class="topbar">
-    <div class="brand">
+    <a class="brand" href="#" id="brandLink" aria-label="A Sinfonia da Terra, voltar à galeria">
       <span class="brand__mark" aria-hidden="true">
-        <svg viewBox="0 0 64 64" role="presentation">
-          <circle cx="32" cy="32" r="27" fill="none" stroke="currentColor" stroke-width="1.5" opacity=".55"/>
-          <ellipse cx="32" cy="32" rx="31" ry="12" fill="none" stroke="currentColor" stroke-width="1.2" opacity=".42" transform="rotate(-22 32 32)"/>
-          <path d="M10 38c8-11 16-2 23-9s13-2 21 7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
-          <circle cx="32" cy="32" r="4.5" fill="#fb7185"/>
-        </svg>
+        <svg viewBox="0 0 64 64"><circle cx="32" cy="32" r="27" fill="none" stroke="currentColor" stroke-width="1.5" opacity=".55"/><ellipse cx="32" cy="32" rx="31" ry="12" fill="none" stroke="currentColor" stroke-width="1.2" opacity=".42" transform="rotate(-22 32 32)"/><path d="M10 38c8-11 16-2 23-9s13-2 21 7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><circle cx="32" cy="32" r="4.5" fill="#fb7185"/></svg>
       </span>
-      <div class="brand__text">
-        <p class="eyebrow">NASA Earth Data · Web Audio</p>
-        <h1>A Sinfonia da Terra</h1>
-        <p class="brand__subtitle">Earth Jukebox Interativo</p>
-      </div>
-    </div>
-
+      <span class="brand__text">
+        <span class="eyebrow">NASA Earth Data · Tone.js · WebRTC</span>
+        <span class="brand__title">A Sinfonia da Terra</span>
+        <span class="brand__subtitle">Earth Jukebox Multissensorial</span>
+      </span>
+    </a>
     <div class="topbar__actions">
-      <div class="live-pill" id="livePill">
-        <span class="live-pill__dot" aria-hidden="true"></span>
-        <span id="liveText">Pronto para explorar</span>
-      </div>
-      <button class="button button--play" id="playButton" type="button" aria-pressed="false" aria-describedby="audioStatusText">
-        <span class="button__icon" aria-hidden="true">
-          <svg class="icon icon--play" viewBox="0 0 24 24"><path d="M8 5.5v13l10-6.5-10-6.5Z" fill="currentColor"/></svg>
-          <svg class="icon icon--pause" viewBox="0 0 24 24"><path d="M7 5h3.5v14H7V5Zm6.5 0H17v14h-3.5V5Z" fill="currentColor"/></svg>
-        </span>
-        <span id="playLabel">Iniciar experiência</span>
+      <span class="live-pill" id="livePill"><span class="live-pill__dot" aria-hidden="true"></span><span id="liveText">Áudio desligado</span></span>
+      <button class="button button--ghost" id="quickLowSensory" type="button" aria-pressed="false" title="Modo de baixa sensibilidade">
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h3l4-4v8l-4-4H4Z" fill="currentColor"/><path d="M15 9.5c1 .8 1 4.2 0 5" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round"/></svg>
+        <span>Baixa sensibilidade</span>
+      </button>
+      <button class="button button--play" id="audioToggle" type="button" aria-pressed="false">
+        <svg class="icon icon--play" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l10-6.5-10-6.5Z" fill="currentColor"/></svg>
+        <svg class="icon icon--pause" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5h3.5v14H7V5Zm6.5 0H17v14h-3.5V5Z" fill="currentColor"/></svg>
+        <span id="audioToggleLabel">Ativar áudio</span>
       </button>
     </div>
   </header>
 
-  <main class="app-shell" id="main">
-    <section class="stage" aria-labelledby="vizHeading">
-      <div class="stage__head">
-        <div>
-          <p class="kicker" id="datasetKicker">ECCO2 · NASA/JPL</p>
-          <h2 id="vizHeading">Temperatura e Correntes</h2>
+  <main id="main" tabindex="-1">
+    <!-- ===================== GALERIA ===================== -->
+    <section class="view view--gallery" id="galleryView" aria-labelledby="galleryHeading">
+      <div class="hero">
+        <div class="hero__text">
+          <p class="kicker">Galeria de escolha</p>
+          <h1 id="galleryHeading">Ouça o planeta, pixel a pixel</h1>
+          <p class="lead">Escolha um mapa da NASA ou carregue uma pasta do seu computador. Cada cor é convertida no valor físico da legenda oficial e tocada por violoncelo, piano, flauta e harpa, com vibração no seu celular.</p>
         </div>
-        <div class="dataset-badge">
-          <span class="badge">NASA</span>
-          <span id="datasetMeta">Global Sea Surface Currents and Temperature</span>
-        </div>
-      </div>
-
-      <div class="canvas-shell" id="canvasShell">
-        <canvas
-          id="visualCanvas"
-          width="1200"
-          height="600"
-          tabindex="0"
-          role="application"
-          aria-roledescription="mapa sonoro interativo"
-          aria-label="Mapa da temperatura e das correntes oceânicas da NASA. Use o ponteiro ou as setas do teclado para explorar. Cada posição produz uma nota musical."
-          aria-describedby="canvasHelp"
-        ></canvas>
-
-        <div class="canvas-ui canvas-ui--top-left">
-          <span class="canvas-chip" id="canvasHint">Mova o ponteiro ou use as setas do teclado</span>
-        </div>
-        <div class="canvas-ui canvas-ui--top-right">
-          <span class="canvas-chip canvas-chip--mono" id="coordReadout">0° · 0°</span>
-        </div>
-
-        <div class="legend" id="legend" aria-hidden="true">
-          <div class="legend__head">
-            <span id="legendTitle">Temperatura da superfície do mar</span>
-            <span id="legendRange">0–32 °C</span>
+        <div class="upload" id="dropzone">
+          <div class="upload__icon" aria-hidden="true">
+            <svg viewBox="0 0 48 48"><path d="M6 14a4 4 0 0 1 4-4h9l4 4h15a4 4 0 0 1 4 4v18a4 4 0 0 1-4 4H10a4 4 0 0 1-4-4V14Z" fill="none" stroke="currentColor" stroke-width="2.4"/><path d="M24 34V21m0 0-5 5m5-5 5 5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </div>
-          <div class="legend__bar" id="legendBar"></div>
-          <div class="legend__ticks" id="legendTicks"></div>
-        </div>
-
-        <div class="loading-veil" id="loadingVeil" hidden>
-          <span class="spinner" aria-hidden="true"></span>
-          <span>Carregando visualização científica…</span>
-        </div>
-
-        <div class="start-overlay" id="startOverlay">
-          <div class="start-overlay__card">
-            <p class="kicker">Experiência sonora imersiva</p>
-            <h3>Ouça a Terra em movimento</h3>
-            <p>Temperatura vira altura musical. Correntes viram textura. A posição horizontal vira estéreo.</p>
-            <button class="button button--start" id="startButton" type="button">
-              <span class="button__icon" aria-hidden="true">
-                <svg class="icon" viewBox="0 0 24 24"><path d="M8 5.5v13l10-6.5-10-6.5Z" fill="currentColor"/></svg>
-              </span>
-              Ativar áudio e explorar
-            </button>
-            <p class="start-overlay__note">O áudio só é iniciado após um gesto, conforme as regras do navegador.</p>
+          <p class="upload__title">Carregue suas imagens</p>
+          <p class="upload__hint">JPG, PNG ou WebP. Arraste uma pasta para cá ou use os botões. Dica: a pasta <code>dados/</code> do projeto traz 4 × 372 frames horários.</p>
+          <div class="upload__actions">
+            <label class="button button--primary" for="folderInput">
+              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z" fill="currentColor"/></svg>
+              Carregar pasta
+            </label>
+            <input class="sr-only" type="file" id="folderInput" webkitdirectory directory multiple accept="image/jpeg,image/png,image/webp">
+            <label class="button button--ghost" for="filesInput">Selecionar imagens</label>
+            <input class="sr-only" type="file" id="filesInput" multiple accept="image/jpeg,image/png,image/webp">
           </div>
         </div>
       </div>
 
-      <div class="reading-grid" aria-label="Leitura atual da sonificação">
-        <article class="reading-card">
-          <span class="reading-card__label">Região</span>
-          <strong class="reading-card__value" id="readRegion">—</strong>
-        </article>
-        <article class="reading-card">
-          <span class="reading-card__label" id="readValueLabel">Temperatura</span>
-          <strong class="reading-card__value" id="readValue">—</strong>
-        </article>
-        <article class="reading-card">
-          <span class="reading-card__label" id="readIntensityLabel">Corrente</span>
-          <strong class="reading-card__value" id="readIntensity">—</strong>
-        </article>
-        <article class="reading-card">
-          <span class="reading-card__label">Nota</span>
-          <strong class="reading-card__value" id="readNote">—</strong>
-        </article>
-      </div>
+      <section class="gallery-section" aria-labelledby="presetsHeading">
+        <div class="section-head">
+          <h2 id="presetsHeading">Dados NASA pré-carregados</h2>
+          <p id="presetsNote">Prontos para uso imediato. Os mapas GMAO usam as escalas de cor oficiais convertidas em números.</p>
+        </div>
+        <div class="preset-grid" id="presetGrid"></div>
+      </section>
 
-      <p class="canvas-help" id="canvasHelp">
-        Clique no mapa ou pressione Tab até ele e use as setas para navegar. Shift + setas move mais rápido.
-        Espaço ativa ou pausa o som quando o mapa está em foco.
-      </p>
+      <section class="gallery-section" id="localSection" aria-labelledby="localHeading" hidden>
+        <div class="section-head">
+          <h2 id="localHeading">Suas imagens</h2>
+          <p id="localSummary"></p>
+        </div>
+        <div id="localGroups"></div>
+      </section>
     </section>
 
-    <aside class="sidebar" aria-label="Painel de controle">
-      <section class="panel panel--audio">
-        <div class="panel__head">
-          <h2>Experiência sonora</h2>
-          <span class="status-dot" id="audioStatusDot" aria-hidden="true"></span>
-        </div>
-        <p class="panel__status" id="audioStatusText" role="status">Áudio aguardando ativação</p>
-        <canvas class="scope" id="scopeCanvas" width="360" height="80" aria-hidden="true"></canvas>
-        <div class="meter-row" aria-hidden="true">
-          <span>Grave</span>
-          <span class="meter-line"><i id="pitchMarker"></i></span>
-          <span>Agudo</span>
-        </div>
-        <p class="help">A altura da nota acompanha a temperatura; o brilho das correntes abre o filtro.</p>
-      </section>
-
-      <section class="panel">
-        <h2>Dataset</h2>
-        <fieldset class="choice-group">
-          <legend class="sr-only">Selecione o dataset da NASA</legend>
-          <label class="choice">
-            <input type="radio" name="dataset" value="sst" checked>
-            <span class="choice__control" aria-hidden="true"></span>
-            <span class="choice__body">
-              <strong>ECCO2 · Temperatura e Correntes</strong>
-              <small>Oceano global e regional · ECCO2 / MIT / JPL</small>
-            </span>
-          </label>
-          <label class="choice">
-            <input type="radio" name="dataset" value="gedi">
-            <span class="choice__control" aria-hidden="true"></span>
-            <span class="choice__body">
-              <strong>GEDI · Altura das Florestas</strong>
-              <small>Dossel global e regional · NASA GEDI / ISS</small>
-            </span>
-          </label>
-        </fieldset>
-        <div class="control-group">
-          <label class="field-label" for="sceneSelect">Imagem analisada</label>
-          <div class="select-wrap">
-            <select id="sceneSelect" aria-describedby="sceneHelp"></select>
+    <!-- ===================== EXPLORADOR ===================== -->
+    <section class="view view--explore" id="exploreView" aria-labelledby="exploreHeading" hidden>
+      <div class="explore">
+        <div class="stage">
+          <div class="stage__head">
+            <button class="button button--ghost button--icon-left" id="backButton" type="button">
+              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 6 8.5 12l6 6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              Galeria
+            </button>
+            <div class="stage__title">
+              <p class="kicker" id="exploreKicker">—</p>
+              <h2 id="exploreHeading">—</h2>
+            </div>
+            <label class="compact-field">
+              <span>Escala de cores</span>
+              <select id="scaleSelect"></select>
+            </label>
           </div>
-          <p class="help" id="sceneHelp">Escolha uma visão global ou um recorte regional para explorar.</p>
-        </div>
-        <p class="source-line">Fonte: <a id="sourceLink" href="https://svs.gsfc.nasa.gov/3912" target="_blank" rel="noreferrer">NASA Scientific Visualization Studio</a></p>
-      </section>
 
-      <section class="panel">
-        <h2>Escala musical</h2>
-        <label class="field-label" for="scaleSelect">Harmonia da sonificação</label>
-        <div class="select-wrap">
-          <select id="scaleSelect">
-            <option value="pentatonicC">Pentatônica Maior de Dó</option>
-            <option value="lydianC">Modo Lídio de Dó</option>
-            <option value="pentatonicMinorA">Pentatônica Menor de Lá</option>
-          </select>
-        </div>
-        <p class="help">Todas as frequências são quantizadas para evitar intervalos ásperos e manter a escuta confortável.</p>
-      </section>
-
-      <section class="panel panel--a11y">
-        <h2>Acessibilidade</h2>
-
-        <label class="switch">
-          <span class="switch__body">
-            <strong>Modo de baixa sensibilidade</strong>
-            <small>Limita volume, filtros e picos de vibração.</small>
-          </span>
-          <input type="checkbox" id="lowSensory">
-          <span class="switch__track" aria-hidden="true"><span class="switch__thumb"></span></span>
-        </label>
-
-        <div class="control-group">
-          <label class="field-label" for="colorMode">Filtro para daltonismo</label>
-          <div class="select-wrap">
-            <select id="colorMode">
-              <option value="none">Sem filtro</option>
-              <option value="deuteranopia">Deuteranopia</option>
-              <option value="protanopia">Protanopia</option>
-              <option value="tritanopia">Tritanopia</option>
-            </select>
+          <div class="canvas-shell" id="canvasShell">
+            <canvas id="mapCanvas" width="1200" height="600" tabindex="0" role="application"
+              aria-roledescription="mapa sonoro interativo" aria-label="Mapa sonoro" aria-describedby="canvasHelp"></canvas>
+            <div class="loading-veil" id="loadingVeil" hidden><span class="spinner" aria-hidden="true"></span><span>Carregando imagem…</span></div>
           </div>
+
+          <div class="timeline" id="timeline" hidden>
+            <button class="button button--round" id="playTimeline" type="button" aria-pressed="false" aria-label="Reproduzir linha do tempo">
+              <svg class="icon icon--play" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l10-6.5-10-6.5Z" fill="currentColor"/></svg>
+              <svg class="icon icon--pause" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5h3.5v14H7V5Zm6.5 0H17v14h-3.5V5Z" fill="currentColor"/></svg>
+            </button>
+            <div class="timeline__track">
+              <label class="sr-only" for="frameSlider">Quadro da sequência</label>
+              <input type="range" id="frameSlider" min="0" max="0" value="0" step="1">
+              <div class="timeline__labels"><span id="frameLabel">—</span><span id="frameTime">—</span></div>
+            </div>
+            <label class="compact-field compact-field--small">
+              <span>Velocidade</span>
+              <select id="speedSelect">
+                <option value="1">1 h/s</option>
+                <option value="3" selected>3 h/s</option>
+                <option value="6">6 h/s</option>
+                <option value="12">12 h/s</option>
+              </select>
+            </label>
+          </div>
+
+          <div class="legend-bar" aria-hidden="true">
+            <div class="legend-bar__head"><span id="legendTitle">—</span><span id="legendUnit">—</span></div>
+            <div class="legend-bar__track">
+              <div class="legend-bar__gradient" id="legendGradient"></div>
+              <div class="legend-bar__marker" id="legendMarker"></div>
+            </div>
+            <div class="legend-bar__ticks" id="legendTicks"></div>
+            <div class="legend-bar__ends" id="legendEnds"></div>
+          </div>
+
+          <div class="reading-grid" aria-label="Leitura atual">
+            <article class="reading-card">
+              <span class="reading-card__label">Local</span>
+              <strong class="reading-card__value" id="readRegion">—</strong>
+              <span class="reading-card__sub" id="readCoord">—</span>
+            </article>
+            <article class="reading-card reading-card--value">
+              <span class="reading-card__label" id="readValueLabel">Valor</span>
+              <strong class="reading-card__value" id="readValue">—</strong>
+              <span class="reading-card__sub" id="readZone">—</span>
+            </article>
+            <article class="reading-card reading-card--instruments">
+              <span class="reading-card__label">Instrumentos</span>
+              <ul class="inst-meters" id="instMeters"></ul>
+            </article>
+            <article class="reading-card">
+              <span class="reading-card__label">Nota</span>
+              <strong class="reading-card__value" id="readNote">—</strong>
+              <span class="reading-card__sub" id="readPan">Centro</span>
+            </article>
+          </div>
+
+          <p class="canvas-help" id="canvasHelp">
+            Mova o mouse, toque ou use as setas do teclado com o mapa em foco. <kbd>Shift</kbd> + setas move mais rápido,
+            <kbd>Enter</kbd> repete a leitura, <kbd>Espaço</kbd> liga ou pausa o som, <kbd>[</kbd> e <kbd>]</kbd> trocam a hora,
+            <kbd>P</kbd> reproduz a linha do tempo e <kbd>L</kbd> abre a legenda.
+          </p>
         </div>
 
-        <label class="switch switch--compact">
-          <span class="switch__body">
-            <strong>Alto contraste</strong>
-            <small>Reforça bordas, textos e foco.</small>
-          </span>
-          <input type="checkbox" id="highContrast">
-          <span class="switch__track" aria-hidden="true"><span class="switch__thumb"></span></span>
-        </label>
+        <aside class="sidebar" aria-label="Painéis de controle">
+          <section class="panel" aria-labelledby="audioPanelTitle">
+            <div class="panel__head">
+              <h2 id="audioPanelTitle">Experiência sonora</h2>
+              <span class="status-dot" id="audioDot" aria-hidden="true"></span>
+            </div>
+            <p class="panel__status" id="audioStatus" role="status">Áudio aguardando ativação</p>
+            <canvas class="scope" id="scopeCanvas" width="300" height="72" aria-hidden="true"></canvas>
+            <label class="field">
+              <span class="field__label">Volume <output id="volumeOut">0 dB</output></span>
+              <input type="range" id="volumeSlider" min="-30" max="6" step="1" value="0">
+            </label>
+            <label class="field">
+              <span class="field__label">Escala musical</span>
+              <select id="keySelect">
+                <option value="C">Pentatônica Maior de Dó</option>
+                <option value="G">Pentatônica Maior de Sol</option>
+              </select>
+            </label>
+            <label class="switch">
+              <span class="switch__body"><strong>Instrumentos reais</strong><small id="samplesState">Amostras gravadas (piano Salamander, violoncelo, flauta, harpa)</small></span>
+              <input type="checkbox" id="samplesToggle" checked>
+              <span class="switch__track" aria-hidden="true"><span class="switch__thumb"></span></span>
+            </label>
+            <button class="button button--ghost button--block" id="reviewLegend" type="button">Rever legenda sensorial</button>
+          </section>
 
-        <label class="switch switch--compact">
-          <span class="switch__body">
-            <strong>Feedback tátil</strong>
-            <small>Microvibrações em transições térmicas.</small>
-          </span>
-          <input type="checkbox" id="vibrationToggle" checked>
-          <span class="switch__track" aria-hidden="true"><span class="switch__thumb"></span></span>
-        </label>
+          <section class="panel panel--phone" aria-labelledby="phoneTitle">
+            <div class="panel__head">
+              <h2 id="phoneTitle">Conectar Smartphone (Vibração Tátil)</h2>
+              <span class="status-dot" id="phoneDot" aria-hidden="true"></span>
+            </div>
+            <p class="help">Escaneie o QR Code com a câmera do celular. A vibração acompanha o mouse via WebRTC, peer-to-peer, sem servidor próprio.</p>
+            <button class="button button--primary button--block" id="phoneConnect" type="button">
+              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="2.5" width="10" height="19" rx="2.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M3 9v6M21 9v6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+              <span id="phoneConnectLabel">Gerar QR Code</span>
+            </button>
+            <div class="phone-box" id="phoneBox" hidden>
+              <label class="field">
+                <span class="field__label">O celular abre o receptor por</span>
+                <select id="receiverMode">
+                  <option value="lan">Rede Wi-Fi local (este computador)</option>
+                  <option value="public">Internet: GitHub Pages (HTTPS)</option>
+                </select>
+              </label>
+              <div class="field" id="lanField" hidden>
+                <label class="field__label" for="lanInput">Endereço deste computador na rede</label>
+                <input type="text" id="lanInput" placeholder="192.168.0.10:8000" inputmode="url" autocomplete="off" spellcheck="false">
+                <small class="help">“localhost” não abre no celular. Rode <code>python3 servidor.py</code> (detecta o IP sozinho) ou digite o IP local do computador.</small>
+              </div>
+              <p class="qr-warn" id="qrWarn" role="alert" hidden></p>
+              <div class="qr" id="qrBox"></div>
+              <code class="qr-url" id="qrUrl"></code>
+              <p class="panel__status" id="phoneStatus" role="status">—</p>
+              <details class="help-details phone-help">
+                <summary>O celular não conecta?</summary>
+                <ol>
+                  <li><strong>A página nem abre no celular:</strong> o celular não alcança este computador. Confirme a mesma rede Wi-Fi (sem “rede de convidados”) e libere a porta no firewall. Ou escolha <em>Internet: GitHub Pages</em> acima.</li>
+                  <li><strong>Abre, mas fica em “Procurando o computador”:</strong> o QR Code é antigo (gere um novo) ou a rede bloqueia WebRTC. Tente outra rede ou os dados móveis.</li>
+                  <li><strong>Conecta, mas não vibra:</strong> toque em “Ativar a vibração” no celular. iPhone/Safari não tem vibração na web, então o receptor pulsa só na tela. No Android, desative o modo silencioso total.</li>
+                </ol>
+              </details>
+              <a class="link-small" id="receiverLink" href="#" target="_blank" rel="noopener">Abrir receptor neste dispositivo</a>
+              <button class="button button--ghost button--block" id="phoneDisconnect" type="button">Desconectar</button>
+            </div>
+          </section>
 
-        <details class="help-details">
-          <summary>Navegação por teclado</summary>
-          <ul>
-            <li><kbd>Tab</kbd> entra no mapa e nos controles.</li>
-            <li><kbd>Setas</kbd> movem a grade focal virtual.</li>
-            <li><kbd>Shift</kbd> + <kbd>Setas</kbd> saltam mais rápido.</li>
-            <li><kbd>Espaço</kbd> ativa ou pausa o áudio.</li>
-            <li><kbd>Enter</kbd> repete a leitura atual.</li>
-          </ul>
-        </details>
-      </section>
-
-      <section class="panel panel--quiet">
-        <h2>Como ouvir</h2>
-        <ul class="mini-list">
-          <li><span class="mini-list__swatch mini-list__swatch--warm"></span>Águas quentes sobem na escala.</li>
-          <li><span class="mini-list__swatch mini-list__swatch--cold"></span>Águas frias descem e ganham profundidade.</li>
-          <li><span class="mini-list__swatch mini-list__swatch--flow"></span>Correntes intensas abrem o filtro.</li>
-        </ul>
-      </section>
-    </aside>
+          <section class="panel" aria-labelledby="a11yTitle">
+            <h2 id="a11yTitle">Acessibilidade e conforto</h2>
+            <label class="switch">
+              <span class="switch__body"><strong>Modo de baixa sensibilidade</strong><small>Limitador de volume, frequências suaves, transições lentas e vibração leve.</small></span>
+              <input type="checkbox" id="lowSensory">
+              <span class="switch__track" aria-hidden="true"><span class="switch__thumb"></span></span>
+            </label>
+            <label class="switch">
+              <span class="switch__body"><strong>Narração por voz</strong><small>Lê em voz alta a região, os instrumentos e o valor quando o cursor para.</small></span>
+              <input type="checkbox" id="voiceToggle">
+              <span class="switch__track" aria-hidden="true"><span class="switch__thumb"></span></span>
+            </label>
+            <label class="switch">
+              <span class="switch__body"><strong>Alto contraste</strong><small>Bordas, textos e foco reforçados.</small></span>
+              <input type="checkbox" id="highContrast">
+              <span class="switch__track" aria-hidden="true"><span class="switch__thumb"></span></span>
+            </label>
+            <label class="field">
+              <span class="field__label">Filtro de cor e daltonismo</span>
+              <select id="colorMode">
+                <option value="none">Cores originais</option>
+                <optgroup label="Paletas seguras (recolore pelos dados)">
+                  <option value="cividis">Cividis: segura para todos os tipos</option>
+                  <option value="viridis">Viridis</option>
+                  <option value="gray">Escala de cinza</option>
+                </optgroup>
+                <optgroup label="Simulação de daltonismo">
+                  <option value="deuteranopia">Deuteranopia</option>
+                  <option value="protanopia">Protanopia</option>
+                  <option value="tritanopia">Tritanopia</option>
+                </optgroup>
+              </select>
+            </label>
+            <details class="help-details">
+              <summary>Atalhos de teclado</summary>
+              <ul>
+                <li><kbd>Setas</kbd> movem o cursor focal virtual</li>
+                <li><kbd>Shift</kbd> + <kbd>setas</kbd> passos maiores</li>
+                <li><kbd>Enter</kbd> anuncia a leitura atual</li>
+                <li><kbd>Espaço</kbd> liga ou pausa o áudio</li>
+                <li><kbd>[</kbd> <kbd>]</kbd> hora anterior e próxima</li>
+                <li><kbd>P</kbd> reproduz ou pausa a linha do tempo</li>
+                <li><kbd>L</kbd> abre a legenda sensorial</li>
+                <li><kbd>Home</kbd> centraliza o cursor</li>
+              </ul>
+            </details>
+          </section>
+        </aside>
+      </div>
+    </section>
   </main>
 
-  <footer class="site-footer">
-    <p>
-      Dados visuais: NASA Scientific Visualization Studio.
-      <span aria-hidden="true">·</span>
-      Sonificação original com Web Audio API, sem arquivos de áudio externos.
-    </p>
-    <p class="site-footer__small">Explore com o mouse, toque ou teclado. O som é gerado ao vivo no navegador.</p>
-  </footer>
+  <!-- ===================== LEGENDA AUDITIVA E SENSORIAL ===================== -->
+  <dialog class="legend-dialog" id="legendDialog" aria-labelledby="legendDialogTitle" aria-describedby="legendDialogIntro">
+    <form method="dialog" class="legend-dialog__inner">
+      <header class="legend-dialog__head">
+        <p class="kicker">Preparação sensorial</p>
+        <h2 id="legendDialogTitle" tabindex="-1">Legenda auditiva</h2>
+        <p id="legendDialogIntro" class="legend-dialog__intro">—</p>
+      </header>
 
-  <div class="sr-only" id="ariaStatus" role="status" aria-live="polite" aria-atomic="true"></div>
-  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+      <div class="legend-dialog__scale">
+        <div class="legend-dialog__scale-head"><strong id="dlgScaleLabel">—</strong><span id="dlgScaleUnit">—</span></div>
+        <div class="legend-bar__gradient" id="dlgGradient"></div>
+        <div class="legend-bar__ticks" id="dlgTicks"></div>
+      </div>
+
+      <ul class="instrument-list" id="instrumentList"></ul>
+
+      <div class="mapping-list">
+        <div><strong>Eixo X</strong><span>Posição horizontal leva o som da esquerda para a direita (estéreo).</span></div>
+        <div><strong>Cor → nota</strong><span>O valor sob o cursor escolhe a nota na <span id="dlgKey">pentatônica de Dó</span>: grave à esquerda da escala, agudo à direita.</span></div>
+        <div><strong>Brilho</strong><span>Pixels mais claros abrem o timbre e reforçam as camadas secundárias.</span></div>
+        <div><strong>Celular</strong><span>Vibra mais forte em valores altos e dá pulso duplo ao cruzar zonas.</span></div>
+      </div>
+
+      <footer class="legend-dialog__foot">
+        <button class="button button--ghost" value="back" id="dlgBack" type="submit">Voltar à galeria</button>
+        <button class="button button--start" value="start" id="dlgStart" type="submit">
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l10-6.5-10-6.5Z" fill="currentColor"/></svg>
+          Iniciar Experiência Multissensorial
+        </button>
+      </footer>
+    </form>
+  </dialog>
+
+  <div class="sr-only" id="ariaLive" role="status" aria-live="polite" aria-atomic="true"></div>
+  <div class="toast" id="toast" role="alert" aria-live="assertive"></div>
 
   <svg class="svg-defs" aria-hidden="true" focusable="false">
     <defs>
-      <filter id="deuteranopia" color-interpolation-filters="sRGB">
-        <feColorMatrix type="matrix" values="0.625 0.375 0 0 0  0.7 0.3 0 0 0  0 0.3 0.7 0 0  0 0 0 1 0"/>
-      </filter>
-      <filter id="protanopia" color-interpolation-filters="sRGB">
-        <feColorMatrix type="matrix" values="0.567 0.433 0 0 0  0.558 0.442 0 0 0  0 0.242 0.758 0 0  0 0 0 1 0"/>
-      </filter>
-      <filter id="tritanopia" color-interpolation-filters="sRGB">
-        <feColorMatrix type="matrix" values="0.95 0.05 0 0 0  0 0.433 0.567 0 0  0 0.475 0.525 0 0  0 0 0 1 0"/>
-      </filter>
+      <filter id="deuteranopia" color-interpolation-filters="sRGB"><feColorMatrix type="matrix" values="0.625 0.375 0 0 0  0.7 0.3 0 0 0  0 0.3 0.7 0 0  0 0 0 1 0"/></filter>
+      <filter id="protanopia" color-interpolation-filters="sRGB"><feColorMatrix type="matrix" values="0.567 0.433 0 0 0  0.558 0.442 0 0 0  0 0.242 0.758 0 0  0 0 0 1 0"/></filter>
+      <filter id="tritanopia" color-interpolation-filters="sRGB"><feColorMatrix type="matrix" values="0.95 0.05 0 0 0  0 0.433 0.567 0 0  0 0.475 0.525 0 0  0 0 0 1 0"/></filter>
     </defs>
   </svg>
 
-  <noscript>
-    <div class="noscript">Este projeto precisa de JavaScript para gerar a sonificação em tempo real.</div>
-  </noscript>
-
-  <script type="module" src="js/app.js"></script>
+  <noscript><div class="noscript">Este projeto precisa de JavaScript para gerar a sonificação em tempo real.</div></noscript>
 </body>
 </html>

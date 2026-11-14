@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#03080f">
+  <title>Receptor Tátil · Sinfonia da Terra</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #03080f; --panel: #0b1726; --text: #eef8ff; --muted: #9db3c6;
+      --accent: #67e8f9; --ok: #86efac; --warn: #fbbf24; --err: #fb7185;
+    }
+    @media (prefers-color-scheme: light) {
+      :root:not([data-theme="dark"]) { color-scheme: light; --bg: #f4f8fb; --panel: #ffffff; --text: #08131f; --muted: #4a6072; --accent: #0e7490; }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; min-height: 100dvh; background: var(--bg); color: var(--text);
+      font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+      display: grid; place-items: center; padding: 16px;
+    }
+    main { width: min(440px, 100%); display: grid; gap: 16px; text-align: center; }
+    h1 { font-size: 1.35rem; margin: 0; }
+    p { margin: 0; color: var(--muted); }
+    .pulse {
+      --c: 103 232 249; --s: 0;
+      width: min(64vw, 260px); aspect-ratio: 1; margin: 8px auto; border-radius: 50%;
+      background: radial-gradient(circle, rgb(var(--c) / .95) 0 18%, rgb(var(--c) / .35) 45%, transparent 70%);
+      transform: scale(calc(.72 + var(--s) * .4));
+      transition: transform .12s ease-out, background .3s;
+      box-shadow: 0 0 calc(20px + var(--s) * 60px) rgb(var(--c) / .45);
+    }
+    .pulse.hit { transform: scale(calc(.9 + var(--s) * .5)); transition: transform 40ms; }
+    button {
+      font: inherit; font-weight: 700; border: 0; border-radius: 999px; padding: 18px 24px;
+      background: var(--accent); color: #03111c; min-height: 56px; cursor: pointer; width: 100%;
+    }
+    button:focus-visible { outline: 3px solid var(--text); outline-offset: 3px; }
+    .card { background: var(--panel); border-radius: 18px; padding: 14px 16px; display: grid; gap: 4px; }
+    .status { font-weight: 600; }
+    .status[data-s="ok"] { color: var(--ok); }
+    .status[data-s="warn"] { color: var(--warn); }
+    .status[data-s="err"] { color: var(--err); }
+    .value { font-size: 1.6rem; font-weight: 800; color: var(--text); }
+    .steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; text-align: left; font-size: .9rem; }
+    .steps li { background: var(--panel); border-radius: 12px; padding: 10px 12px 10px 40px; position: relative; color: var(--muted); }
+    .steps li::before { content: "…"; position: absolute; left: 14px; font-weight: 800; }
+    .steps li[data-s="ok"] { color: var(--text); } .steps li[data-s="ok"]::before { content: "✓"; color: var(--ok); }
+    .steps li[data-s="err"] { color: var(--err); } .steps li[data-s="err"]::before { content: "✕"; }
+    .steps li[data-s="warn"]::before { content: "!"; color: var(--warn); }
+    .steps small { display: block; color: var(--muted); }
+    @media (prefers-reduced-motion: reduce) { .pulse { transition: none; } }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Receptor Tátil</h1>
+    <p>A Sinfonia da Terra · vibração sincronizada com o mapa do computador</p>
+    <div class="pulse" id="pulse" aria-hidden="true"></div>
+    <button id="enable" type="button">Toque para ativar a vibração</button>
+    <div class="card">
+      <span class="status" id="status" role="status" aria-live="polite">Conectando…</span>
+      <span class="value" id="value">—</span>
+      <span id="zone">Mova o mouse sobre o mapa no computador.</span>
+    </div>
+    <ol class="steps" id="steps" aria-label="Diagnóstico da conexão">
+      <li data-step="page" data-s="ok">Página do receptor aberta</li>
+      <li data-step="signal">Servidor de sinalização (PeerJS)</li>
+      <li data-step="peer">Conexão direta com o computador (WebRTC)</li>
+      <li data-step="vibe">Vibração</li>
+    </ol>
+    <p id="support"></p>
+  </main>
+  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+  <script type="module" src="js/receiver.js"></script>
+</body>
+</html>
