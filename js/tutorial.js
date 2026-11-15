@@ -1,15 +1,17 @@
 // Tutorial guiado por áudio e teclado, pensado para pessoas cegas ou com baixa visão.
 // Os passos explicativos aparecem como um guia modal no centro da tela; nos desafios,
 // o painel encolhe para a base da tela e o foco vai para o mapa.
-// Textos em assets/tutorial/roteiro.json; falas fixas em MP3 neural (tools/gerar_audio_tutorial.py),
-// com a voz do navegador como alternativa (js/voz.js).
+//
+// O primeiro passo depois das boas-vindas é o guia de atalhos (montado a partir de
+// js/shortcuts.js). Textos em assets/tutorial/roteiro.json, um bloco por idioma; gravações
+// em MP3 opcionais (tools/gerar_audio_tutorial.py), com a voz do navegador como alternativa.
 
-import { LAYER_ORDER, SAMPLE_SET, SETTINGS, layerInstruments } from "./config.js";
+import { CHARACTERISTICS, instrumentFor } from "./config.js";
+import { SHORTCUTS, SHORTCUT_ORDER } from "./shortcuts.js";
+import { t, getLang, keyName, joinList } from "./i18n.js";
 import { narrator } from "./voz.js";
 
 const $ = (id) => document.getElementById(id);
-const wait = (ms) => new Promise((res) => setTimeout(res, ms));
-const VOICE_KEY = "sinfonia-tutorial-voice";
 const SEEN_KEY = "sinfonia-tutorial-visto";
 const BASE = "assets/tutorial/";
 
@@ -23,20 +25,22 @@ function load(key) {
 /**
  * @param {object} api
  * @param {import("./audio.js").SonificationEngine} api.engine
- * @param {() => boolean} api.isLowSensory
  * @param {() => Promise<void>} api.openPractice  abre o mapa de temperatura sem a legenda e foca o mapa
  * @param {() => boolean} api.hasTimeline
  * @param {() => void} api.focusMap
  * @param {() => void} api.backToGallery
  * @param {() => boolean} api.inExplore
  * @param {(msg: string) => void} api.toast
- * @param {(info: { started: boolean, voice: boolean }) => void} [api.onClose]  started: passou da tela inicial
+ * @param {() => boolean} api.voiceOn       a voz do site está ligada?
+ * @param {(on: boolean) => void} api.setVoice
+ * @param {() => object} api.voiceOpts      { rate, volume } da narração
  */
 export function createTutorial(api) {
   const dlg = $("tutorialPanel");
   const titleEl = $("tutorialTitle");
   const stepEl = $("tutorialStep");
   const bodyEl = $("tutorialBody");
+  const actionsEl = $("tutorialActions");
   const statusEl = $("tutorialStatus");
   const prevBtn = $("tutorialPrev");
   const nextBtn = $("tutorialNext");
@@ -49,39 +53,43 @@ export function createTutorial(api) {
   let index = 0;
   let steps = [];
   let missionDone = false;
-  let demoUntil = 0; // enquanto > agora, o app não sobrescreve o motor de áudio
   let lastFocus = null;
   let moveCount = 0;
-  let started = false; // a pessoa passou da tela de boas-vindas (não pulou o tutorial)
-
-  voiceBox.checked = load(VOICE_KEY) !== "0";
+  let welcomeStarted = false; // a fala das boas-vindas já começou a tocar?
+  let welcomeKeyUsed = false; // a 1ª tecla já foi usada para destravar a leitura
 
   const ready = fetch(`${BASE}roteiro.json`, { cache: "no-cache" })
     .then((r) => r.json())
-    .then((data) => {
-      roteiro = data;
-      const clips = {};
-      for (const [id, a] of Object.entries(data.audio || {})) clips[id] = { src: BASE + a.arquivo, texto: a.texto };
-      narrator.setClips(clips);
-    })
+    .then((data) => { roteiro = data; useClips(); })
     .catch((err) => {
       console.error("Roteiro do tutorial indisponível", err);
-      api.toast("Não foi possível carregar o roteiro do tutorial.");
+      api.toast(t("tut.loadError"));
     });
+
+  // gravações do idioma atual (id "en:inicio", "pt:inicio"...)
+  function useClips() {
+    if (!roteiro) return;
+    const clips = {};
+    for (const [lang, list] of Object.entries(roteiro.audio || {})) {
+      for (const [id, a] of Object.entries(list || {})) clips[`${lang}:${id}`] = { src: BASE + a.arquivo, texto: a.texto };
+    }
+    narrator.setClips(clips);
+  }
+
+  const texts = () => roteiro[getLang()] || roteiro.en;
+
+  // {tecla:nome} → nome falado da tecla do atalho (js/shortcuts.js)
+  const fill = (s) => s.replace(/\{tecla:(\w+)\}/g, (_, n) => (SHORTCUTS[n] ? keyName(SHORTCUTS[n].key) : n));
 
   // ---------------------------------------------------------------------------
   // Voz
   // ---------------------------------------------------------------------------
-  function wantsVoice() {
-    return active && voiceBox.checked;
-  }
-
-  const voiceOpts = () => ({ rate: api.isLowSensory() ? SETTINGS.low.voiceRate : 1, volume: api.isLowSensory() ? SETTINGS.low.voiceVolume : 1 });
+  const wantsVoice = () => active && api.voiceOn();
 
   // fala uma gravação do roteiro (ou o texto, com a voz do navegador)
-  function speakId(id, text, { queue = false, tag = null } = {}) {
+  function speakId(id, text, { queue = false, tag = null, onstart = null } = {}) {
     if (!wantsVoice()) return;
-    narrator.clip(id, text, { queue, tag, ...voiceOpts() });
+    narrator.clip(`${getLang()}:${id}`, text, { queue, tag, priority: true, onstart, ...api.voiceOpts() });
   }
 
   function setStatus(text) {
@@ -90,91 +98,42 @@ export function createTutorial(api) {
   }
 
   function message(id, opts) {
-    const text = roteiro.mensagens[id];
+    const text = fill(texts().mensagens[id]);
     setStatus(text);
     speakId(id, text, opts);
   }
 
   // ---------------------------------------------------------------------------
-  // Demonstrações sonoras
+  // Demonstrações sonoras (vozes de pré-escuta: não mexem no som do mapa)
   // ---------------------------------------------------------------------------
   async function ensureAudio() {
     try {
       await api.engine.start();
       api.engine.resume();
       return true;
-    } catch (err) {
-      api.toast(err.message || "Não foi possível iniciar o áudio.");
+    } catch {
       message("sem-som");
       return false;
     }
   }
 
-  async function playInstrument(id, btn) {
+  async function demo(btn, play) {
     if (!(await ensureAudio())) return;
     narrator.cancel();
     btn?.classList.add("is-playing");
-    const secs = await api.engine.preview(id);
-    demoUntil = performance.now() + secs * 1000;
+    const secs = await play();
     setTimeout(() => btn?.classList.remove("is-playing"), secs * 1000);
   }
 
-  async function playPlace(id, btn) {
-    if (!(await ensureAudio())) return;
-    narrator.cancel();
-    btn?.classList.add("is-playing");
-    const secs = await api.engine.previewPlace(id, 5);
-    demoUntil = performance.now() + secs * 1000;
-    setTimeout(() => btn?.classList.remove("is-playing"), secs * 1000);
-  }
+  const tempInstrument = () => instrumentFor("TEMPERATURE");
 
-  // Sequência de estados enviados ao motor, como se o cursor andasse pelo mapa.
-  async function runDemo(frames, stepMs) {
-    if (!(await ensureAudio())) return;
-    narrator.cancel();
-    demoUntil = performance.now() + frames.length * stepMs + 400;
-    for (const f of frames) {
-      if (!active) break;
-      api.engine.update({ active: true, bright: 0.5, grad: 0, ...f });
-      await wait(stepMs);
-    }
-    api.engine.update({ active: false, weights: { low: 0, mid: 0, high: 0, arp: 0 } });
-  }
+  // do valor mais baixo ao mais alto: a nota sobe junto
+  const demoLowToHigh = (btn) => demo(btn, () => api.engine.playValues(tempInstrument(), Array.from({ length: 11 }, (_, i) => i / 10), 0.38));
 
-  function demoColdToHot() {
-    const frames = [];
-    for (let i = 0; i <= 16; i += 1) {
-      const t = i / 16;
-      frames.push({
-        pan: 0,
-        norm: t,
-        weights: {
-          low: Math.max(0, 1 - t * 2.2),
-          mid: Math.min(1, Math.max(0, (t - 0.25) * 2.5)),
-          high: Math.max(0, (t - 0.7) * 2),
-          arp: 0,
-        },
-      });
-    }
-    return runDemo(frames, 330);
-  }
-
-  function demoLeftRight() {
+  const demoLeftRight = (btn) => {
     const melody = [0.45, 0.55, 0.62, 0.55, 0.45, 0.55, 0.62, 0.7, 0.62, 0.55, 0.45, 0.55];
-    return runDemo(
-      melody.map((norm, i) => ({ pan: -1 + (2 * i) / (melody.length - 1), norm, weights: { low: 0, mid: 1, high: 0, arp: 0 } })),
-      420
-    );
-  }
-
-  function demoHarp() {
-    const frames = [];
-    for (let i = 0; i <= 10; i += 1) {
-      const w = i <= 5 ? i / 5 : (10 - i) / 5;
-      frames.push({ pan: 0, norm: 0.55, weights: { low: 0, mid: 0.5, high: 0, arp: w } });
-    }
-    return runDemo(frames, 450);
-  }
+    return demo(btn, () => api.engine.playValues(tempInstrument(), melody.map((norm, i) => ({ norm, pan: -1 + (2 * i) / (melody.length - 1) })), 0.42));
+  };
 
   // ---------------------------------------------------------------------------
   // Passos (textos no roteiro; aqui ficam botões e regras dos desafios)
@@ -184,7 +143,7 @@ export function createTutorial(api) {
     b.type = "button";
     b.className = cls;
     b.textContent = label;
-    b.addEventListener("click", onClick);
+    b.addEventListener("click", () => onClick(b));
     return b;
   }
 
@@ -194,35 +153,32 @@ export function createTutorial(api) {
         id: "inicio",
         gate: true,
         actions: () => [
-          button("Começar o tutorial", () => render(1), "button button--primary"),
-          button("Pular e ir para a galeria", () => close()),
+          button(t("tut.start"), () => render(1), "button button--primary"),
+          button(t("tut.skip"), () => close()),
         ],
-        focus: "action",
         hideNav: true,
       },
-      { id: "boas-vindas" },
+      // o guia de atalhos é a primeira informação do tutorial
+      { id: "atalhos" },
+      { id: "como-funciona" },
       {
         id: "instrumentos",
-        actions: () => LAYER_ORDER.map((id) => {
-          const inst = api.engine.layerInstrument(id) || layerInstruments("temp")[id];
-          const b = button(`Ouvir ${(SAMPLE_SET[inst]?.label || id).toLowerCase()}`, () => playInstrument(id, b));
-          return b;
+        actions: () => CHARACTERISTICS.map((c) => {
+          const inst = instrumentFor(c);
+          return button(t("tut.hearInst", { char: t(`char.${c}`), inst: t(`inst.${inst}`) }), (b) => demo(b, () => api.engine.preview(inst)));
         }),
       },
-      { id: "grave-agudo", actions: () => [button("Ouvir do frio ao quente", demoColdToHot, "button button--primary")] },
-      { id: "esquerda-direita", actions: () => [button("Ouvir da esquerda para a direita", demoLeftRight, "button button--primary")] },
-      { id: "harpa", actions: () => [button("Ouvir a harpa", demoHarp, "button button--primary")] },
+      { id: "grave-agudo", actions: () => [button(t("tut.hearLowHigh"), demoLowToHigh, "button button--primary")] },
+      { id: "esquerda-direita", actions: () => [button(t("tut.hearLeftRight"), demoLeftRight, "button button--primary")] },
       {
         id: "lugares",
-        actions: () => [["mar", "o mar"], ["gelo", "o gelo"], ["floresta", "a floresta"], ["deserto", "o deserto"], ["coracao", "o coração"]].map(([id, nome]) => {
-          const bt = button(`Ouvir ${nome}`, () => playPlace(id, bt));
-          return bt;
-        }),
+        actions: () => ["mar", "gelo", "floresta", "deserto"].map((id) =>
+          button(t("tut.hearPlace", { place: t(`placeName.${id}`) }), (b) => demo(b, () => api.engine.previewPlace(id, 5)))),
       },
       {
         id: "praticar",
-        actions: () => [button("Abrir o mapa de temperatura", startPractice, "button button--primary")],
-        nextLabel: "Abrir o mapa",
+        actions: () => [button(t("tut.openMap"), startPractice, "button button--primary")],
+        nextLabel: () => t("tut.openMapShort"),
         onNext: startPractice,
       },
       {
@@ -236,7 +192,7 @@ export function createTutorial(api) {
       {
         id: "desafio-frio",
         mission: true,
-        check: (type, r) => type === "reading" && r?.valid && (r.weights?.low ?? 0) >= 0.6,
+        check: (type, r) => type === "reading" && r?.valid && r.value <= -10,
         success: "ok-frio",
       },
       { id: "desafio-centro", mission: true, check: (type) => type === "home", success: "ok-centro" },
@@ -250,10 +206,10 @@ export function createTutorial(api) {
       {
         id: "fim",
         actions: () => [
-          button("Explorar o mapa livremente", () => close({ focusMap: true }), "button button--primary"),
-          button("Voltar à galeria", () => { close(); api.backToGallery(); }),
+          button(t("tut.explore"), () => close({ focusMap: true }), "button button--primary"),
+          button(t("tut.toGallery"), () => { close(); api.backToGallery(); }),
         ],
-        nextLabel: "Concluir",
+        nextLabel: () => t("tut.finish"),
         onNext: () => close({ focusMap: api.inExplore() }),
       },
     ];
@@ -267,13 +223,28 @@ export function createTutorial(api) {
     render(steps.findIndex((s) => s.mission));
   }
 
-  const content = (step) => roteiro.passos[step.id];
+  // lista de atalhos: [{ key, text }] na ordem de SHORTCUT_ORDER
+  const shortcutList = () => SHORTCUT_ORDER.map((n) => ({ key: SHORTCUTS[n].key, text: t(`sc.${n}`) }));
 
-  // mesmo texto que tools/gerar_audio_tutorial.py grava
+  // lista "característica: instrumento" do config.json
+  const instrumentSentence = () =>
+    `${joinList(CHARACTERISTICS.map((c) => `${t(`char.${c}`).toLowerCase()}, ${t(`inst.${instrumentFor(c)}`).toLowerCase()}`), "; ")}.`;
+
+  // título e parágrafos do passo, já com as teclas e listas preenchidas
+  function content(step) {
+    const { titulo, texto } = texts().passos[step.id];
+    return {
+      titulo: fill(titulo),
+      texto: texto.map((p) => (p === "{atalhos}" ? p : fill(p.replace("{instrumentos}", instrumentSentence())))),
+    };
+  }
+
+  // o que a voz fala (mesmo texto que tools/gerar_audio_tutorial.py grava)
   function spokenText(step) {
     const { titulo, texto } = content(step);
     const end = /[.!?]$/.test(titulo) ? "" : ".";
-    return `${titulo}${end} ${texto.join(" ")}`;
+    const parts = texto.map((p) => (p === "{atalhos}" ? shortcutList().map((s) => `${keyName(s.key)}: ${s.text}.`).join(" ") : p));
+    return `${titulo}${end} ${parts.join(" ")}`;
   }
 
   // ---------------------------------------------------------------------------
@@ -289,39 +260,47 @@ export function createTutorial(api) {
   }
 
   // queue: a fala entra na fila (depois do retorno de um desafio); prefix: texto anunciado antes
-  function render(i, { queue = false, prefix = "" } = {}) {
+  function render(i, { queue = false, prefix = "", speak = true } = {}) {
     index = Math.max(0, Math.min(steps.length - 1, i));
     const step = steps[index];
     const { titulo, texto } = content(step);
     missionDone = false;
-    if (!step.gate) started = true;
 
     const missions = steps.filter((s) => s.mission);
     const guides = steps.filter((s) => !s.mission && !s.gate);
     stepEl.textContent = step.gate
-      ? "Boas-vindas"
+      ? t("tut.welcome")
       : step.mission
-        ? `Desafio ${missions.indexOf(step) + 1} de ${missions.length}`
-        : `Passo ${guides.indexOf(step) + 1} de ${guides.length}`;
+        ? t("tut.challengeN", { n: missions.indexOf(step) + 1, total: missions.length })
+        : t("tut.stepN", { n: guides.indexOf(step) + 1, total: guides.length });
     titleEl.textContent = titulo;
     bodyEl.innerHTML = "";
     for (const p of texto) {
+      if (p === "{atalhos}") {
+        const ul = document.createElement("ul");
+        ul.className = "tutorial__keys";
+        for (const s of shortcutList()) {
+          const li = document.createElement("li");
+          const kbd = document.createElement("kbd");
+          kbd.textContent = keyName(s.key, { short: true });
+          li.append(kbd, ` ${s.text}`);
+          ul.append(li);
+        }
+        bodyEl.append(ul);
+        continue;
+      }
       const el = document.createElement("p");
       el.textContent = p;
       bodyEl.append(el);
     }
+    // os botões ficam fora do corpo: o leitor de tela lê o corpo inteiro como descrição do diálogo
+    actionsEl.innerHTML = "";
     const actions = step.actions?.() || [];
-    let firstAction = null;
-    if (actions.length) {
-      const row = document.createElement("div");
-      row.className = "tutorial__actions";
-      row.append(...actions);
-      bodyEl.append(row);
-      firstAction = actions[0];
-    }
+    actionsEl.append(...actions);
+    actionsEl.hidden = !actions.length;
     $("tutorialNav").hidden = !!step.hideNav;
     prevBtn.disabled = index === 0 || steps[index - 1]?.gate;
-    nextBtn.textContent = step.nextLabel || (step.mission ? "Pular desafio" : "Próximo");
+    nextBtn.textContent = step.nextLabel?.() || t(step.mission ? "tut.skipChallenge" : "tut.next");
     step.onEnter?.();
 
     present(!step.mission);
@@ -332,10 +311,11 @@ export function createTutorial(api) {
     } else {
       if (prefix) setStatus(prefix);
       else statusEl.textContent = "";
-      if (step.focus === "action" && firstAction) firstAction.focus();
-      else titleEl.focus();
+      // o foco vai para o título: com o aria-describedby do diálogo, o leitor de tela lê o
+      // título e o texto inteiro (inclusive a janela de boas-vindas na primeira visita)
+      titleEl.focus();
     }
-    speakId(step.id, text, { queue, tag: "instrucao" });
+    if (speak) speakId(step.id, text, { queue, tag: "instrucao", onstart: step.gate ? () => { welcomeStarted = true; } : null });
   }
 
   function next() {
@@ -361,9 +341,8 @@ export function createTutorial(api) {
     const step = steps[index];
     if (!step?.mission || !step.check(type, detail)) return;
     missionDone = true;
-    // em fila: não corta a leitura do lugar que o app acabou de falar. O próximo passo
-    // já fica valendo (teclas apertadas durante a fala contam), e sua instrução entra na fila.
-    const ok = roteiro.mensagens[step.success];
+    // em fila: não corta a leitura do lugar que o app acabou de falar
+    const ok = fill(texts().mensagens[step.success]);
     narrator.drop("instrucao"); // instrução de um desafio já cumprido não precisa mais tocar
     speakId(step.success, ok, { queue: true });
     render(index + 1, { queue: true, prefix: ok });
@@ -377,9 +356,12 @@ export function createTutorial(api) {
     await ready;
     if (!roteiro) return;
     if ($("legendDialog").open) $("legendDialog").close();
+    if ($("helpDialog").open) $("helpDialog").close();
     lastFocus = document.activeElement;
     active = true;
-    started = false;
+    welcomeStarted = false;
+    welcomeKeyUsed = false;
+    voiceBox.checked = api.voiceOn();
     document.body.classList.add("tutorial-open");
     steps = buildSteps({ gate });
     render(0);
@@ -392,11 +374,10 @@ export function createTutorial(api) {
     if (dlg.open) dlg.close();
     document.body.classList.remove("tutorial-open");
     narrator.cancel();
-    $("ariaLive").textContent = "Tutorial fechado.";
+    $("ariaLive").textContent = t("tut.closed");
     if (focusMap && api.inExplore()) api.focusMap();
     else if (lastFocus && document.contains(lastFocus) && lastFocus !== document.body && !lastFocus.closest("#tutorialPanel")) lastFocus.focus();
     else $("main").focus({ preventScroll: true });
-    api.onClose?.({ started, voice: voiceBox.checked });
   }
 
   function repeat() {
@@ -407,14 +388,19 @@ export function createTutorial(api) {
     speakId(step.id, text);
   }
 
+  // idioma trocado: redesenha e fala o passo atual no novo idioma
+  function refresh() {
+    useClips();
+    if (active && steps.length) render(index);
+  }
+
   prevBtn.addEventListener("click", prev);
   nextBtn.addEventListener("click", next);
   repeatBtn.addEventListener("click", repeat);
   $("tutorialClose").addEventListener("click", () => close({ focusMap: api.inExplore() }));
   voiceBox.addEventListener("change", () => {
-    store(VOICE_KEY, voiceBox.checked ? "1" : "0");
-    if (!voiceBox.checked) narrator.cancel();
-    else message("voz-ligada");
+    api.setVoice(voiceBox.checked);
+    if (voiceBox.checked) message("voz-ligada");
   });
 
   // Escape no modo guia (modal) dispara "cancel"; no modo desafio, tratamos no keydown.
@@ -423,10 +409,27 @@ export function createTutorial(api) {
   dlg.addEventListener("close", () => { if (active && !dlg.open) close(); });
 
   document.addEventListener("keydown", (e) => {
-    if (!active || $("legendDialog").open) return;
+    if (!active || $("legendDialog").open || $("helpDialog").open) return;
     if (e.key === "Escape" && !modal) {
       e.preventDefault();
       close({ focusMap: api.inExplore() });
+      return;
+    }
+    const step = steps[index];
+    const onControl = e.target.closest?.("button, a, input, select, textarea");
+    // Primeira visita: o navegador só libera a voz depois de um gesto. Se a primeira tecla for
+    // Enter ou Espaço, ela serve para COMEÇAR A LEITURA das boas-vindas (que dizem o que fazer),
+    // e não para pular a tela sem que a pessoa tenha ouvido nada.
+    // (só a primeira vez: a segunda tecla Enter começa o tutorial normalmente)
+    if (step?.gate && !welcomeStarted && !welcomeKeyUsed && api.voiceOn() && (e.key === "Enter" || e.key === " ") && !onControl) {
+      welcomeKeyUsed = true;
+      e.preventDefault();
+      return;
+    }
+    // boas-vindas: Enter começa o tutorial (o foco está no título, para a leitura completa)
+    if (step?.gate && e.key === "Enter" && !onControl) {
+      e.preventDefault();
+      render(1);
       return;
     }
     const typing = /^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName);
@@ -440,10 +443,12 @@ export function createTutorial(api) {
     open,
     close,
     notify,
-    wantsVoice,
+    refresh,
+    syncVoice: () => { voiceBox.checked = api.voiceOn(); },
     seen: () => load(SEEN_KEY) === "1",
     isActive: () => active,
+    isModal: () => active && modal,
     isSpeaking: () => active && narrator.busy(),
-    isDemoPlaying: () => performance.now() < demoUntil,
+    isDemoPlaying: () => api.engine.previewing,
   };
 }

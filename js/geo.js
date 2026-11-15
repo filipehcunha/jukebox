@@ -1,4 +1,7 @@
 // Geografia: projeções, máscara terra/oceano, países e nomes de regiões.
+// Os nomes saem no idioma escolhido (js/i18n.js).
+
+import { t, getLang, num } from "./i18n.js";
 
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 
@@ -35,32 +38,30 @@ export function isLand(lat, lon) {
 // Países (GeoJSON do Natural Earth, Admin 0 – Countries)
 // ---------------------------------------------------------------------------
 
-let countries = null; // [{ name, bbox, parts: [{ bbox, poly }] }]
+let countries = null; // [{ names: { pt, en }, iso, bbox, parts: [{ bbox, poly }] }]
 const countryCache = new Map();
 const CACHE_MAX = 5000;
 
-let ptNames = null;
-try {
-  ptNames = new Intl.DisplayNames(["pt-BR"], { type: "region" });
-} catch {
-  ptNames = null;
+// Nomes dos países nos idiomas do site, a partir do código ISO (Intl.DisplayNames).
+// Se o navegador não souber o código, usa os nomes do próprio GeoJSON (NAME_PT, NAME_EN).
+const displayNames = {};
+for (const [lang, locale] of [["pt", "pt-BR"], ["en", "en"]]) {
+  try { displayNames[lang] = new Intl.DisplayNames([locale], { type: "region" }); } catch { displayNames[lang] = null; }
 }
 
-// Nome em português a partir do código ISO; se não der, usa o nome do arquivo.
-function countryName(props) {
+function countryNames(props) {
   const p = props || {};
-  const fallback = p.NAME_PT || p.NAME || p.ADMIN || null;
   const iso = p.ISO_A2_EH && p.ISO_A2_EH !== "-99" ? p.ISO_A2_EH : p.ISO_A2;
-  if (ptNames && iso && iso !== "-99") {
+  const fromIntl = (lang) => {
+    if (!displayNames[lang] || !iso || iso === "-99") return null;
     try {
-      const n = ptNames.of(iso);
-      // Quando o código é desconhecido, o Intl devolve o próprio código.
-      if (n && n !== iso) return n;
-    } catch {
-      /* código inválido: cai no fallback */
-    }
-  }
-  return fallback;
+      const n = displayNames[lang].of(iso);
+      return n && n !== iso ? n : null; // código desconhecido: o Intl devolve o próprio código
+    } catch { return null; }
+  };
+  const pt = fromIntl("pt") || p.NAME_PT || p.NAME || p.ADMIN || null;
+  const en = fromIntl("en") || p.NAME_EN || p.NAME || p.ADMIN || null;
+  return pt || en ? { pt: pt || en, en: en || pt, iso: iso && iso !== "-99" ? iso : null } : null;
 }
 
 function ringBBox(ring) {
@@ -88,8 +89,8 @@ export async function loadCountries(url = "assets/countries.geojson") {
       else if (g.type === "MultiPolygon") polys = g.coordinates;
       else continue;
 
-      const name = countryName(f.properties);
-      if (!name) continue;
+      const names = countryNames(f.properties);
+      if (!names) continue;
 
       const parts = polys.map((poly) => ({ bbox: ringBBox(poly[0]), poly }));
       const bbox = [
@@ -98,7 +99,7 @@ export async function loadCountries(url = "assets/countries.geojson") {
         Math.max(...parts.map((p) => p.bbox[2])),
         Math.max(...parts.map((p) => p.bbox[3])),
       ];
-      list.push({ name, bbox, parts });
+      list.push({ names, iso: names.iso, bbox, parts });
     }
     countries = list.length ? list : null;
   } catch {
@@ -125,7 +126,7 @@ function inPoly(poly, lon, lat) {
   return true;
 }
 
-// Nome do país em (lat, lon), ou null (oceano, fora de qualquer polígono, ou dados não carregados).
+// País em (lat, lon) ({ names, iso }), ou null (oceano, fora de qualquer polígono, ou dados não carregados).
 export function countryAt(lat, lon) {
   if (!countries) return null;
   const key = `${lat.toFixed(2)},${lon.toFixed(2)}`;
@@ -139,7 +140,7 @@ export function countryAt(lat, lon) {
       const pb = part.bbox;
       if (lon < pb[0] || lon > pb[2] || lat < pb[1] || lat > pb[3]) continue;
       if (inPoly(part.poly, lon, lat)) {
-        found = c.name;
+        found = c;
         break outer;
       }
     }
@@ -188,7 +189,7 @@ export function nearestCountry(lat, lon, maxKm = NEAR_KM) {
         const d = distToSegKm(lon, lat, ring[j][0], ring[j][1], ring[i][0], ring[i][1], kx, ky);
         if (d < bestD) {
           bestD = d;
-          best = c.name;
+          best = c;
         }
       }
     }
@@ -257,82 +258,84 @@ export function project(projection, u, v) {
 // ---------------------------------------------------------------------------
 
 const NAMED = [
-  { name: "Antártida", test: (la) => la <= -64 },
-  { name: "Groenlândia", test: (la, lo, land) => land && la >= 59 && lo >= -74 && lo <= -11 },
-  { name: "Ártico", test: (la) => la >= 78 },
-  { name: "Amazônia", test: (la, lo, land) => land && la <= 5 && la >= -15 && lo >= -75 && lo <= -48 },
-  { name: "Saara", test: (la, lo, land) => land && la >= 15 && la <= 33 && lo >= -17 && lo <= 32 },
-  { name: "Península Arábica", test: (la, lo, land) => land && la >= 12 && la <= 32 && lo >= 35 && lo <= 60 },
-  { name: "Planalto Tibetano", test: (la, lo, land) => land && la >= 28 && la <= 38 && lo >= 78 && lo <= 102 },
-  { name: "Índia", test: (la, lo, land) => land && la >= 7 && la < 28 && lo >= 68 && lo <= 90 },
-  { name: "China", test: (la, lo, land) => land && la >= 20 && la <= 45 && lo > 102 && lo <= 123 },
-  { name: "Sibéria", test: (la, lo, land) => land && la >= 50 && lo >= 60 && lo <= 180 },
-  { name: "Sudeste Asiático", test: (la, lo, land) => land && la >= -11 && la < 20 && lo >= 92 && lo <= 155 },
-  { name: "Austrália", test: (la, lo, land) => land && la <= -10 && la >= -45 && lo >= 112 && lo <= 155 },
-  { name: "Madagascar", test: (la, lo, land) => land && la >= -26 && la <= -11.5 && lo >= 43 && lo <= 51 },
-  { name: "Bacia do Congo", test: (la, lo, land) => land && la >= -10 && la <= 6 && lo >= 12 && lo <= 31 },
-  { name: "Sahel", test: (la, lo, land) => land && la >= 9 && la < 15 && lo >= -17 && lo <= 38 },
-  { name: "Mar Mediterrâneo", test: (la, lo, land) => !land && la >= 30 && la <= 46 && lo >= -5 && lo <= 36 },
-  { name: "Golfo do México", test: (la, lo, land) => !land && la >= 18 && la <= 31 && lo >= -98 && lo <= -81 },
-  { name: "Mar do Caribe", test: (la, lo, land) => !land && la >= 9 && la < 18 && lo >= -88 && lo <= -60 },
-  { name: "Golfo de Bengala", test: (la, lo, land) => !land && la >= 5 && la <= 22 && lo >= 80 && lo <= 95 },
-  { name: "Mar da Arábia", test: (la, lo, land) => !land && la >= 5 && la <= 25 && lo >= 55 && lo < 77 },
+  { id: "antarctica", test: (la) => la <= -64 },
+  { id: "greenland", test: (la, lo, land) => land && la >= 59 && lo >= -74 && lo <= -11 },
+  { id: "arctic", test: (la) => la >= 78 },
+  { id: "amazon", test: (la, lo, land) => land && la <= 5 && la >= -15 && lo >= -75 && lo <= -48 },
+  { id: "sahara", test: (la, lo, land) => land && la >= 15 && la <= 33 && lo >= -17 && lo <= 32 },
+  { id: "arabia", test: (la, lo, land) => land && la >= 12 && la <= 32 && lo >= 35 && lo <= 60 },
+  { id: "tibet", test: (la, lo, land) => land && la >= 28 && la <= 38 && lo >= 78 && lo <= 102 },
+  { id: "india", test: (la, lo, land) => land && la >= 7 && la < 28 && lo >= 68 && lo <= 90 },
+  { id: "china", test: (la, lo, land) => land && la >= 20 && la <= 45 && lo > 102 && lo <= 123 },
+  { id: "siberia", test: (la, lo, land) => land && la >= 50 && lo >= 60 && lo <= 180 },
+  { id: "seAsia", test: (la, lo, land) => land && la >= -11 && la < 20 && lo >= 92 && lo <= 155 },
+  { id: "australia", test: (la, lo, land) => land && la <= -10 && la >= -45 && lo >= 112 && lo <= 155 },
+  { id: "madagascar", test: (la, lo, land) => land && la >= -26 && la <= -11.5 && lo >= 43 && lo <= 51 },
+  { id: "congo", test: (la, lo, land) => land && la >= -10 && la <= 6 && lo >= 12 && lo <= 31 },
+  { id: "sahel", test: (la, lo, land) => land && la >= 9 && la < 15 && lo >= -17 && lo <= 38 },
+  { id: "mediterranean", test: (la, lo, land) => !land && la >= 30 && la <= 46 && lo >= -5 && lo <= 36 },
+  { id: "gulfMexico", test: (la, lo, land) => !land && la >= 18 && la <= 31 && lo >= -98 && lo <= -81 },
+  { id: "caribbean", test: (la, lo, land) => !land && la >= 9 && la < 18 && lo >= -88 && lo <= -60 },
+  { id: "bengal", test: (la, lo, land) => !land && la >= 5 && la <= 22 && lo >= 80 && lo <= 95 },
+  { id: "arabianSea", test: (la, lo, land) => !land && la >= 5 && la <= 25 && lo >= 55 && lo < 77 },
 ];
 
 function oceanRegion(lat, lon) {
-  if (lat >= 66.5) return "Oceano Ártico";
-  if (lat <= -55) return "Oceano Austral";
-  const hemi = lat >= 0 ? "Norte" : "Sul";
-  if (lon >= -70 && lon <= 20 && !(lat < 10 && lon < -80)) return `Atlântico ${hemi}`;
-  if (lon > 20 && lon < 120 && lat < 30) return `Oceano Índico`;
-  if (lat > 23) return "Pacífico Norte";
-  if (lat < -23) return "Pacífico Sul";
-  return "Pacífico Equatorial";
+  if (lat >= 66.5) return "arcticOcean";
+  if (lat <= -55) return "southernOcean";
+  const n = lat >= 0;
+  if (lon >= -70 && lon <= 20 && !(lat < 10 && lon < -80)) return n ? "northAtlantic" : "southAtlantic";
+  if (lon > 20 && lon < 120 && lat < 30) return "indianOcean";
+  if (lat > 23) return "northPacific";
+  if (lat < -23) return "southPacific";
+  return "equatorialPacific";
 }
 
 function landRegion(lat, lon) {
   if (lon >= -170 && lon < -25) {
-    if (lat >= 15) return "América do Norte";
-    if (lat >= 7) return "América Central";
-    return "América do Sul";
+    if (lat >= 15) return "northAmerica";
+    if (lat >= 7) return "centralAmerica";
+    return "southAmerica";
   }
-  if (lon >= -25 && lon < 60) return lat >= 36 ? "Europa" : lat >= 12 && lon >= 35 ? "Oriente Médio" : "África";
+  if (lon >= -25 && lon < 60) return lat >= 36 ? "europe" : lat >= 12 && lon >= 35 ? "middleEast" : "africa";
   if (lon >= 60) {
-    if (lon >= 110 && lat < -10) return "Oceania";
-    return "Ásia";
+    if (lon >= 110 && lat < -10) return "oceania";
+    return "asia";
   }
-  return lat >= 0 ? "Ásia" : "Oceania";
+  return lat >= 0 ? "asia" : "oceania";
 }
 
-// Retorna { name, land, country, region }.
+// Retorna { name, land, country, region, iso }, com os nomes no idioma atual.
 // - Em terra, `name` é o nome do PAÍS (a região genérica vai para `region`).
 // - No oceano (ou se não houver país), `name` continua sendo a região/oceano.
-// - `country` é o país em português, ou null (oceano / GeoJSON não carregado).
+// - `country` é o nome do país, ou null (oceano / GeoJSON não carregado).
 export function regionName(lat, lon) {
   const maskLand = isLand(lat, lon);
-  let country = countryAt(lat, lon);
+  let c = countryAt(lat, lon);
   // Ponto logo fora do polígono (costa recortada, cidade no litoral, ilha pequena): usa o país
   // mais próximo. A máscara de terra tem só 0,5°/px e erra no litoral (Lisboa e Suva caem no
   // "mar"), então mesmo com ela dizendo oceano aceitamos um país a até COAST_KM.
-  if (!country) country = nearestCountry(lat, lon, maskLand === true ? NEAR_KM : COAST_KM);
+  if (!c) c = nearestCountry(lat, lon, maskLand === true ? NEAR_KM : COAST_KM);
   // Se há país no ponto, é terra, mesmo que a máscara divirja um pouco na costa.
-  const land = country ? true : maskLand;
+  const land = c ? true : maskLand;
 
-  let region;
+  let regionId;
   const named = NAMED.find((r) => r.test(lat, lon, land));
-  if (named) region = named.name;
-  else if (land === null) region = lat >= 0 ? "Hemisfério Norte" : "Hemisfério Sul";
-  else region = land ? landRegion(lat, lon) : oceanRegion(lat, lon);
+  if (named) regionId = named.id;
+  else if (land === null) regionId = lat >= 0 ? "northHemisphere" : "southHemisphere";
+  else regionId = land ? landRegion(lat, lon) : oceanRegion(lat, lon);
 
+  const country = c ? c.names[getLang()] || c.names.en : null;
+  const region = t(`region.${regionId}`);
   // Prioriza o país: é o que a narração deve falar.
-  return { name: country || region, land, country, region };
+  return { name: country || region, land, country, region, iso: c?.iso || null };
 }
 
 // ---------------------------------------------------------------------------
 // Paisagem sonora: que tipo de lugar está sob o cursor (mar, gelo, floresta, deserto)
 // ---------------------------------------------------------------------------
 // Caixas aproximadas [latMín, latMáx, lonMín, lonMáx]. Quando o mapa tem um dado que diz
-// mais (altura do dossel no GEDI, temperatura, umidade, temperatura do mar), o dado manda.
+// mais (temperatura, umidade), o dado manda.
 const DESERTS = [
   [15, 32, -17, 33], // Saara
   [13, 31, 36, 59], // Península Arábica
@@ -354,10 +357,9 @@ const FORESTS = [
 const inBox = (boxes, lat, lon) => boxes.some(([a, b, c, d]) => lat >= a && lat <= b && lon >= c && lon <= d);
 const ramp = (e0, e1, x) => clamp((x - e0) / (e1 - e0), 0, 1);
 
-const PLACE_LABELS = { mar: "mar", gelo: "gelo", floresta: "floresta", deserto: "deserto" };
-
 // region = resultado de regionName; data = { scaleId, value, valid } da leitura atual.
-// Retorna { levels: { mar, gelo, floresta, deserto } (0 a 1), label } ou null sem geografia.
+// Retorna { levels: { mar, gelo, floresta, deserto } (0 a 1), id, label } ou null sem geografia.
+// id = "mar", "marGelado", "gelo", "floresta", "deserto" ou "" (label = nome no idioma atual).
 export function landscapeAt(lat, lon, region, data = {}) {
   if (!region || region.land === null || region.land === undefined) return null;
   const v = data.valid ? data.value : NaN;
@@ -366,10 +368,10 @@ export function landscapeAt(lat, lon, region, data = {}) {
 
   if (region.land === false) {
     L.mar = 1;
-    // mar gelado: perto do ponto de congelamento (ECCO2) ou nas latitudes do gelo marinho
-    L.gelo = has("sst") ? 0.7 * ramp(4, 0, v) : Math.abs(lat) >= 66 ? 0.5 : 0;
+    // mar gelado: latitudes do gelo marinho
+    L.gelo = Math.abs(lat) >= 66 ? 0.5 : 0;
   } else {
-    L.gelo = lat <= -60 || lat >= 70 || region.country === "Groenlândia" ? 1 : 0;
+    L.gelo = lat <= -60 || lat >= 70 || region.iso === "GL" ? 1 : 0;
     if (has("temp")) L.gelo = Math.max(L.gelo * ramp(5, -5, v), ramp(-5, -18, v));
     L.deserto = inBox(DESERTS, lat, lon) ? 1 : 0;
     L.floresta = inBox(FORESTS, lat, lon) ? 1 : 0;
@@ -377,23 +379,23 @@ export function landscapeAt(lat, lon, region, data = {}) {
       L.deserto = Math.max(L.deserto, ramp(5, 2, v));
       L.floresta = Math.max(L.floresta, 0.8 * ramp(15, 19, v));
     }
-    if (has("gedi")) L.floresta = ramp(6, 25, v); // altura do dossel: o dado manda
     // o gelo prevalece sobre os outros
     L.deserto *= 1 - L.gelo;
     L.floresta *= 1 - L.gelo;
     if (L.floresta && L.deserto) L[L.floresta >= L.deserto ? "deserto" : "floresta"] = 0;
   }
 
-  let label = "";
-  if (L.mar) label = L.gelo >= 0.35 ? "mar gelado" : "mar";
+  let id = "";
+  if (L.mar) id = L.gelo >= 0.35 ? "marGelado" : "mar";
   else {
     const top = ["gelo", "floresta", "deserto"].reduce((a, b) => (L[b] > L[a] ? b : a));
-    if (L[top] >= 0.35) label = PLACE_LABELS[top];
+    if (L[top] >= 0.35) id = top;
   }
-  return { levels: L, label };
+  return { levels: L, id, label: id ? t(`place.${id}`) : "" };
 }
 
+// "12,3° S · 45,6° O" (pt) / "12.3° S · 45.6° W" (en)
 export function formatCoord(lat, lon) {
-  const f = (n) => Math.abs(n).toFixed(1).replace(".", ",");
-  return `${f(lat)}° ${lat >= 0 ? "N" : "S"} · ${f(lon)}° ${lon >= 0 ? "L" : "O"}`;
+  const f = (n) => num(Math.abs(n), 1);
+  return `${f(lat)}° ${t(lat >= 0 ? "coord.N" : "coord.S")} · ${f(lon)}° ${t(lon >= 0 ? "coord.E" : "coord.W")}`;
 }

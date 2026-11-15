@@ -1,11 +1,11 @@
 <!doctype html>
-<html lang="pt-BR">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#03080f">
-  <meta name="description" content="A Sinfonia da Terra: Earth Jukebox Multissensorial. Transforma mapas de dados da NASA em música instrumental, vibração no smartphone e narração acessível.">
-  <title>A Sinfonia da Terra · Earth Jukebox Multissensorial</title>
+  <meta name="description" content="Earth Symphony: a multisensory Earth jukebox. NASA data maps become music, phone vibration and accessible narration.">
+  <title>Earth Symphony</title>
   <link rel="stylesheet" href="css/styles.css">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='29' fill='%23060d18' stroke='%2367e8f9' stroke-width='2'/%3E%3Cpath d='M8 36c8-9 16-3 24-10s16-3 24 6' fill='none' stroke='%2367e8f9' stroke-width='2.5' stroke-linecap='round'/%3E%3Ccircle cx='32' cy='32' r='4' fill='%23fb7185'/%3E%3C/svg%3E">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js" defer></script>
@@ -13,40 +13,41 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" defer></script>
   <script type="module" src="js/app.js"></script>
 </head>
+<!--
+  Textos: os elementos com data-i18n="chave" recebem o texto de js/i18n.js no idioma escolhido;
+  data-i18n-attr="aria-label:chave; title:chave" faz o mesmo com atributos.
+  Atalhos: js/shortcuts.js liga cada tecla ao id de um botão desta página.
+-->
 <body>
-  <a class="skip-link" href="#main">Pular para o conteúdo principal</a>
-  <a class="skip-link" href="#tutorialPanel" id="tutorialSkipLink">Iniciar o tutorial em áudio, recomendado para pessoas cegas</a>
-  <a class="skip-link" href="#helpDialog" id="helpSkipLink">Abrir a ajuda e os atalhos de teclado</a>
+  <a class="skip-link" href="#main" data-i18n="skip.main">Skip to main content</a>
 
   <header class="topbar">
-    <a class="brand" href="#" id="brandLink" aria-label="A Sinfonia da Terra, voltar à galeria">
+    <a class="brand" href="#" id="brandLink" data-i18n-attr="aria-label:brand.aria">
       <span class="brand__mark" aria-hidden="true">
         <svg viewBox="0 0 64 64"><circle cx="32" cy="32" r="27" fill="none" stroke="currentColor" stroke-width="1.5" opacity=".55"/><ellipse cx="32" cy="32" rx="31" ry="12" fill="none" stroke="currentColor" stroke-width="1.2" opacity=".42" transform="rotate(-22 32 32)"/><path d="M10 38c8-11 16-2 23-9s13-2 21 7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><circle cx="32" cy="32" r="4.5" fill="#fb7185"/></svg>
       </span>
       <span class="brand__text">
-        <span class="eyebrow">NASA Earth Data · Tone.js · WebRTC</span>
-        <span class="brand__title">A Sinfonia da Terra</span>
-        <span class="brand__subtitle">Earth Jukebox Multissensorial</span>
+        <span class="brand__title" data-i18n="brand.title">Earth Symphony</span>
+        <span class="brand__subtitle" data-i18n="brand.subtitle">Multisensory Earth Jukebox</span>
       </span>
     </a>
     <div class="topbar__actions">
       <button class="button button--ghost" id="tutorialOpen" type="button" aria-haspopup="dialog" aria-controls="tutorialPanel">
         <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 13a8 8 0 0 1 16 0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><rect x="3" y="13" width="4.5" height="7" rx="1.6" fill="currentColor"/><rect x="16.5" y="13" width="4.5" height="7" rx="1.6" fill="currentColor"/></svg>
-        <span>Tutorial em áudio</span>
+        <span data-i18n="btn.tutorial">Audio tutorial</span>
       </button>
-      <button class="button button--ghost" id="helpOpen" type="button" aria-haspopup="dialog" aria-controls="helpDialog" aria-keyshortcuts="F1">
+      <button class="button button--ghost" id="helpOpen" type="button" aria-haspopup="dialog" aria-controls="helpDialog">
         <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.6 2.2c-.7.4-1.1.9-1.1 1.8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="17" r="1.2" fill="currentColor"/></svg>
-        <span>Ajuda e atalhos</span>
+        <span data-i18n="btn.help">Help &amp; shortcuts</span>
       </button>
-      <span class="live-pill" id="livePill"><span class="live-pill__dot" aria-hidden="true"></span><span id="liveText">Áudio desligado</span></span>
-      <button class="button button--ghost" id="quickLowSensory" type="button" aria-pressed="false" aria-label="Modo de baixa sensibilidade" title="Modo de baixa sensibilidade">
-        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h3l4-4v8l-4-4H4Z" fill="currentColor"/><path d="M15 9.5c1 .8 1 4.2 0 5" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round"/></svg>
-        <span>Baixa sensibilidade</span>
+      <button class="button button--ghost" id="langToggle" type="button" data-i18n-attr="aria-label:lang.aria">
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path d="M3 12h18M12 3c2.5 2.6 3.8 5.6 3.8 9s-1.3 6.4-3.8 9c-2.5-2.6-3.8-5.6-3.8-9S9.5 5.6 12 3Z" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>
+        <span id="langToggleLabel" data-i18n="lang.other">Português</span>
       </button>
       <button class="button button--play" id="audioToggle" type="button" aria-pressed="false">
         <svg class="icon icon--play" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l10-6.5-10-6.5Z" fill="currentColor"/></svg>
         <svg class="icon icon--pause" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5h3.5v14H7V5Zm6.5 0H17v14h-3.5V5Z" fill="currentColor"/></svg>
-        <span id="audioToggleLabel">Ativar áudio</span>
+        <span id="audioToggleLabel">Turn sound on</span>
       </button>
     </div>
   </header>
@@ -55,82 +56,15 @@
     <!-- ===================== GALERIA ===================== -->
     <section class="view view--gallery" id="galleryView" aria-labelledby="galleryHeading">
       <div class="hero">
-        <div class="hero__text">
-          <p class="kicker">Galeria de escolha</p>
-          <h1 id="galleryHeading" tabindex="-1">Ouça o planeta, pixel a pixel</h1>
-          <p class="lead">Escolha um mapa da NASA ou carregue uma pasta do seu computador. Explore com o mouse ou o teclado, ou deixe uma faixa varrer o mapa e compor uma sinfonia. Cada cor vira o valor físico da legenda oficial, tocado por violoncelo, piano, flauta e harpa, com os sons de cada lugar e vibração no seu celular.</p>
-        </div>
-        <div class="upload" id="dropzone">
-          <div class="upload__icon" aria-hidden="true">
-            <svg viewBox="0 0 48 48"><path d="M6 14a4 4 0 0 1 4-4h9l4 4h15a4 4 0 0 1 4 4v18a4 4 0 0 1-4 4H10a4 4 0 0 1-4-4V14Z" fill="none" stroke="currentColor" stroke-width="2.4"/><path d="M24 34V21m0 0-5 5m5-5 5 5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
-          </div>
-          <p class="upload__title">Carregue suas imagens</p>
-          <p class="upload__hint">JPG, PNG ou WebP. Arraste uma pasta para cá ou use os botões. Dica: a pasta <code>dados/</code> do projeto traz 4 × 372 frames horários.</p>
-          <div class="upload__actions">
-            <label class="button button--primary" for="folderInput">
-              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z" fill="currentColor"/></svg>
-              Carregar pasta
-            </label>
-            <input class="sr-only" type="file" id="folderInput" webkitdirectory directory multiple accept="image/jpeg,image/png,image/webp">
-            <label class="button button--ghost" for="filesInput">Selecionar imagens</label>
-            <input class="sr-only" type="file" id="filesInput" multiple accept="image/jpeg,image/png,image/webp">
-          </div>
-        </div>
+        <h1 id="galleryHeading" tabindex="-1" data-i18n="gallery.title">Listen to the planet</h1>
+        <p class="lead" data-i18n="gallery.lead">Pick a NASA map. Each map has one instrument: the higher the value, the higher the note.</p>
       </div>
-
       <section class="gallery-section" aria-labelledby="presetsHeading">
         <div class="section-head">
-          <h2 id="presetsHeading">Dados NASA pré-carregados</h2>
-          <p id="presetsNote">Prontos para uso imediato. Os mapas GMAO usam as escalas de cor oficiais convertidas em números.</p>
+          <h2 id="presetsHeading" data-i18n="gallery.maps">NASA maps</h2>
+          <p id="presetsNote"></p>
         </div>
         <div class="preset-grid" id="presetGrid"></div>
-      </section>
-
-      <section class="gallery-section" aria-labelledby="playlistHeading">
-        <div class="section-head">
-          <h2 id="playlistHeading">Playlist: seis sinfonias da Terra</h2>
-          <p>Para só ouvir. Cada faixa (46 s) foi gerada por este site: uma faixa varreu o mapa da esquerda para a direita e os dados viraram música, com abertura, clímax e final. Abra um mapa e use <strong>Ouvir a sinfonia do mapa</strong> para gerar e baixar a sua.</p>
-        </div>
-        <ul class="track-list">
-          <li class="track">
-            <h3 class="track__title" id="track-0">Temperatura dos Oceanos · ECCO2</h3>
-            <p class="track__text">Ondas quase o tempo todo. O coração bate nas águas acima de 30 °C do Índico e do Pacífico, e o gelo aparece nas bordas polares.</p>
-            <audio controls preload="none" aria-labelledby="track-0" src="assets/playlist/sinfonia-oceanos.mp3"></audio>
-          </li>
-          <li class="track">
-            <h3 class="track__title" id="track-1">Altura das Florestas · GEDI</h3>
-            <p class="track__text">A marimba sobe com o dossel da África Central; insetos e pássaros nas florestas, vento seco no Saara e na Arábia.</p>
-            <audio controls preload="none" aria-labelledby="track-1" src="assets/playlist/sinfonia-florestas.mp3"></audio>
-          </li>
-          <li class="track">
-            <h3 class="track__title" id="track-2">Temperatura do Ar · T2M</h3>
-            <p class="track__text">Do frio da Antártida, com vento e cristais, ao calor acima de 35 °C na África, onde o coração bate.</p>
-            <audio controls preload="none" aria-labelledby="track-2" src="assets/playlist/sinfonia-temperatura.mp3"></audio>
-          </li>
-          <li class="track">
-            <h3 class="track__title" id="track-3">Umidade do Ar · Q2M</h3>
-            <p class="track__text">O ar seco dos desertos e dos polos contra o ar carregado dos trópicos, onde a floresta canta.</p>
-            <audio controls preload="none" aria-labelledby="track-3" src="assets/playlist/sinfonia-umidade.mp3"></audio>
-          </li>
-          <li class="track">
-            <h3 class="track__title" id="track-4">Velocidade do Vento</h3>
-            <p class="track__text">As tempestades do Oceano Austral aceleram os arpejos da harpa; a calmaria dos trópicos deixa a música respirar.</p>
-            <audio controls preload="none" aria-labelledby="track-4" src="assets/playlist/sinfonia-vento.mp3"></audio>
-          </li>
-          <li class="track">
-            <h3 class="track__title" id="track-5">Monóxido de Carbono · CO</h3>
-            <p class="track__text">O ar limpo do hemisfério sul e as plumas de poluição da Ásia e da África, onde o coração dispara.</p>
-            <audio controls preload="none" aria-labelledby="track-5" src="assets/playlist/sinfonia-co.mp3"></audio>
-          </li>
-        </ul>
-      </section>
-
-      <section class="gallery-section" id="localSection" aria-labelledby="localHeading" hidden>
-        <div class="section-head">
-          <h2 id="localHeading">Suas imagens</h2>
-          <p id="localSummary"></p>
-        </div>
-        <div id="localGroups"></div>
       </section>
     </section>
 
@@ -139,44 +73,44 @@
       <div class="explore">
         <div class="stage">
           <div class="stage__head">
-            <button class="button button--ghost button--icon-left" id="backButton" type="button">
+            <button class="button button--ghost" id="backButton" type="button">
               <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 6 8.5 12l6 6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-              Galeria
+              <span data-i18n="btn.gallery">Gallery</span>
             </button>
             <div class="stage__title">
               <p class="kicker" id="exploreKicker">—</p>
               <h2 id="exploreHeading">—</h2>
             </div>
-            <button class="button button--primary button--symphony" id="playSymphony" type="button" aria-pressed="false" aria-keyshortcuts="V" aria-describedby="symphonyHint">
+            <button class="button button--primary button--tour" id="tourButton" type="button" aria-pressed="false" aria-describedby="tourHint">
               <svg class="icon icon--play" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l10-6.5-10-6.5Z" fill="currentColor"/></svg>
               <svg class="icon icon--pause" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 6h10v12H7z" fill="currentColor"/></svg>
-              <span id="playSymphonyLabel">Ouvir a sinfonia do mapa</span>
+              <span id="tourLabel" data-i18n="tour.play">Play a tour</span>
             </button>
-            <span class="sr-only" id="symphonyHint">Uma faixa varre o mapa da esquerda para a direita e transforma os dados em uma música com começo, meio e fim.</span>
-            <label class="compact-field">
-              <span>Escala de cores</span>
-              <select id="scaleSelect"></select>
-            </label>
+            <span class="sr-only" id="tourHint" data-i18n="tour.hint">The cursor wanders around the map by itself while you listen.</span>
           </div>
 
           <div class="canvas-shell" id="canvasShell">
             <canvas id="mapCanvas" width="1200" height="600" tabindex="0" role="application"
-              aria-roledescription="mapa sonoro interativo" aria-label="Mapa sonoro" aria-describedby="canvasHelp"></canvas>
-            <div class="loading-veil" id="loadingVeil" hidden><span class="spinner" aria-hidden="true"></span><span>Carregando imagem…</span></div>
+              data-i18n-attr="aria-roledescription:map.roledesc"></canvas>
+            <div class="loading-veil" id="loadingVeil" hidden><span class="spinner" aria-hidden="true"></span><span data-i18n="map.loading">Loading image…</span></div>
           </div>
 
           <div class="timeline" id="timeline" hidden>
-            <button class="button button--round" id="playTimeline" type="button" aria-pressed="false" aria-label="Reproduzir linha do tempo">
+            <button class="button button--round" id="playTimeline" type="button" aria-pressed="false" data-i18n-attr="aria-label:time.play">
               <svg class="icon icon--play" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l10-6.5-10-6.5Z" fill="currentColor"/></svg>
               <svg class="icon icon--pause" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5h3.5v14H7V5Zm6.5 0H17v14h-3.5V5Z" fill="currentColor"/></svg>
             </button>
             <div class="timeline__track">
-              <label class="sr-only" for="frameSlider">Quadro da sequência</label>
+              <label class="sr-only" for="frameSlider" data-i18n="time.slider">Hour of the sequence</label>
               <input type="range" id="frameSlider" min="0" max="0" value="0" step="1" data-no-echo>
               <div class="timeline__labels"><span id="frameLabel">—</span><span id="frameTime">—</span></div>
+              <div class="timeline__load" id="framesLoad" hidden>
+                <progress id="framesProgress" max="1" value="0" aria-labelledby="framesText"></progress>
+                <span id="framesText"></span>
+              </div>
             </div>
             <label class="compact-field compact-field--small">
-              <span>Velocidade</span>
+              <span data-i18n="time.speed">Speed</span>
               <select id="speedSelect">
                 <option value="1">1 h/s</option>
                 <option value="3" selected>3 h/s</option>
@@ -195,197 +129,130 @@
             </div>
             <div class="legend-bar__ticks" id="legendTicks" aria-hidden="true"></div>
             <div class="legend-bar__ends" id="legendEnds" aria-hidden="true"></div>
-            <p class="legend-bar__hint">Passe o mouse sobre a escala, ou use as setas com ela em foco, para ouvir cada valor.</p>
           </div>
 
-          <div class="reading-grid" aria-label="Leitura atual">
+          <div class="reading-grid">
             <article class="reading-card">
-              <span class="reading-card__label">Local</span>
+              <span class="reading-card__label" data-i18n="read.place">Place</span>
               <strong class="reading-card__value" id="readRegion">—</strong>
               <span class="reading-card__sub" id="readCoord">—</span>
             </article>
             <article class="reading-card reading-card--value">
-              <span class="reading-card__label" id="readValueLabel">Valor</span>
+              <span class="reading-card__label" id="readValueLabel">—</span>
               <strong class="reading-card__value" id="readValue">—</strong>
               <span class="reading-card__sub" id="readZone">—</span>
             </article>
-            <article class="reading-card reading-card--instruments">
-              <span class="reading-card__label">Instrumentos</span>
-              <ul class="inst-meters" id="instMeters"></ul>
-            </article>
-            <article class="reading-card">
-              <span class="reading-card__label">Nota</span>
-              <strong class="reading-card__value" id="readNote">—</strong>
-              <span class="reading-card__sub" id="readPan">Centro</span>
-            </article>
           </div>
 
-          <p class="canvas-help" id="canvasHelp">
-            Mova o mouse, toque ou use as setas do teclado com o mapa em foco. <kbd>Shift</kbd> + setas move mais rápido,
-            <kbd>Enter</kbd> lê o lugar, <kbd>O</kbd> dá a visão geral do mapa, <kbd>V</kbd> toca a sinfonia do mapa, <kbd>C</kbd> diz a posição, <kbd>1</kbd> a <kbd>9</kbd> saltam entre nove regiões,
-            <kbd>Espaço</kbd> liga ou pausa o som, <kbd>N</kbd> liga ou desliga a narração, <kbd>[</kbd> e <kbd>]</kbd> trocam a hora,
-            <kbd>P</kbd> reproduz a linha do tempo, <kbd>L</kbd> abre a legenda e <kbd>H</kbd> abre a ajuda com todos os atalhos.
-          </p>
+          <p class="canvas-help" id="canvasHelp"></p>
         </div>
 
-        <aside class="sidebar" aria-label="Painéis de controle">
+        <aside class="sidebar" data-i18n-attr="aria-label:panels.aria">
           <section class="panel" aria-labelledby="audioPanelTitle">
-            <div class="panel__head">
-              <h2 id="audioPanelTitle">Experiência sonora</h2>
-              <span class="status-dot" id="audioDot" aria-hidden="true"></span>
-            </div>
-            <p class="panel__status" id="audioStatus" role="status">Áudio aguardando ativação</p>
-            <canvas class="scope" id="scopeCanvas" width="300" height="72" aria-hidden="true"></canvas>
+            <h2 id="audioPanelTitle" data-i18n="sound.title">Sound</h2>
+            <p class="panel__status" id="audioStatus" role="status"></p>
             <label class="field">
-              <span class="field__label">Volume <output id="volumeOut">0 dB</output></span>
-              <input type="range" id="volumeSlider" min="-30" max="6" step="1" value="0" aria-valuetext="0 decibéis">
+              <span class="field__label"><span data-i18n="sound.volume">Volume</span> <output id="volumeOut">0 dB</output></span>
+              <input type="range" id="volumeSlider" min="-30" max="6" step="1" value="0">
             </label>
-            <label class="field">
-              <span class="field__label">Escala musical</span>
-              <select id="keySelect">
-                <option value="C">Pentatônica Maior de Dó</option>
-                <option value="G">Pentatônica Maior de Sol</option>
-              </select>
-            </label>
-            <label class="switch">
-              <span class="switch__body"><strong>Instrumentos reais</strong><small id="samplesState">Amostras gravadas (piano Salamander, violoncelo, flauta, harpa)</small></span>
-              <input type="checkbox" id="samplesToggle" checked>
-              <span class="switch__track" aria-hidden="true"><span class="switch__thumb"></span></span>
-            </label>
-            <button class="button button--ghost button--block" id="reviewLegend" type="button">Rever legenda sensorial</button>
-          </section>
-
-          <section class="panel" aria-labelledby="sweepTitle">
-            <h2 id="sweepTitle">Sinfonia e passeios</h2>
-            <p class="panel__status">Ouça o mapa sem mover nada. Na <strong>sinfonia</strong>, uma faixa varre a imagem e compõe uma música com abertura, clímax e final. Nos <strong>passeios</strong>, o cursor viaja por um caminho (a volta ao mundo segue a altura do cursor; o polo a polo, a posição dele na horizontal).</p>
-            <label class="field">
-              <span class="field__label">Caminho</span>
-              <select id="sweepRoute">
-                <option value="sinfonia" selected>Sinfonia do mapa (faixa que varre a imagem)</option>
-                <option value="volta">Volta ao mundo (oeste → leste)</option>
-                <option value="polos">De polo a polo (norte → sul)</option>
-                <option value="mapa">Mapa inteiro (zigue-zague)</option>
-              </select>
-            </label>
-            <label class="field">
-              <span class="field__label">Duração</span>
-              <select id="sweepDuration">
-                <option value="30">30 segundos</option>
-                <option value="45">45 segundos</option>
-                <option value="90">90 segundos</option>
-              </select>
-            </label>
-            <label class="switch">
-              <span class="switch__body"><strong>Gravar o áudio</strong><small>Ao terminar, a música vira um arquivo WAV para baixar e compartilhar (a voz não entra na gravação).</small></span>
-              <input type="checkbox" id="sweepRecord">
-              <span class="switch__track" aria-hidden="true"><span class="switch__thumb"></span></span>
-            </label>
-            <button class="button button--primary button--block" id="sweepButton" type="button" aria-pressed="false" aria-keyshortcuts="V">Tocar a sinfonia</button>
-            <progress class="sweep-progress" id="sweepProgress" max="1" value="0" hidden aria-hidden="true"></progress>
-            <p class="panel__status" id="sweepStatus" role="status"></p>
-            <a class="button button--ghost button--block" id="sweepDownload" href="#" hidden>Baixar áudio</a>
+            <button class="button button--ghost button--block" id="reviewLegend" type="button" data-i18n="sound.legend">Map legend</button>
           </section>
 
           <section class="panel panel--phone" aria-labelledby="phoneTitle">
             <div class="panel__head">
-              <h2 id="phoneTitle">Conectar Smartphone (Vibração Tátil)</h2>
+              <h2 id="phoneTitle" data-i18n="phone.title">Phone vibration</h2>
               <span class="status-dot" id="phoneDot" aria-hidden="true"></span>
             </div>
-            <p class="help">Escaneie o QR Code com a câmera do celular. A vibração acompanha o mouse via WebRTC, peer-to-peer, sem servidor próprio.</p>
+            <p class="help" data-i18n="phone.help">Scan the QR code with your phone camera. The phone vibrates as you explore the map.</p>
             <button class="button button--primary button--block" id="phoneConnect" type="button">
               <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="2.5" width="10" height="19" rx="2.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M3 9v6M21 9v6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-              <span id="phoneConnectLabel">Gerar QR Code</span>
+              <span id="phoneConnectLabel" data-i18n="phone.connect">Generate QR code</span>
             </button>
             <div class="phone-box" id="phoneBox" hidden>
               <label class="field">
-                <span class="field__label">O celular abre o receptor por</span>
+                <span class="field__label" data-i18n="phone.via">The phone opens the receiver through</span>
                 <select id="receiverMode">
-                  <option value="lan">Rede Wi-Fi local (este computador)</option>
-                  <option value="public">Internet: GitHub Pages (HTTPS)</option>
+                  <option value="lan" data-i18n="phone.lan">Local Wi-Fi network (this computer)</option>
+                  <option value="public" data-i18n="phone.public">Internet: GitHub Pages (HTTPS)</option>
                 </select>
               </label>
               <div class="field" id="lanField" hidden>
-                <label class="field__label" for="lanSelect">Endereço deste computador na rede</label>
+                <label class="field__label" for="lanSelect" data-i18n="phone.address">This computer's address on the network</label>
                 <select id="lanSelect"></select>
-                <label class="sr-only" for="lanInput">Digite o endereço</label>
+                <label class="sr-only" for="lanInput" data-i18n="phone.typeAddress">Type the address</label>
                 <input type="text" id="lanInput" placeholder="192.168.0.10:8000" inputmode="url" autocomplete="off" spellcheck="false" hidden>
-                <small class="help" id="lanHelp">Detectado automaticamente neste computador. Se houver mais de um, escolha o da mesma rede Wi-Fi do celular.</small>
+                <small class="help" id="lanHelp"></small>
               </div>
               <p class="qr-warn" id="qrWarn" role="alert" hidden></p>
               <div class="qr" id="qrBox"></div>
               <code class="qr-url" id="qrUrl"></code>
-              <button class="button button--ghost button--block" id="copyReceiver" type="button" aria-describedby="copyReceiverHelp">Copiar o link do receptor</button>
-              <small class="help" id="copyReceiverHelp">Sem enxergar o QR Code, copie o link e envie para o celular (mensagem ou e-mail).</small>
+              <button class="button button--ghost button--block" id="copyReceiver" type="button" aria-describedby="copyReceiverHelp" data-i18n="phone.copy">Copy the receiver link</button>
+              <small class="help" id="copyReceiverHelp" data-i18n="phone.copyHelp">Can't see the QR code? Copy the link and send it to your phone.</small>
               <p class="panel__status" id="phoneStatus" role="status">—</p>
               <details class="help-details phone-help">
-                <summary>O celular não conecta?</summary>
+                <summary data-i18n="phone.trouble">Phone won't connect?</summary>
                 <ol>
-                  <li><strong>A página nem abre no celular:</strong> o celular não alcança este computador. Confirme a mesma rede Wi-Fi (sem “rede de convidados”) e libere a porta no firewall. Ou escolha <em>Internet: GitHub Pages</em> acima.</li>
-                  <li><strong>Abre, mas fica em “Procurando o computador”:</strong> o QR Code é antigo (gere um novo) ou a rede bloqueia WebRTC. Tente outra rede ou os dados móveis.</li>
-                  <li><strong>Conecta, mas não vibra:</strong> toque em “Ativar a vibração” no celular. iPhone/Safari não tem vibração na web, então o receptor pulsa só na tela. No Android, desative o modo silencioso total.</li>
+                  <li data-i18n="phone.trouble1">The page doesn't open on the phone: use the same Wi-Fi network (not a guest network), allow the port in the firewall, or choose Internet: GitHub Pages above.</li>
+                  <li data-i18n="phone.trouble2">It opens but keeps “Looking for the computer”: generate a new QR code, or try another network or mobile data.</li>
+                  <li data-i18n="phone.trouble3">It connects but doesn't vibrate: tap “Turn on vibration” on the phone. iPhone/Safari can't vibrate on the web, so the receiver only pulses on screen.</li>
                 </ol>
               </details>
-              <a class="link-small" id="receiverLink" href="#" target="_blank" rel="noopener">Abrir receptor neste dispositivo</a>
-              <button class="button button--ghost button--block" id="phoneDisconnect" type="button">Desconectar</button>
+              <a class="link-small" id="receiverLink" href="#" target="_blank" rel="noopener" data-i18n="phone.openHere">Open the receiver on this device</a>
+              <button class="button button--ghost button--block" id="phoneDisconnect" type="button" data-i18n="phone.disconnect">Disconnect</button>
             </div>
           </section>
 
           <section class="panel" aria-labelledby="a11yTitle">
-            <h2 id="a11yTitle">Acessibilidade e conforto</h2>
+            <h2 id="a11yTitle" data-i18n="a11y.title">Accessibility</h2>
             <label class="switch">
-              <span class="switch__body"><strong>Modo de baixa sensibilidade</strong><small>Limitador de volume, frequências suaves, transições lentas e vibração leve.</small></span>
-              <input type="checkbox" id="lowSensory">
-              <span class="switch__track" aria-hidden="true"><span class="switch__thumb"></span></span>
-            </label>
-            <label class="switch">
-              <span class="switch__body"><strong>Narração por voz</strong><small>Lê em voz alta os botões e controles ao navegar com Tab e, no mapa, a região, os instrumentos e o valor. A música para enquanto a voz fala. Deixe desligada se você usa um leitor de tela.</small></span>
+              <span class="switch__body"><strong data-i18n="voice.name">Site voice</strong><small data-i18n="voice.desc">Says the country and the value when you click the map or press Space. Turn it off if you use a screen reader.</small></span>
               <input type="checkbox" id="voiceToggle" data-no-echo>
               <span class="switch__track" aria-hidden="true"><span class="switch__thumb"></span></span>
             </label>
             <label class="switch">
-              <span class="switch__body"><strong>Alto contraste</strong><small>Bordas, textos e foco reforçados.</small></span>
+              <span class="switch__body"><strong data-i18n="hc.name">High contrast</strong><small data-i18n="hc.desc">Stronger borders, text and focus.</small></span>
               <input type="checkbox" id="highContrast">
               <span class="switch__track" aria-hidden="true"><span class="switch__thumb"></span></span>
             </label>
             <label class="field">
-              <span class="field__label">Tamanho do texto</span>
+              <span class="field__label" data-i18n="text.size">Text size</span>
               <select id="textSize">
-                <option value="normal">Normal</option>
-                <option value="grande">Grande</option>
-                <option value="enorme">Enorme</option>
+                <option value="normal" data-i18n="text.normal">Normal</option>
+                <option value="grande" data-i18n="text.large">Large</option>
+                <option value="enorme" data-i18n="text.huge">Huge</option>
               </select>
             </label>
             <label class="field">
-              <span class="field__label">Filtro de cor e daltonismo</span>
+              <span class="field__label" data-i18n="color.label">Colour filter</span>
               <select id="colorMode">
-                <option value="none">Cores originais</option>
-                <optgroup label="Paletas seguras (recolore pelos dados)">
-                  <option value="cividis">Cividis: segura para todos os tipos</option>
+                <option value="none" data-i18n="color.none">Original colours</option>
+                <optgroup data-i18n-attr="label:color.safe">
+                  <option value="cividis" data-i18n="color.cividis">Cividis: safe for all types</option>
                   <option value="viridis">Viridis</option>
-                  <option value="gray">Escala de cinza</option>
+                  <option value="gray" data-i18n="color.gray">Greyscale</option>
                 </optgroup>
-                <optgroup label="Simulação de daltonismo">
-                  <option value="deuteranopia">Deuteranopia</option>
-                  <option value="protanopia">Protanopia</option>
-                  <option value="tritanopia">Tritanopia</option>
+                <optgroup data-i18n-attr="label:color.sim">
+                  <option value="deuteranopia" data-i18n="color.deut">Deuteranopia</option>
+                  <option value="protanopia" data-i18n="color.prot">Protanopia</option>
+                  <option value="tritanopia" data-i18n="color.trit">Tritanopia</option>
                 </optgroup>
               </select>
             </label>
-            <button class="button button--ghost button--block" id="helpOpenPanel" type="button" aria-haspopup="dialog" aria-controls="helpDialog">Ajuda e atalhos de teclado</button>
           </section>
         </aside>
       </div>
     </section>
   </main>
 
-  <!-- ===================== LEGENDA AUDITIVA E SENSORIAL ===================== -->
+  <!-- ===================== LEGENDA DO MAPA ===================== -->
+  <!-- Fecha com Escape ou com um clique fora da janela -->
   <dialog class="legend-dialog" id="legendDialog" aria-labelledby="legendDialogTitle" aria-describedby="legendDialogIntro">
     <form method="dialog" class="legend-dialog__inner">
       <header class="legend-dialog__head">
-        <p class="kicker">Preparação sensorial</p>
-        <h2 id="legendDialogTitle" tabindex="-1">Legenda auditiva</h2>
+        <p class="kicker" data-i18n="legend.kicker">Before you start</p>
+        <h2 id="legendDialogTitle" tabindex="-1">—</h2>
         <p id="legendDialogIntro" class="legend-dialog__intro">—</p>
-        <button class="button button--ghost legend-dialog__read" id="dlgReadAloud" type="button" aria-pressed="false" data-no-echo>Ouvir a legenda</button>
+        <button class="button button--ghost legend-dialog__read" id="dlgReadAloud" type="button" aria-pressed="false" data-no-echo>—</button>
       </header>
 
       <div class="legend-dialog__scale">
@@ -398,116 +265,67 @@
         <div class="legend-bar__ticks" id="dlgTicks" aria-hidden="true"></div>
       </div>
 
-      <ul class="instrument-list" id="instrumentList"></ul>
+      <ul class="instrument-list instrument-list--single" id="instrumentList"></ul>
 
-      <h3 class="place-list__title">Sons dos lugares</h3>
-      <ul class="instrument-list place-list" id="placeList" aria-label="Sons dos lugares"></ul>
-
-      <div class="mapping-list">
-        <div><strong>Eixo X</strong><span>Posição horizontal leva o som da esquerda para a direita (estéreo).</span></div>
-        <div><strong>Cor → nota</strong><span>O valor sob o cursor escolhe a nota na <span id="dlgKey">pentatônica de Dó</span>: grave à esquerda da escala, agudo à direita.</span></div>
-        <div><strong>Brilho</strong><span>Pixels mais claros abrem o timbre e reforçam as camadas secundárias.</span></div>
-        <div><strong>Celular</strong><span>Cores quentes ou valores altos vibram em pulsos curtos e rápidos. Cores frias ou valores baixos vibram em pulsos longos e lentos. Há um pulso duplo ao cruzar zonas.</span></div>
-        <div><strong>Voz</strong><span id="dlgVoiceText">Quando a narração fala, a música para e volta ao fim da frase.</span></div>
+      <!-- Os sons dos lugares só aparecem quando a pessoa pede para rever essa parte do tutorial -->
+      <button class="button button--ghost place-list__toggle" id="placesToggle" type="button" aria-expanded="false" aria-controls="placesSection" data-i18n="legend.reviewPlaces">Review the sounds of places tutorial</button>
+      <div class="place-list__section" id="placesSection" hidden>
+        <h3 class="place-list__title" data-i18n="legend.places">Sounds of places</h3>
+        <ul class="instrument-list place-list" id="placeList" data-i18n-attr="aria-label:legend.places"></ul>
       </div>
 
       <footer class="legend-dialog__foot">
-        <button class="button button--ghost" value="back" id="dlgBack" type="submit">Voltar à galeria</button>
+        <button class="button button--ghost" value="back" id="dlgBack" type="submit" data-i18n="legend.back">Back to the gallery</button>
         <button class="button button--start" value="start" id="dlgStart" type="submit">
           <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l10-6.5-10-6.5Z" fill="currentColor"/></svg>
-          Iniciar Experiência Multissensorial
+          <span data-i18n="legend.start">Start exploring</span>
         </button>
       </footer>
     </form>
   </dialog>
 
-  <!-- ===================== TUTORIAL EM ÁUDIO (pessoas cegas) ===================== -->
+  <!-- ===================== TUTORIAL EM ÁUDIO ===================== -->
   <!-- Guia modal no centro da tela; nos desafios vira um painel não modal na base e o foco fica no mapa. -->
   <dialog class="tutorial" id="tutorialPanel" aria-labelledby="tutorialTitle" aria-describedby="tutorialBody">
     <header class="tutorial__head">
       <div>
-        <p class="kicker" id="tutorialStep">Passo 1</p>
-        <h2 id="tutorialTitle" tabindex="-1">Tutorial em áudio</h2>
+        <p class="kicker" id="tutorialStep">—</p>
+        <h2 id="tutorialTitle" tabindex="-1">—</h2>
       </div>
-      <button class="button button--ghost tutorial__close" id="tutorialClose" type="button" aria-label="Fechar tutorial">
+      <button class="button button--ghost tutorial__close" id="tutorialClose" type="button" data-i18n-attr="aria-label:tut.close">
         <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>
       </button>
     </header>
     <div class="tutorial__body" id="tutorialBody"></div>
+    <div class="tutorial__actions" id="tutorialActions" hidden></div>
     <p class="tutorial__status" id="tutorialStatus" role="status" aria-live="polite" aria-atomic="true"></p>
     <label class="switch tutorial__voice">
-      <span class="switch__body"><strong>Narração do tutorial</strong><small>Desmarque se você já usa um leitor de tela.</small></span>
-      <input type="checkbox" id="tutorialVoice" checked>
+      <span class="switch__body"><strong data-i18n="voice.name">Site voice</strong><small data-i18n="voice.tutDesc">Uncheck if you already use a screen reader.</small></span>
+      <input type="checkbox" id="tutorialVoice" data-no-echo>
       <span class="switch__track" aria-hidden="true"><span class="switch__thumb"></span></span>
     </label>
     <footer class="tutorial__foot" id="tutorialNav">
-      <button class="button button--ghost" id="tutorialPrev" type="button">Anterior</button>
-      <button class="button button--ghost" id="tutorialRepeat" type="button">Repetir</button>
-      <button class="button button--primary" id="tutorialNext" type="button">Próximo</button>
+      <button class="button button--ghost" id="tutorialPrev" type="button" data-i18n="tut.prev">Previous</button>
+      <button class="button button--ghost" id="tutorialRepeat" type="button" data-i18n="tut.repeat">Repeat</button>
+      <button class="button button--primary" id="tutorialNext" type="button" data-i18n="tut.next">Next</button>
     </footer>
   </dialog>
 
   <!-- ===================== AJUDA E ATALHOS ===================== -->
+  <!-- A lista de atalhos é montada a partir de js/shortcuts.js. Fecha com Escape ou clique fora. -->
   <dialog class="help-dialog" id="helpDialog" aria-labelledby="helpTitle" aria-describedby="helpIntro">
     <header class="help-dialog__head">
       <div>
-        <p class="kicker">Acessibilidade</p>
-        <h2 id="helpTitle" tabindex="-1">Ajuda e atalhos de teclado</h2>
+        <p class="kicker" data-i18n="a11y.title">Accessibility</p>
+        <h2 id="helpTitle" tabindex="-1" data-i18n="help.title">Help &amp; keyboard shortcuts</h2>
       </div>
-      <button class="button button--ghost tutorial__close" id="helpClose" type="button" aria-label="Fechar a ajuda">
+      <button class="button button--ghost tutorial__close" id="helpClose" type="button" data-i18n-attr="aria-label:help.close">
         <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>
       </button>
     </header>
-    <p id="helpIntro">Tudo neste site funciona só com o teclado e o som. Use Tab para andar pelos controles e Enter para ativar. Escape fecha esta ajuda.</p>
-    <button class="button button--primary" id="helpSpeak" type="button">Ouvir a ajuda em voz alta</button>
-    <div class="help-dialog__body" id="helpBody">
-      <section aria-labelledby="helpHow">
-        <h3 id="helpHow">Como funciona</h3>
-        <p>Escolha um mapa na galeria. Antes do mapa aparece a legenda, onde você ouve cada instrumento. No mapa, um cursor percorre o planeta: o valor do lugar escolhe a nota, e a posição escolhe o lado do som, esquerda ou direita. Com a narração por voz ligada, o site lê os botões e os lugares, e a música para enquanto a voz fala.</p>
-      </section>
-      <section aria-labelledby="helpAny">
-        <h3 id="helpAny">Em qualquer lugar da página</h3>
-        <ul>
-          <li><kbd>F1</kbd> ou <kbd>Alt</kbd> + <kbd>Shift</kbd> + <kbd>H</kbd>: abre esta ajuda.</li>
-          <li><kbd>Alt</kbd> + <kbd>Shift</kbd> + <kbd>N</kbd>: liga ou desliga a narração por voz.</li>
-          <li><kbd>Alt</kbd> + <kbd>Shift</kbd> + <kbd>M</kbd>: leva o foco para o mapa.</li>
-          <li><kbd>Alt</kbd> + <kbd>Shift</kbd> + <kbd>G</kbd>: volta para a galeria.</li>
-          <li><kbd>Alt</kbd> + <kbd>Shift</kbd> + <kbd>T</kbd>: abre o tutorial em áudio.</li>
-          <li><kbd>Escape</kbd>: cala a voz ou fecha a janela aberta.</li>
-        </ul>
-      </section>
-      <section aria-labelledby="helpMap">
-        <h3 id="helpMap">Com o mapa em foco</h3>
-        <ul>
-          <li><kbd>Setas</kbd>: movem o cursor. Com <kbd>Shift</kbd>, o passo é maior. A voz avisa quando você chega à borda.</li>
-          <li><kbd>Enter</kbd>: diz o lugar, os instrumentos e o valor.</li>
-          <li><kbd>O</kbd>: visão geral do mapa, com os valores mais alto e mais baixo e onde ficam.</li>
-          <li><kbd>V</kbd>: toca ou para a sinfonia do mapa, em que uma faixa varre a imagem e transforma os dados em música com começo, meio e fim. No painel Sinfonia e passeios dá para trocar por um passeio do cursor, escolher a duração e gravar o áudio. As setas, um clique no mapa ou <kbd>Escape</kbd> também param.</li>
-          <li><kbd>C</kbd>: diz a posição do cursor e as coordenadas.</li>
-          <li><kbd>1</kbd> a <kbd>9</kbd>: saltam para nove regiões do mapa, como um teclado de telefone. 1 é o canto de cima à esquerda, 5 é o centro e 9 é o canto de baixo à direita.</li>
-          <li><kbd>Home</kbd>: volta ao centro.</li>
-          <li><kbd>Espaço</kbd>: liga ou pausa o som.</li>
-          <li><kbd>+</kbd> e <kbd>-</kbd>: aumentam e diminuem o volume.</li>
-          <li><kbd>N</kbd>: liga ou desliga a narração por voz.</li>
-          <li><kbd>[</kbd> e <kbd>]</kbd>: hora anterior e próxima hora.</li>
-          <li><kbd>P</kbd>: toca ou pausa a linha do tempo.</li>
-          <li><kbd>L</kbd>: abre a legenda dos instrumentos.</li>
-          <li><kbd>G</kbd>: volta para a galeria.</li>
-          <li><kbd>T</kbd>: abre o tutorial em áudio.</li>
-          <li><kbd>H</kbd>: abre esta ajuda.</li>
-        </ul>
-      </section>
-      <section aria-labelledby="helpScale">
-        <h3 id="helpScale">Na escala de cores</h3>
-        <ul>
-          <li><kbd>Setas</kbd>: percorrem a escala e tocam cada valor. <kbd>Home</kbd> e <kbd>End</kbd> vão para as pontas.</li>
-        </ul>
-      </section>
-      <section aria-labelledby="helpSr">
-        <h3 id="helpSr">Leitores de tela</h3>
-        <p>Se você usa NVDA, JAWS, VoiceOver ou TalkBack, deixe a narração por voz desligada: tudo o que ela diz também vai para o leitor de tela. No mapa, o leitor entra sozinho no modo de foco, e as teclas acima funcionam direto.</p>
-      </section>
-    </div>
+    <p id="helpIntro" data-i18n="help.intro">Everything works with the keyboard and sound alone. No shortcut needs Ctrl, Alt or Shift: just press the key.</p>
+    <button class="button button--primary" id="helpSpeak" type="button" data-i18n="help.speak">Read the help aloud</button>
+    <div class="help-dialog__body" id="helpBody"></div>
   </dialog>
 
   <div class="sr-only" id="ariaLive" role="status" aria-live="polite" aria-atomic="true"></div>
@@ -521,6 +339,6 @@
     </defs>
   </svg>
 
-  <noscript><div class="noscript">Este projeto precisa de JavaScript para gerar a sonificação em tempo real.</div></noscript>
+  <noscript><div class="noscript">This project needs JavaScript. · Este projeto precisa de JavaScript.</div></noscript>
 </body>
 </html>

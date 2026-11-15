@@ -2,6 +2,7 @@
 
 import { luminance, paletteColor } from "./scales.js";
 import { project, regionName } from "./geo.js";
+import { t } from "./i18n.js";
 
 const MAX_WIDTH = 2048;
 const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
@@ -11,18 +12,6 @@ function median(arr) {
   const s = [...arr].sort((a, b) => a - b);
   const m = s.length >> 1;
   return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
-}
-
-export async function loadBitmap(source) {
-  // source: URL (string) ou File/Blob
-  if (typeof source === "string") {
-    const img = new Image();
-    img.decoding = "async";
-    img.src = source;
-    await img.decode();
-    return img;
-  }
-  return createImageBitmap(source);
 }
 
 export class ImageSampler {
@@ -94,23 +83,21 @@ export class ImageSampler {
 
     const mask = scale.masks().find((m) => u >= m.u0 && u <= m.u1 && v >= m.v0 && v <= m.v1);
     if (mask) {
-      return { u, v, rgb, valid: false, reason: mask.label, geo, region, bright: luminance(...rgb), grad: 0, texture: 0 };
+      return { u, v, rgb, valid: false, reason: t(mask.key), geo, region, bright: luminance(...rgb), grad: 0, texture: 0 };
     }
     if ((projection?.type === "orthographic" || projection?.type === "perspective") && !geo) {
-      return { u, v, rgb, valid: false, reason: "Fora do globo", geo, region, bright: 0, grad: 0, texture: 0 };
+      return { u, v, rgb, valid: false, reason: t("reason.offGlobe"), geo, region, bright: 0, grad: 0, texture: 0 };
     }
 
-    let p = this.patch(scale, x, y, scale.patchRadius || 2, scale.chroma ? 0.08 : 0.3);
-    if (!p.valid && scale.fallbackRadius) p = this.patch(scale, x, y, scale.fallbackRadius, 0.04);
+    const p = this.patch(scale, x, y, 2, 0.3);
     if (!p.valid) {
-      const reason = region?.land && scale.landLabel ? scale.landLabel : scale.invalidLabel || "Fora da escala (linha de costa, fronteira ou rótulo)";
-      return { u, v, rgb, valid: false, reason, geo, region, bright: p.bright, peak: p.peak, grad: 0, texture: clamp(p.texture / 0.15) };
+      return { u, v, rgb, valid: false, reason: t("reason.offScale"), geo, region, bright: p.bright, peak: p.peak, grad: 0, texture: clamp(p.texture / 0.15) };
     }
 
     // gradiente: diferença de posição na barra entre vizinhos (frentes, bordas de plumas)
     const o = this.gradOffset;
     const at = (dx, dy) => {
-      const q = this.patch(scale, x + dx, y + dy, scale.chroma ? 3 : 1, scale.chroma ? 0.05 : 0.3);
+      const q = this.patch(scale, x + dx, y + dy, 1, 0.3);
       return q.valid ? scale.posOf(q.value) : null;
     };
     const L = at(-o, 0);

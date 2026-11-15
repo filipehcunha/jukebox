@@ -1,18 +1,26 @@
 // A Sinfonia da Terra · Earth Jukebox Multissensorial
-// Orquestra galeria, legenda sensorial, leitura de pixels, áudio, háptica e acessibilidade.
+// Orquestra galeria, legenda, leitura de pixels, áudio, háptica, idioma e acessibilidade.
+//
+// Princípios:
+//  - Cada mapa tem a sua escala própria (fixa) e representa uma característica do planeta,
+//    tocada por UM instrumento (config.json → mapeamento): valor mais alto = nota mais aguda.
+//  - A voz só fala quando a pessoa pede: clique no mapa, Espaço, atalhos, tutorial e legenda.
+//  - Nenhum atalho usa tecla modificadora; o dicionário tecla → botão fica em js/shortcuts.js.
+//  - Todos os textos (tela e voz) vêm de js/i18n.js, no idioma escolhido (inglês por padrão).
 
-import { SCALES, SCALE_LIST, LAYERS, LAYER_ORDER, GMAO_T0_UTC, scaleFromPixels, paletteColor } from "./scales.js";
-import { MAPPING_CONFIG, SAMPLE_SET, SETTINGS, CONFIG_PROBLEMS, layerInstruments, layerVariable, VARIABLE_LABELS } from "./config.js";
-import { loadLandMask, loadCountries, formatCoord, project, landscapeAt } from "./geo.js";
-import { ImageSampler, loadBitmap } from "./sampler.js";
-import { SonificationEngine, MUSICAL_KEYS, midiName } from "./audio.js";
+import { SCALES, GMAO_T0_UTC, paletteColor } from "./scales.js";
+import { MAPPING_CONFIG, SAMPLE_SET, SETTINGS, CONFIG_PROBLEMS, instrumentFor } from "./config.js";
+import { loadLandMask, loadCountries, formatCoord, landscapeAt } from "./geo.js";
+import { ImageSampler } from "./sampler.js";
+import { SonificationEngine } from "./audio.js";
 import { HapticBridge, renderQr, guessReceiverBase, checkPublicReceiver, PUBLIC_RECEIVER_BASE } from "./haptics.js";
-import { presetGroups, upgradeGmaoSequences, groupFiles, filesFromDrop, renderPresets, renderLocalGroups } from "./gallery.js";
+import { presetGroups, upgradeGmaoSequences, renderPresets, groupTitle } from "./gallery.js";
 import { createTutorial } from "./tutorial.js";
 import { narrator } from "./voz.js";
 import { initFocusEcho } from "./a11y.js";
-import { ROUTES, routePoint, createStats, addReading, summarize, toWav, fileName } from "./passeio.js";
-import { analyze, compose, sectionAt, STEP_S, BAR } from "./sinfonia.js";
+import { createWander, stepWander } from "./passeio.js";
+import { SHORTCUTS, SHORTCUT_ORDER, matches, ariaKey } from "./shortcuts.js";
+import { t, getLang, setLang, onLangChange, applyI18n, speechLang, locale, keyName } from "./i18n.js";
 
 const $ = (id) => document.getElementById(id);
 const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
@@ -20,33 +28,89 @@ const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 
 const canvas = $("mapCanvas");
 const ctx = canvas.getContext("2d");
-const scope = $("scopeCanvas");
-const scopeCtx = scope.getContext("2d");
 
 const engine = new SonificationEngine();
-window.sinfonia = { engine, MAPPING_CONFIG, SAMPLE_SET, SETTINGS }; // acesso para depuração no console do navegador
+window.sinfonia = { engine, narrator, MAPPING_CONFIG, SAMPLE_SET, SETTINGS, SHORTCUTS }; // acesso para depuração no console
 const haptics = new HapticBridge({ onStatus: onPhoneStatus });
+
+// ---------------------------------------------------------------------------
+// Preferências (só conveniências deste navegador; os padrões vêm do config.json)
+// ---------------------------------------------------------------------------
+const prefs = (() => {
+  try { return JSON.parse(localStorage.getItem("sinfonia-prefs") || "{}"); } catch { return {}; }
+})();
+// Se o config.json mudou desde a última visita, ele vence as escolhas salvas desses itens.
+const CONFIG_SIGNATURE = JSON.stringify([
+  SETTINGS.audio.volumeDb, SETTINGS.narration.onAtStart, SETTINGS.a11y.textSize, SETTINGS.a11y.highContrast, SETTINGS.a11y.lang,
+]);
+if (prefs.cfg !== CONFIG_SIGNATURE) {
+  for (const k of ["volume", "voice", "text", "hc", "lang"]) delete prefs[k];
+}
+function savePrefs() {
+  try {
+    localStorage.setItem("sinfonia-prefs", JSON.stringify({
+      voice: $("voiceToggle").checked, hc: $("highContrast").checked, color: $("colorMode").value,
+      volume: Number($("volumeSlider").value), lan: $("lanInput").value, receiver: $("receiverMode").value,
+      text: $("textSize").value, lang: getLang(), cfg: CONFIG_SIGNATURE, v: 3,
+    }));
+  } catch { /* armazenamento indisponível */ }
+}
+
+// o idioma vem antes de tudo: os módulos leem os textos na hora de desenhar
+setLang(prefs.lang || SETTINGS.a11y.lang);
+narrator.setLang(speechLang());
+
+// ---------------------------------------------------------------------------
+// Voz e anúncios
+// ---------------------------------------------------------------------------
+const voiceOn = () => $("voiceToggle").checked;
+const voiceOpts = () => ({ rate: SETTINGS.narration.rate, volume: SETTINGS.narration.volume });
+
+// A VOZ TEM PRIORIDADE: enquanto a narração fala, a música para e volta sozinha no fim
+// (config.json → narracao). Só uma fala toca por vez (js/voz.js).
+narrator.onBusyChange = (speaking) => engine.duck(speaking);
+
+function speak(text, { queue = false, force = false, priority = false } = {}) {
+  if (!text || !(force || voiceOn())) return;
+  narrator.say(text, { queue, priority, ...voiceOpts() });
+}
+
+// Anuncia para o leitor de tela (região ARIA live) e para a voz do site
+function announce(text, { speak: toVoice = true, live: toLive = true, queue = false } = {}) {
+  if (toLive) {
+    const live = $("ariaLive");
+    live.textContent = "";
+    requestAnimationFrame(() => { live.textContent = text; });
+  }
+  if (toVoice) speak(text, { queue });
+}
+
+let toastTimer;
+function toast(msg, ms = 3800) {
+  const el = $("toast");
+  el.textContent = msg;
+  el.classList.add("is-visible");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove("is-visible"), ms);
+  speak(msg, { queue: true }); // o leitor de tela já lê o role=alert
+}
+
 // as funções do app usadas aqui são declarações, então já existem (hoisting)
 const tutorial = createTutorial({
   engine,
-  isLowSensory: () => $("lowSensory").checked,
   openPractice,
   hasTimeline: () => (state.group?.frames.length ?? 0) > 1,
   focusMap: () => { canvas.focus({ preventScroll: true }); state.keyboardActive = true; state.readingDirty = true; },
   backToGallery,
   inExplore: () => !$("exploreView").hidden,
   toast,
-  onClose: onTutorialClose,
+  voiceOn,
+  setVoice: (on) => applyVoice(on, { quiet: true }),
+  voiceOpts,
 });
-
-// A VOZ TEM PRIORIDADE: enquanto qualquer narração fala (tutorial, leitura do mapa, leitura
-// dos controles), a música para por completo e volta sozinha quando a fala termina.
-// O comportamento (parar ou só abaixar, e as rampas) vem de config.json → narracao.
-narrator.onBusyChange = (speaking) => engine.duck(speaking);
 
 const state = {
   presets: presetGroups(),
-  locals: [],
   group: null,
   index: 0,
   scale: null,
@@ -60,98 +124,34 @@ const state = {
   reading: null,
   readingDirty: false,
   lastMove: 0,
-  announcedKey: "",
   trail: [],
   playing: false,
   loadToken: 0,
   colorMode: "none",
-  pendingStart: false,
   legendHover: null, // posição 0..1 sob o mouse na barra de cores (pré-escuta da escala)
 };
 
-// passeio sonoro (varredura automática): ver a seção "Passeio sonoro" mais abaixo
-const sweep = { on: false, preparing: false, route: "volta", origin: null, t0: 0, dur: 0, rec: false, stats: null, token: 0, url: null };
+// passeio sonoro (tecla V): ver a seção "Passeio sonoro" mais abaixo
+const tour = { on: false, t0: 0, last: 0, wander: null };
 
-// ---------------------------------------------------------------------------
-// Preferências
-// ---------------------------------------------------------------------------
-const prefs = (() => {
-  try { return JSON.parse(localStorage.getItem("sinfonia-prefs") || "{}"); } catch { return {}; }
-})();
-// Os valores iniciais vêm do config.json. Se o arquivo foi editado desde a última visita,
-// ele vence as escolhas salvas no navegador para esses mesmos itens.
-const CONFIG_SIGNATURE = JSON.stringify([
-  SETTINGS.audio.volumeDb, SETTINGS.audio.key, SETTINGS.audio.useSamples,
-  SETTINGS.narration.onAtStart, SETTINGS.a11y.textSize, SETTINGS.a11y.highContrast,
-]);
-if (prefs.cfg !== CONFIG_SIGNATURE) {
-  for (const k of ["volume", "key", "samples", "voice", "voiceSet", "text", "hc"]) delete prefs[k];
-}
-let voiceChosen = !!prefs.voiceSet; // a pessoa já ligou ou desligou a narração por conta própria
-function savePrefs() {
-  try {
-    localStorage.setItem("sinfonia-prefs", JSON.stringify({
-      low: $("lowSensory").checked, voice: $("voiceToggle").checked, voiceSet: voiceChosen, hc: $("highContrast").checked,
-      color: $("colorMode").value, volume: Number($("volumeSlider").value), key: $("keySelect").value,
-      samples: $("samplesToggle").checked, lan: $("lanInput").value, receiver: $("receiverMode").value,
-      text: $("textSize").value, cfg: CONFIG_SIGNATURE, v: 2,
-    }));
-  } catch { /* armazenamento indisponível */ }
-}
-
-// ---------------------------------------------------------------------------
-// Anúncios (ARIA live + voz) e toasts
-// ---------------------------------------------------------------------------
-let toastTimer;
-function toast(msg, ms = 3800) {
-  const el = $("toast");
-  el.textContent = msg;
-  el.classList.add("is-visible");
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => el.classList.remove("is-visible"), ms);
-  speak(msg, { queue: true }); // avisos também são falados (o leitor de tela já lê o role=alert)
-}
-
-// A narração está ligada? (interruptor do painel ou narração do tutorial)
-function voiceOn() {
-  return $("voiceToggle").checked || tutorial.wantsVoice();
-}
-
-// Fala com o narrador compartilhado (melhor voz pt-BR instalada, fila sem cortes).
-// A música para enquanto ele fala: ver narrator.onBusyChange acima.
-function speak(text, { queue = false, force = false } = {}) {
-  if (!text || !(force || voiceOn())) return;
-  const low = $("lowSensory").checked;
-  narrator.say(text, {
-    queue,
-    rate: low ? SETTINGS.low.voiceRate : SETTINGS.narration.rate,
-    volume: low ? SETTINGS.low.voiceVolume : SETTINGS.narration.volume,
-  });
-}
-
-// Anuncia para o leitor de tela (região ARIA live) e para a narração por voz
-function announce(text, { speak: toVoice = true, live: toLive = true } = {}) {
-  const live = $("ariaLive");
-  if (toLive) {
-    live.textContent = "";
-    requestAnimationFrame(() => { live.textContent = text; });
-  }
-  if (toVoice) speak(text);
-}
+const title = () => (state.group ? groupTitle(state.group) : "");
 
 // ---------------------------------------------------------------------------
 // Views
 // ---------------------------------------------------------------------------
+function updateDocTitle() {
+  const gallery = $("exploreView").hidden || !state.group;
+  document.title = gallery ? `${t("doc.gallery")} · ${t("brand.title")}` : `${title()} · ${t("brand.title")}`;
+}
+
 function showView(name) {
   const gallery = name === "gallery";
   $("galleryView").hidden = !gallery;
   $("exploreView").hidden = gallery;
   document.body.dataset.view = name;
-  document.title = gallery || !state.group
-    ? "Galeria · A Sinfonia da Terra"
-    : `${state.group.title} · A Sinfonia da Terra`;
+  updateDocTitle();
   if (gallery) {
-    stopSweep(false, { silent: true });
+    stopTour({ silent: true });
     stopTimeline();
     engine.update({ active: false });
     haptics.send(null, { active: false });
@@ -159,129 +159,141 @@ function showView(name) {
 }
 
 function backToGallery() {
+  for (const id of ["helpDialog", "legendDialog"]) if ($(id).open) $(id).close("stay");
   showView("gallery");
   $("main").focus({ preventScroll: true });
   window.scrollTo({ top: 0, behavior: reducedMotion.matches ? "auto" : "smooth" });
-  announce(`Galeria de mapas. ${state.presets.length} mapas da NASA. Use Tab para escolher um mapa e Enter para abrir.`);
+  announce(t("gallery.announce", { n: state.presets.length }));
 }
 
-// ---------------------------------------------------------------------------
-// Galeria
-// ---------------------------------------------------------------------------
 function renderGallery() {
   renderPresets($("presetGrid"), state.presets, selectGroup);
-  const hasLocal = state.locals.length > 0;
-  $("localSection").hidden = !hasLocal;
-  if (hasLocal) {
-    const total = state.locals.reduce((n, g) => n + g.frames.length, 0);
-    $("localSummary").textContent = `${total} ${total === 1 ? "imagem" : "imagens"} em ${state.locals.length} ${state.locals.length === 1 ? "pasta" : "pastas"}. Clique em uma miniatura para explorar.`;
-    renderLocalGroups($("localGroups"), state.locals, {
-      onSelect: selectGroup,
-      onScaleChange: (g, id) => { g.scaleId = id; },
-    });
-  }
-}
-
-function addFiles(files) {
-  const groups = groupFiles(files);
-  if (!groups.length) {
-    toast("Nenhuma imagem JPG, PNG ou WebP encontrada.");
-    return;
-  }
-  state.locals = [...groups, ...state.locals];
-  renderGallery();
-  $("localSection").scrollIntoView({ behavior: reducedMotion.matches ? "auto" : "smooth", block: "start" });
-  const total = groups.reduce((n, g) => n + g.frames.length, 0);
-  announce(`${total} imagens carregadas em ${groups.length} pastas.`, { speak: false });
+  $("presetsNote").textContent = state.presets.some((g) => g.sequence) ? t("gallery.noteSeq") : t("gallery.note");
 }
 
 // ---------------------------------------------------------------------------
-// Seleção de imagem -> Legenda sensorial -> Exploração
+// Seleção de mapa -> Legenda -> Exploração
 // ---------------------------------------------------------------------------
 async function selectGroup(group, index = 0, { skipLegend = false } = {}) {
-  // o clique na galeria é um gesto do usuário: libera o áudio já aqui, para que a
-  // pré-escuta no hover da legenda toque sem precisar de outro clique
+  // o clique na galeria é um gesto do usuário: libera o áudio já aqui
   if (engine.available) engine.start().then(updateAudioUI).catch(() => {});
   state.group = group;
   state.index = index;
-  state.scale = group.scaleId ? SCALES[group.scaleId] : null;
+  state.scale = SCALES[group.scaleId];
   state.u = 0.5;
   state.v = 0.5;
   state.trail = [];
-  state.announcedKey = "";
+  engine.setInstrument(instrumentFor(state.scale.characteristic));
+  preloadFrames(group, index); // todos os quadros do mapa começam a baixar já
   const loading = loadFrame(index, { initial: true });
   if (skipLegend) {
     await loading;
-    applyInstruments();
-    await startExperience({ quiet: true });
+    await startExperience();
     return;
   }
-  if (!state.scale) await loading; // precisa detectar a escala antes de montar a legenda
-  applyInstruments();
   openLegend();
   await loading;
 }
 
-// Instrumentos das camadas para a escala atual: vêm só do config.json (mapeamento e
-// camadasPorEscala); a interface não os altera.
-function applyInstruments() {
-  engine.setLayerInstruments(layerInstruments(state.scale?.id || "default"));
-  $("instMeters").innerHTML = ""; // rótulos refeitos na próxima leitura
+const instName = () => t(`inst.${instrumentFor(state.scale.characteristic)}`);
+
+// ---------------------------------------------------------------------------
+// Legenda: a escala do mapa, o instrumento dele e os sons dos lugares
+// ---------------------------------------------------------------------------
+const PLACE_ICON = (d) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
+const PLACES = [
+  { id: "mar", color: "#38bdf8", icon: '<path d="M2 15c2.5 0 2.5-2 5-2s2.5 2 5 2 2.5-2 5-2 2.5 2 5 2"/><path d="M2 19c2.5 0 2.5-2 5-2s2.5 2 5 2 2.5-2 5-2 2.5 2 5 2"/><path d="M6 10c1.5-3 4-5 8-5"/>' },
+  { id: "gelo", color: "#bae6fd", icon: '<path d="M12 2v20M4.9 6l14.2 12M19.1 6 4.9 18"/><path d="m9 4 3 2 3-2M9 20l3-2 3 2"/>' },
+  { id: "floresta", color: "#4ade80", icon: '<path d="M12 22v-6"/><path d="M12 2 6 11h3l-4 6h14l-4-6h3Z"/>' },
+  { id: "deserto", color: "#fbbf24", icon: '<circle cx="17" cy="7" r="3"/><path d="M2 19c3-4 6-5 9-3s6 1 11-3"/>' },
+];
+
+const INSTRUMENT_ICONS = {
+  bowed: `<svg viewBox="0 0 48 48"><path d="M24 4v10M20 6h8" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/><path d="M24 14c-5 0-8 3-7 8 .6 2.6-3 3.5-3 9 0 6.5 4.5 11 10 11s10-4.5 10-11c0-5.5-3.6-6.4-3-9 1-5-2-8-7-8Z" fill="none" stroke="currentColor" stroke-width="2.4"/><path d="M21 27c1 1 5 1 6 0M21 33c1-1 5-1 6 0" stroke="currentColor" stroke-width="2"/><path d="M24 14v28" stroke="currentColor" stroke-width="1.6"/></svg>`,
+  keys: `<svg viewBox="0 0 48 48"><rect x="5" y="12" width="38" height="26" rx="3" fill="none" stroke="currentColor" stroke-width="2.4"/><path d="M12.5 12v26M20 12v26M27.5 12v26M35 12v26" stroke="currentColor" stroke-width="1.8"/><path d="M10 12h5v14h-5zM17.5 12h5v14h-5zM32.5 12h5v14h-5z" fill="currentColor"/></svg>`,
+  wind: `<svg viewBox="0 0 48 48"><path d="M8 38 40 8" stroke="currentColor" stroke-width="5" stroke-linecap="round"/><circle cx="18" cy="28" r="1.8" fill="var(--bg-deep, #000)"/><circle cx="23" cy="23" r="1.8" fill="var(--bg-deep, #000)"/><circle cx="28" cy="18" r="1.8" fill="var(--bg-deep, #000)"/><path d="M36 30c3 1 5 3 6 6M33 35c2 .5 3.5 2 4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/></svg>`,
+  harp: `<svg viewBox="0 0 48 48"><path d="M12 42V8c10 0 14 6 18 12s8 8 8 8l-26 14Z" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linejoin="round"/><path d="M17 13v26M22 15v21M27 19v15M32 25v6" stroke="currentColor" stroke-width="1.6"/></svg>`,
+  mallet: `<svg viewBox="0 0 48 48"><path d="M6 30h36" stroke="currentColor" stroke-width="2"/><rect x="7" y="18" width="5" height="16" rx="1.5" fill="currentColor"/><rect x="14" y="19" width="5" height="14" rx="1.5" fill="currentColor"/><rect x="21" y="20" width="5" height="12" rx="1.5" fill="currentColor"/><rect x="28" y="21" width="5" height="10" rx="1.5" fill="currentColor"/><rect x="35" y="22" width="5" height="8" rx="1.5" fill="currentColor"/><path d="M14 6l8 10M34 6l-6 11" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="23" cy="17" r="2.6" fill="currentColor"/><circle cx="27.5" cy="18" r="2.6" fill="currentColor"/></svg>`,
+  pad: `<svg viewBox="0 0 48 48"><rect x="5" y="10" width="38" height="28" rx="4" fill="none" stroke="currentColor" stroke-width="2.4"/><path d="M10 26c3-8 6-8 9 0s6 8 9 0 6-8 9 0" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>`,
+};
+
+const PLAY_ICON = `<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l10-6.5-10-6.5Z" fill="currentColor"/></svg>`;
+
+function makeCard({ id, color, iconSvg, register, name, text, aria, play, stop }) {
+  const li = document.createElement("li");
+  li.className = "instrument";
+  li.style.setProperty("--inst", color);
+  li.innerHTML = `
+    <span class="instrument__icon" aria-hidden="true">${iconSvg}</span>
+    <div class="instrument__body">
+      ${register ? `<p class="instrument__register"></p>` : ""}
+      <h3 class="instrument__name" id="card-${id}"></h3>
+      <p class="instrument__role" id="card-${id}-text"></p>
+    </div>
+    <div class="instrument__actions"></div>`;
+  if (register) li.querySelector(".instrument__register").textContent = register;
+  li.querySelector(".instrument__name").textContent = name;
+  li.querySelector(".instrument__role").textContent = text;
+  // o botão carrega o nome e a explicação: é ele que o teclado e o leitor de tela encontram
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "button button--ghost instrument__play";
+  btn.setAttribute("aria-label", aria);
+  btn.setAttribute("aria-describedby", `card-${id}-text`);
+  btn.innerHTML = `${PLAY_ICON} <span></span>`;
+  btn.querySelector("span").textContent = t("legend.listen");
+  li.querySelector(".instrument__actions").append(btn);
+  bindLegendCard(li, btn, { play, stop });
+  return li;
 }
-const instLabel = (layer) => SAMPLE_SET[engine.layerInstrument(layer)].label;
 
 function openLegend() {
-  const scale = state.scale || SCALES.generic;
-  const g = state.group;
+  const scale = state.scale;
+  if (!scale) return;
+  const dlg = $("legendDialog");
   engine.update({ active: false });
-  $("legendDialogTitle").textContent = "Legenda auditiva e sensorial";
-  const heart = scale.alert ? ` Com ${scale.alert.label}, soa um coração batendo, mais rápido quanto mais extremo.` : "";
-  $("legendDialogIntro").textContent = `${g.title}: passe o mouse sobre cada instrumento e cada lugar, ou use Tab e Enter nos botões Ouvir, para conhecer os sons antes de explorar. ${scale.label}.${heart} Cada lugar tem um som próprio por baixo da música: ondas no mar, vento e cristais no gelo, insetos e pássaros na floresta, vento seco no deserto.`;
-  renderPlaceList(scale);
-  $("dlgVoiceText").textContent = SETTINGS.narration.pauseMusic
-    ? "Quando a narração fala, a música para por completo e volta ao fim da frase."
-    : `Quando a narração fala, os instrumentos abaixam ${Math.abs(SETTINGS.narration.duckDb)} dB e voltam ao fim da frase.`;
+  const instId = instrumentFor(scale.characteristic);
+  const inst = SAMPLE_SET[instId];
+  $("legendDialogTitle").textContent = t("legend.title", { map: title() });
+  $("legendDialogIntro").textContent = t("legend.intro", { char: scale.characteristicName, inst: instName() });
   $("dlgScaleLabel").textContent = scale.label;
   $("dlgScaleUnit").textContent = scale.unit;
   $("dlgGradient").style.background = scale.gradientCss();
   renderTicks($("dlgTicks"), scale);
-  $("dlgKey").textContent = MUSICAL_KEYS[engine.key].label.replace("Pentatônica Maior", "pentatônica maior");
 
   const list = $("instrumentList");
   list.innerHTML = "";
-  for (const id of LAYER_ORDER) {
-    const layer = LAYERS[id];
-    const instId = engine.layerInstrument(id);
-    const inst = SAMPLE_SET[instId];
-    const variable = layerVariable(scale.id, id);
-    const li = document.createElement("li");
-    li.className = "instrument";
-    li.style.setProperty("--inst", layer.color);
-    const swatch = instrumentSwatch(scale, id);
-    li.innerHTML = `
-      <span class="instrument__icon" aria-hidden="true">${INSTRUMENT_ICONS[inst.icon]}</span>
-      <div class="instrument__body">
-        <p class="instrument__register">${layer.register} · <code title="${VARIABLE_LABELS[variable]}: definido em config.json">mapeamento.${variable}</code></p>
-        <h3 class="instrument__name" id="inst-${id}">${inst.label}</h3>
-        <p class="instrument__role" id="inst-${id}-role">${layer.role}</p>
-        <p class="instrument__here" id="inst-${id}-here"><span class="instrument__swatch" style="background:${swatch}"></span>${scale.legend[id]}</p>
-      </div>
-      <div class="instrument__actions"></div>`;
-    // o botão carrega o nome e a explicação: é ele que o teclado e o leitor de tela encontram
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "button button--ghost instrument__play";
-    btn.setAttribute("aria-label", `Ouvir ${inst.label}, som ${layer.register.toLowerCase()}`);
-    btn.setAttribute("aria-describedby", `inst-${id}-role inst-${id}-here`);
-    btn.innerHTML = `<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l10-6.5-10-6.5Z" fill="currentColor"/></svg> Ouvir`;
-    li.querySelector(".instrument__actions").append(btn);
+  list.append(makeCard({
+    id: "inst",
+    color: "#f4c76b",
+    iconSvg: INSTRUMENT_ICONS[inst.icon],
+    register: scale.characteristicName,
+    name: instName(),
+    text: t("legend.instText", { char: scale.characteristicName.toLowerCase(), lo: scale.format(scale.min), hi: scale.format(scale.max) }),
+    aria: t("legend.instAria", { inst: instName() }),
+    play: () => engine.preview(instId),
+    stop: () => engine.stopPreview(),
+  }));
 
-    // PRÉ-ESCUTA NO HOVER: a voz pausa, o som entra com fade; ao sair, a voz retoma
-    bindLegendCard(li, btn, { play: () => engine.preview(id), stop: () => engine.stopPreview() });
-    list.append(li);
+  const places = $("placeList");
+  places.innerHTML = "";
+  // os sons dos lugares ficam escondidos até a pessoa pedir para rever essa parte do tutorial
+  // (redesenhar a legenda aberta, ao trocar o idioma, mantém o que estava aberto)
+  setPlacesOpen(dlg.open && placesOpen());
+  for (const p of PLACES) {
+    const name = t(`placeName.${p.id}`);
+    places.append(makeCard({
+      id: `place-${p.id}`,
+      color: p.color,
+      iconSvg: PLACE_ICON(p.icon),
+      name,
+      text: t(`placeText.${p.id}`),
+      aria: t("legend.placeAria", { place: name.toLowerCase() }),
+      play: () => engine.previewPlace(p.id),
+      stop: () => engine.stopPlacePreview(),
+    }));
   }
 
-  const dlg = $("legendDialog");
   engine.stopPreview();
   engine.stopPlacePreview();
   legendHover.current = null;
@@ -289,66 +301,66 @@ function openLegend() {
   stopLegendVoice();
   if (!dlg.open) dlg.showModal();
   $("legendDialogTitle").focus();
-  // ao abrir, só a voz: lê a legenda inteira (config.json → narracao.lerLegendaAoAbrir)
-  if (voiceOn() || SETTINGS.narration.readLegend) setTimeout(() => { if (dlg.open) startLegendVoice(); }, 250);
-}
-
-// gradiente com as cores da escala onde a camada domina (ou um ícone de brilho/borda)
-// Sons dos lugares na legenda: cada card toca a assinatura daquele lugar (hover ou botão)
-const PLACE_ICON = (d) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
-const PLACES = [
-  { id: "mar", name: "Mar", color: "#38bdf8", text: "Ondas que vêm e vão: rumor grave e espuma.", icon: '<path d="M2 15c2.5 0 2.5-2 5-2s2.5 2 5 2 2.5-2 5-2 2.5 2 5 2"/><path d="M2 19c2.5 0 2.5-2 5-2s2.5 2 5 2 2.5-2 5-2 2.5 2 5 2"/><path d="M6 10c1.5-3 4-5 8-5"/>' },
-  { id: "gelo", name: "Gelo", color: "#bae6fd", text: "Vento gelado assobiando e cristais agudos. Polos, Groenlândia e frio extremo.", icon: '<path d="M12 2v20M4.9 6l14.2 12M19.1 6 4.9 18"/><path d="m9 4 3 2 3-2M9 20l3-2 3 2"/>' },
-  { id: "floresta", name: "Floresta", color: "#4ade80", text: "Trilo de insetos e pássaros cantando nas notas da escala.", icon: '<path d="M12 22v-6"/><path d="M12 2 6 11h3l-4 6h14l-4-6h3Z"/>' },
-  { id: "deserto", name: "Deserto", color: "#fbbf24", text: "Vento seco em rajadas, areia fina e um bordão grave: a vastidão.", icon: '<circle cx="17" cy="7" r="3"/><path d="M2 19c3-4 6-5 9-3s6 1 11-3"/>' },
-  { id: "fronteira", name: "Fronteira", color: "#c4b5fd", text: "Um sino suave toca quando o cursor passa de um país para outro.", icon: '<path d="M6 16V11a6 6 0 0 1 12 0v5l2 2H4Z"/><path d="M10 21h4"/>' },
-  { id: "coracao", name: "Coração", color: "#fb7185", text: "", icon: '<path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10Z"/>' },
-];
-
-function placeText(p, scale) {
-  if (p.id !== "coracao") return p.text;
-  return scale.alert
-    ? `Bate nos valores extremos deste mapa (${scale.alert.label}), mais rápido quanto mais extremo.`
-    : "Bate nos valores extremos (calor extremo, mar muito quente, poluição alta, tempestades). Este mapa não tem faixa de alerta.";
+  // ao abrir, a voz lê a legenda inteira (config.json → narracao.lerLegendaAoAbrir)
+  if (voiceOn() && SETTINGS.narration.readLegend) setTimeout(() => { if (dlg.open) startLegendVoice(); }, 250);
 }
 
 // ---------------------------------------------------------------------------
 // Legenda falada e pré-escutas sem atropelo
-// A voz lê a legenda ao abrir (com a narração ligada, ou pelo botão "Ouvir a legenda").
-// Passar o mouse num card pausa a voz e toca o som com fade; ao sair, o som some com fade e
-// a voz retoma da frase em que parou. Nunca tocam dois sons juntos, e rolar a legenda (os
-// cards passando sob o cursor parado) não dispara nada: só um movimento real do mouse.
+// Passar o mouse num cartão pausa a voz e toca o som com fade; ao sair, o som some e a voz
+// retoma da frase em que parou. Nunca tocam dois sons juntos, e rolar a legenda (os cartões
+// passando sob o cursor parado) não dispara nada: só um movimento real do mouse.
 // ---------------------------------------------------------------------------
 const legendVoice = { parts: [], idx: 0, active: false, held: false, timer: 0 };
 const legendHover = { openedAt: 0, scrolledAt: 0, current: null, stop: null };
 
-function voiceOpts() {
-  const low = $("lowSensory").checked;
-  return { rate: low ? SETTINGS.low.voiceRate : SETTINGS.narration.rate, volume: low ? SETTINGS.low.voiceVolume : SETTINGS.narration.volume };
+function legendSpeechParts() {
+  const scale = state.scale;
+  const parts = [
+    $("legendDialogTitle").textContent + ".",
+    $("legendDialogIntro").textContent,
+    t("legend.speakHow"),
+    t("legend.instText", { char: scale.characteristicName.toLowerCase(), lo: scale.spoken(scale.min), hi: scale.spoken(scale.max) }),
+  ];
+  if (placesOpen()) parts.push(...placesSpeechParts());
+  else parts.push(t("legend.speakReview"));
+  parts.push(t("legend.speakEnd"));
+  return parts.map((s) => s.replace(/\.(\s*\.)+/g, "."));
 }
 
-function legendSpeechParts() {
-  const scale = state.scale || SCALES.generic;
-  const parts = [
-    `Legenda de ${state.group?.title || "este mapa"}.`,
-    "Passe o mouse sobre um cartão, ou use Tab e Enter nos botões Ouvir, para escutar cada som. A voz pausa enquanto o som toca e continua quando você sai do cartão.",
-    `${scale.label}.`,
-    "Os instrumentos.",
-  ];
-  for (const id of LAYER_ORDER) {
-    const inst = SAMPLE_SET[engine.layerInstrument(id)];
-    parts.push(`${LAYERS[id].register}: ${inst.label}. ${LAYERS[id].role}. ${scale.legend[id]}.`);
-  }
-  parts.push("Os sons dos lugares, que tocam por baixo da música.");
-  for (const p of PLACES) parts.push(`${p.name}: ${placeText(p, scale)}`);
-  parts.push("Quando quiser começar, aperte Iniciar Experiência Multissensorial, no fim da legenda.");
-  return parts.map((t) => t.replace(/\.(\s*\.)+/g, "."));
+const placesSpeechParts = () => [t("legend.speakPlaces"), ...PLACES.map((p) => `${t(`placeName.${p.id}`)}: ${t(`placeText.${p.id}`)}`)];
+
+// ---------------------------------------------------------------------------
+// "Rever o tutorial dos sons dos lugares": mostra (e lê) os cartões dos lugares na legenda
+// ---------------------------------------------------------------------------
+const placesOpen = () => $("placesToggle").getAttribute("aria-expanded") === "true";
+
+function setPlacesOpen(open) {
+  $("placesToggle").setAttribute("aria-expanded", String(open));
+  $("placesToggle").textContent = t(open ? "legend.hidePlaces" : "legend.reviewPlaces");
+  $("placesSection").hidden = !open;
+}
+
+function togglePlaces() {
+  const open = !placesOpen();
+  stopLegendVoice();
+  endLegendPreview({ resume: false });
+  engine.stopPlacePreview();
+  setPlacesOpen(open);
+  if (!open || !voiceOn()) return;
+  // com a voz ligada, ela explica os sons dos lugares, como no tutorial
+  legendVoice.parts = placesSpeechParts();
+  legendVoice.idx = 0;
+  legendVoice.active = true;
+  legendVoice.held = false;
+  queueLegendFrom(0);
+  updateReadAloudBtn();
 }
 
 function updateReadAloudBtn() {
   const b = $("dlgReadAloud");
   b.setAttribute("aria-pressed", String(legendVoice.active));
-  b.textContent = legendVoice.active ? "Parar a leitura" : "Ouvir a legenda";
+  b.textContent = t(legendVoice.active ? "legend.stopReading" : "legend.read");
 }
 
 function queueLegendFrom(i) {
@@ -362,6 +374,7 @@ function queueLegendFrom(i) {
     ...voiceOpts(),
     queue: k > 0,
     tag: "legenda",
+    priority: true,
     onstart: () => { legendVoice.idx = i + k; },
     onend: () => { if (i + k === parts.length - 1) { legendVoice.active = false; updateReadAloudBtn(); } },
   }));
@@ -414,7 +427,7 @@ function releaseLegendVoice(delay = 700) {
 
 const legendSettled = () => performance.now() - Math.max(legendHover.openedAt, legendHover.scrolledAt) > 450;
 
-// encerra a pré-escuta em andamento (card ou barra de cores), com fade
+// encerra a pré-escuta em andamento (cartão ou barra de cores), com fade
 function endLegendPreview({ resume = true } = {}) {
   const cur = legendHover.current;
   if (!cur) return;
@@ -446,9 +459,9 @@ function bindLegendCard(li, btn, { play, stop }) {
         li.classList.remove("is-playing");
         if (legendHover.current === li && !li.matches(":hover")) endLegendPreview();
       }, secs * 1000);
-    } catch (err) {
+    } catch {
       endLegendPreview();
-      toast(err.message || "Não foi possível iniciar o áudio.");
+      toast(t("audio.error"));
     }
   };
   const arm = () => { clearTimeout(timer); timer = setTimeout(begin, 280); };
@@ -470,76 +483,20 @@ function bindLegendCard(li, btn, { play, stop }) {
   btn.addEventListener("click", begin);
 }
 
-function renderPlaceList(scale) {
-  const list = $("placeList");
-  list.innerHTML = "";
-  for (const p of PLACES) {
-    const text = placeText(p, scale);
-    const li = document.createElement("li");
-    li.className = "instrument instrument--place";
-    li.style.setProperty("--inst", p.color);
-    li.innerHTML = `
-      <span class="instrument__icon" aria-hidden="true">${PLACE_ICON(p.icon)}</span>
-      <div class="instrument__body">
-        <h3 class="instrument__name" id="place-${p.id}">${p.name}</h3>
-        <p class="instrument__role" id="place-${p.id}-text">${text}</p>
-      </div>
-      <div class="instrument__actions"></div>`;
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "button button--ghost instrument__play";
-    btn.setAttribute("aria-label", `Ouvir o som de ${p.name.toLowerCase()}`);
-    btn.setAttribute("aria-describedby", `place-${p.id}-text`);
-    btn.innerHTML = `<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l10-6.5-10-6.5Z" fill="currentColor"/></svg> Ouvir`;
-    li.querySelector(".instrument__actions").append(btn);
-    bindLegendCard(li, btn, { play: () => engine.previewPlace(p.id), stop: () => engine.stopPlacePreview() });
-    list.append(li);
-  }
-}
-
-function instrumentSwatch(scale, id) {
-  const stops = [];
-  for (let i = 0; i <= 60; i += 1) {
-    const pos = i / 60;
-    const value = scale.id === "generic" ? pos * 100 : scale.valueAtPos(pos);
-    const w = scale.roles({ value, norm: pos, bright: 0.45, peak: 0.1, grad: 0, texture: 0 })[id];
-    if (w >= 0.5) stops.push(scale.colorAtPos(pos));
-  }
-  if (stops.length >= 2) {
-    const pick = stops.filter((_, i) => i % Math.ceil(stops.length / 8) === 0);
-    return `linear-gradient(90deg, ${pick.join(", ")})`;
-  }
-  return id === "arp"
-    ? "repeating-linear-gradient(90deg, #fff 0 3px, #222 3px 7px)"
-    : "linear-gradient(90deg, #333, #fff)";
-}
-
-const INSTRUMENT_ICONS = {
-  bowed: `<svg viewBox="0 0 48 48"><path d="M24 4v10M20 6h8" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/><path d="M24 14c-5 0-8 3-7 8 .6 2.6-3 3.5-3 9 0 6.5 4.5 11 10 11s10-4.5 10-11c0-5.5-3.6-6.4-3-9 1-5-2-8-7-8Z" fill="none" stroke="currentColor" stroke-width="2.4"/><path d="M21 27c1 1 5 1 6 0M21 33c1-1 5-1 6 0" stroke="currentColor" stroke-width="2"/><path d="M24 14v28" stroke="currentColor" stroke-width="1.6"/></svg>`,
-  keys: `<svg viewBox="0 0 48 48"><rect x="5" y="12" width="38" height="26" rx="3" fill="none" stroke="currentColor" stroke-width="2.4"/><path d="M12.5 12v26M20 12v26M27.5 12v26M35 12v26" stroke="currentColor" stroke-width="1.8"/><path d="M10 12h5v14h-5zM17.5 12h5v14h-5zM32.5 12h5v14h-5z" fill="currentColor"/></svg>`,
-  wind: `<svg viewBox="0 0 48 48"><path d="M8 38 40 8" stroke="currentColor" stroke-width="5" stroke-linecap="round"/><circle cx="18" cy="28" r="1.8" fill="var(--bg-deep, #000)"/><circle cx="23" cy="23" r="1.8" fill="var(--bg-deep, #000)"/><circle cx="28" cy="18" r="1.8" fill="var(--bg-deep, #000)"/><path d="M36 30c3 1 5 3 6 6M33 35c2 .5 3.5 2 4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/></svg>`,
-  harp: `<svg viewBox="0 0 48 48"><path d="M12 42V8c10 0 14 6 18 12s8 8 8 8l-26 14Z" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linejoin="round"/><path d="M17 13v26M22 15v21M27 19v15M32 25v6" stroke="currentColor" stroke-width="1.6"/></svg>`,
-  mallet: `<svg viewBox="0 0 48 48"><path d="M6 30h36" stroke="currentColor" stroke-width="2"/><rect x="7" y="18" width="5" height="16" rx="1.5" fill="currentColor"/><rect x="14" y="19" width="5" height="14" rx="1.5" fill="currentColor"/><rect x="21" y="20" width="5" height="12" rx="1.5" fill="currentColor"/><rect x="28" y="21" width="5" height="10" rx="1.5" fill="currentColor"/><rect x="35" y="22" width="5" height="8" rx="1.5" fill="currentColor"/><path d="M14 6l8 10M34 6l-6 11" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="23" cy="17" r="2.6" fill="currentColor"/><circle cx="27.5" cy="18" r="2.6" fill="currentColor"/></svg>`,
-  pad: `<svg viewBox="0 0 48 48"><rect x="5" y="10" width="38" height="28" rx="4" fill="none" stroke="currentColor" stroke-width="2.4"/><path d="M10 26c3-8 6-8 9 0s6 8 9 0 6-8 9 0" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>`,
-};
-
-async function startExperience({ quiet = false } = {}) {
+async function startExperience() {
   showView("explore");
   try {
     await engine.start();
     engine.resume();
-  } catch (err) {
-    toast(err.message || "Áudio indisponível neste navegador.");
+  } catch {
+    toast(t("audio.noTone"));
   }
   updateAudioUI();
   canvas.focus({ preventScroll: true });
   state.keyboardActive = true;
   state.readingDirty = true;
   layoutCanvas();
-  if (!quiet) {
-    announce(`Mapa aberto: ${state.group.title}. Use as setas para explorar. Aperte H para ouvir os atalhos.`);
-    if (state.reading) { state.announcedKey = ""; state.lastMove = performance.now(); } // a leitura do lugar vem em seguida
-  }
+  // sem instruções faladas a cada mapa aberto: como usar o mapa é ensinado no tutorial (tecla T)
 }
 
 // Tutorial: abre o mapa de temperatura direto (a legenda é ensinada pelo próprio tutorial)
@@ -551,15 +508,62 @@ async function openPractice() {
 
 // ---------------------------------------------------------------------------
 // Carregamento de quadros
+// Ao escolher um mapa, TODOS os quadros dele começam a baixar (6 por vez, a partir da hora
+// inicial). Eles ficam na memória como JPEG comprimido (~200 a 400 MB por mapa) e cada um só
+// é decodificado quando aparece na tela: decodificar os 372 de uma vez passaria de 3 GB.
+// Trocar de mapa libera os quadros do anterior e cancela os downloads pendentes.
 // ---------------------------------------------------------------------------
-const frameCache = new Map(); // src(string) -> Promise<bitmap> (pré-busca da linha do tempo)
-function fetchBitmap(src) {
-  if (typeof src !== "string") return loadBitmap(src);
-  if (!frameCache.has(src)) {
-    frameCache.set(src, loadBitmap(src).catch((e) => { frameCache.delete(src); throw e; }));
-    if (frameCache.size > 8) frameCache.delete(frameCache.keys().next().value);
+const PRELOAD_WORKERS = 6;
+const store = { key: null, group: null, blobs: [], done: 0, abort: null };
+
+function preloadFrames(g, first = 0) {
+  const key = `${g.id}:${g.frames.length}`;
+  if (store.key === key) return;
+  store.abort?.abort();
+  const abort = new AbortController();
+  Object.assign(store, { key, group: g, blobs: new Array(g.frames.length), done: 0, abort });
+  updateFramesUI();
+  const n = g.frames.length;
+  const queue = Array.from({ length: n }, (_, k) => (first + k) % n);
+  const worker = async () => {
+    while (!abort.signal.aborted && queue.length) {
+      const i = queue.shift();
+      try { await frameBlob(g, i); } catch { /* tenta de novo quando o quadro for pedido */ }
+    }
+  };
+  for (let k = 0; k < Math.min(PRELOAD_WORKERS, n); k += 1) worker();
+}
+
+// JPEG (Blob) do quadro i: já baixado, baixando, ou começa agora (pedido da tela tem a vez)
+function frameBlob(g, i) {
+  if (store.group !== g) preloadFrames(g, i);
+  if (!store.blobs[i]) {
+    const { abort } = store;
+    store.blobs[i] = fetch(g.frames[i].src, { signal: abort.signal })
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.blob();
+      })
+      .then((blob) => {
+        if (store.abort === abort) { store.done += 1; updateFramesUI(); }
+        return blob;
+      })
+      .catch((err) => {
+        if (store.abort === abort) store.blobs[i] = null;
+        throw err;
+      });
   }
-  return frameCache.get(src);
+  return store.blobs[i];
+}
+
+function updateFramesUI() {
+  const g = store.group;
+  const total = g?.frames.length ?? 0;
+  const box = $("framesLoad");
+  box.hidden = total < 2 || store.done >= total;
+  $("framesProgress").max = total || 1;
+  $("framesProgress").value = store.done;
+  $("framesText").textContent = t("time.loading", { done: store.done, n: total });
 }
 
 async function loadFrame(index, { initial = false } = {}) {
@@ -569,32 +573,22 @@ async function loadFrame(index, { initial = false } = {}) {
   const frame = g.frames[index];
   if (initial || !state.playing) $("loadingVeil").hidden = false;
   try {
-    const bmp = await fetchBitmap(frame.src);
+    const blob = await frameBlob(g, index);
     if (token !== state.loadToken) return;
-    const sampler = new ImageSampler(bmp);
-    state.sampler = sampler;
+    const bmp = await createImageBitmap(blob);
+    if (token !== state.loadToken) { bmp.close?.(); return; }
+    state.sampler = new ImageSampler(bmp);
+    bmp.close?.(); // o sampler guardou a sua cópia em canvas
     state.index = index;
-    if (!state.scale) {
-      const id = scaleFromPixels(sampler.imageData);
-      state.scale = SCALES[id];
-      g.scaleId = id;
-      if (id === "generic") toast("Escala não reconhecida: usando o matiz da cor (azul = frio, vermelho = quente). Você pode trocar a escala acima do mapa.", 6000);
-    }
-    state.projection = g.projection || (Math.abs(sampler.width / sampler.height - 2) < 0.05 ? { type: "equirectangular" } : { type: "none" });
+    state.projection = g.projection;
     if (initial) setupExplorerFor(g);
     rebuildBase();
     updateTimelineUI();
     state.readingDirty = true;
-    // pré-busca dos próximos quadros
-    if (g.frames.length > 1) {
-      for (let k = 1; k <= 3; k += 1) {
-        const nf = g.frames[(index + k) % g.frames.length];
-        if (typeof nf.src === "string") fetchBitmap(nf.src).catch(() => {});
-      }
-    }
   } catch (err) {
+    if (token !== state.loadToken) return;
     console.error(err);
-    toast(`Não foi possível abrir ${frame.name}.`);
+    toast(t("map.loadError", { name: frame.name }));
   } finally {
     if (token === state.loadToken) $("loadingVeil").hidden = true;
   }
@@ -602,69 +596,67 @@ async function loadFrame(index, { initial = false } = {}) {
 
 function setupExplorerFor(g) {
   const scale = state.scale;
-  $("exploreKicker").textContent = g.source;
-  $("exploreHeading").textContent = g.title;
-  $("scaleSelect").value = scale.id;
+  $("exploreKicker").textContent = `${g.source} · ${scale.characteristicName} · ${instName()}`;
+  $("exploreHeading").textContent = groupTitle(g);
   updateLegendBar();
   $("timeline").hidden = g.frames.length < 2;
-  const slider = $("frameSlider");
-  slider.max = String(g.frames.length - 1);
-  canvas.setAttribute(
-    "aria-label",
-    `Mapa sonoro de ${g.title}, ${scale.label}. Setas movem o cursor, Enter lê o lugar, O dá a visão geral e H abre a ajuda`
-  );
+  $("frameSlider").max = String(g.frames.length - 1);
+  canvas.setAttribute("aria-label", t("map.aria", { map: groupTitle(g), inst: instName() }));
+  renderCanvasHelp();
+  updateDocTitle();
   layoutCanvas();
 }
 
 function updateLegendBar() {
   const s = state.scale;
+  if (!s) return;
   $("legendTitle").textContent = s.label;
   $("legendUnit").textContent = s.unit;
   const pal = ["cividis", "viridis", "gray"].includes(state.colorMode) ? state.colorMode : null;
   $("legendGradient").style.background = pal
-    ? `linear-gradient(90deg, ${[0, 0.2, 0.4, 0.6, 0.8, 1].map((t) => `rgb(${paletteColor(pal, t).join(" ")})`).join(", ")})`
+    ? `linear-gradient(90deg, ${[0, 0.2, 0.4, 0.6, 0.8, 1].map((p) => `rgb(${paletteColor(pal, p).join(" ")})`).join(", ")})`
     : s.gradientCss();
   renderTicks($("legendTicks"), s);
-  $("legendEnds").innerHTML = s.ends.map((e) => `<span>${e}</span>`).join("");
-  $("readValueLabel").textContent = s.short;
+  $("legendEnds").innerHTML = "";
+  for (const e of s.ends) {
+    const span = document.createElement("span");
+    span.textContent = e;
+    $("legendEnds").append(span);
+  }
+  $("readValueLabel").textContent = s.characteristicName;
 }
 
 function renderTicks(el, scale) {
   el.innerHTML = scale.ticks
-    .map((t) => `<span style="left:${(t.pos * 100).toFixed(2)}%">${String(t.value).replace("-", "−")}</span>`)
+    .map((tk) => `<span style="left:${(tk.pos * 100).toFixed(2)}%">${String(tk.value).replace("-", "−")}</span>`)
     .join("");
 }
 
 // ---------------------------------------------------------------------------
 // Barra de cores tocável: passar o mouse (ou usar as setas) toca o valor daquela posição
-// com os mesmos instrumentos, notas e vibração que um pixel dessa cor no mapa
+// com o mesmo instrumento, nota e vibração que um pixel dessa cor no mapa
 // ---------------------------------------------------------------------------
 function legendReading(scale, pos) {
-  const value = scale.id === "generic" ? pos * 100 : scale.valueAtPos(pos);
-  const r = { valid: true, value, norm: pos, bright: 0.55, peak: 0.12, grad: 0, texture: 0, u: pos };
-  r.weights = scale.roles(r);
+  const value = scale.valueAtPos(pos);
+  const r = { valid: true, value, norm: pos, grad: 0, u: pos };
   r.valueText = scale.format(value);
   r.zone = scale.zoneOf(value);
   const m = scale.colorAtPos(pos).match(/[\d.]+/g);
-  r.rgb = m && !scale.colorAtPos(pos).startsWith("hsl") ? m.slice(0, 3).map(Number) : [255, 255, 255];
+  r.rgb = m ? m.slice(0, 3).map(Number) : [255, 255, 255];
   return r;
 }
 
-function scaleSentence(r) {
-  const inst = activeInstruments(r);
-  return `${state.scale?.sentence(r.valueText) || r.valueText}, ${r.zone.label.toLowerCase()}${inst.length ? `: ${joinPt(inst)}` : ""}.`;
-}
+const scaleSentence = (r) => `${state.scale.sentence(state.scale.spoken(r.value))}, ${r.zone.label.toLowerCase()}.`;
 
 async function playScaleAt(pos) {
-  const scale = state.scale || SCALES.generic;
   state.legendHover = clamp(pos);
   if (!engine.started) {
-    try { await engine.start(); updateAudioUI(); } catch (err) { toast(err.message || "Áudio indisponível."); return null; }
+    try { await engine.start(); updateAudioUI(); } catch { toast(t("audio.noTone")); return null; }
   }
-  if (state.legendHover === null) return null;
-  const r = legendReading(scale, state.legendHover);
+  if (state.legendHover === null || !state.scale) return null;
+  const r = legendReading(state.scale, state.legendHover);
   engine.stopPreview();
-  engine.update({ active: true, pan: state.legendHover * 2 - 1, norm: state.legendHover, weights: r.weights, bright: r.bright, grad: 0, alert: scale.alertLevel(r.value) });
+  engine.update({ active: true, pan: state.legendHover * 2 - 1, norm: state.legendHover });
   haptics.send(r, { active: true });
   return r;
 }
@@ -682,13 +674,12 @@ function attachScaleHover(track, marker, tip) {
   track.setAttribute("role", "slider");
   track.setAttribute("aria-valuemin", "0");
   track.setAttribute("aria-valuemax", "100");
-  track.setAttribute("aria-label", "Escala de cores tocável: passe o mouse ou use as setas para ouvir cada valor");
   let raf = 0;
   let pending = null;
   let kbPos = 0.5;
   const show = (pos) => {
-    const scale = state.scale || SCALES.generic;
-    const r = legendReading(scale, pos);
+    if (!state.scale) return;
+    const r = legendReading(state.scale, pos);
     marker.hidden = false;
     marker.style.left = `${(pos * 100).toFixed(2)}%`;
     tip.hidden = false;
@@ -725,7 +716,7 @@ function attachScaleHover(track, marker, tip) {
   const leave = () => {
     pending = null;
     tip.hidden = true;
-    if (track.id === "dlgTrack") marker.hidden = true;
+    if (inDialog) marker.hidden = true;
     stopScale();
     if (inDialog && legendHover.current === track) endLegendPreview();
   };
@@ -739,14 +730,15 @@ function attachScaleHover(track, marker, tip) {
   track.addEventListener("pointercancel", leave);
   track.addEventListener("pointerup", (e) => { if (e.pointerType !== "mouse") leave(); });
   track.addEventListener("keydown", async (e) => {
-    const step = e.shiftKey ? 0.1 : 0.025;
-    const keys = { ArrowLeft: -step, ArrowDown: -step, ArrowRight: step, ArrowUp: step, Home: -1, End: 1 };
+    // setas: passo pequeno; Page Up/Down: passo grande (sem tecla modificadora)
+    const keys = { ArrowLeft: -0.025, ArrowDown: -0.025, ArrowRight: 0.025, ArrowUp: 0.025, PageDown: -0.1, PageUp: 0.1, Home: -1, End: 1 };
     if (!(e.key in keys)) return;
     e.preventDefault();
+    e.stopPropagation();
     kbPos = clamp(kbPos + keys[e.key]);
     show(kbPos);
     const r = await playScaleAt(kbPos);
-    if (r) announce(scaleSentence(r), { speak: true, live: false }); // o leitor de tela já lê o aria-valuetext
+    if (r) announce(scaleSentence(r), { live: false }); // o leitor de tela já lê o aria-valuetext
   });
   track.addEventListener("focus", () => show(kbPos));
   track.addEventListener("blur", leave);
@@ -766,9 +758,8 @@ function rebuildBase() {
 function frameTimeText(frame) {
   if (frame?.gmaoIndex === undefined) return frame?.name || "—";
   const d = new Date(GMAO_T0_UTC + frame.gmaoIndex * 3600 * 1000);
-  const fmt = (tz) =>
-    new Intl.DateTimeFormat("pt-BR", { timeZone: tz, day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }).format(d);
-  return `${fmt("UTC")} UTC · ${fmt("America/Sao_Paulo").split(", ").pop()} em Brasília`;
+  const fmt = (tz) => new Intl.DateTimeFormat(locale(), { timeZone: tz, day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }).format(d);
+  return t("time.when", { utc: fmt("UTC"), br: fmt("America/Sao_Paulo").split(", ").pop() });
 }
 
 function updateTimelineUI() {
@@ -776,7 +767,7 @@ function updateTimelineUI() {
   if (!g) return;
   const f = g.frames[state.index];
   $("frameSlider").value = String(state.index);
-  $("frameSlider").setAttribute("aria-valuetext", `${state.index + 1} de ${g.frames.length}, ${frameTimeText(f)}`);
+  $("frameSlider").setAttribute("aria-valuetext", t("time.valuetext", { i: state.index + 1, n: g.frames.length, when: frameTimeText(f) }));
   $("frameLabel").textContent = `${f.name} · ${state.index + 1}/${g.frames.length}`;
   $("frameTime").textContent = frameTimeText(f);
 }
@@ -787,7 +778,7 @@ function startTimeline() {
   if (!g || g.frames.length < 2) return;
   state.playing = true;
   $("playTimeline").setAttribute("aria-pressed", "true");
-  $("playTimeline").setAttribute("aria-label", "Pausar linha do tempo");
+  $("playTimeline").setAttribute("aria-label", t("time.pause"));
   const step = async () => {
     if (!state.playing) return;
     const t0 = performance.now();
@@ -799,14 +790,14 @@ function startTimeline() {
 }
 function toggleTimeline() {
   if (!state.group || state.group.frames.length < 2) {
-    announce("Este mapa tem uma imagem só, sem linha do tempo.");
+    announce(t("time.none"));
     return;
   }
   if (state.playing) {
     stopTimeline();
-    announce(`Linha do tempo pausada em ${frameTimeText(state.group.frames[state.index])}.`);
+    announce(t("time.paused", { when: frameTimeText(state.group.frames[state.index]) }));
   } else {
-    announce(`Linha do tempo tocando, ${$("speedSelect").value} horas por segundo. Aperte P para pausar.`);
+    announce(t("time.playing", { n: $("speedSelect").value, key: keyName(SHORTCUTS.timeline.key) }));
     startTimeline();
   }
 }
@@ -814,18 +805,18 @@ function stopTimeline() {
   state.playing = false;
   clearTimeout(playTimer);
   $("playTimeline").setAttribute("aria-pressed", "false");
-  $("playTimeline").setAttribute("aria-label", "Reproduzir linha do tempo");
+  $("playTimeline").setAttribute("aria-label", t("time.play"));
 }
 function stepFrame(delta) {
   const g = state.group;
   if (!g) return;
   if (g.frames.length < 2) {
-    announce("Este mapa tem uma imagem só, sem outras horas.");
+    announce(t("time.none"));
     return;
   }
   stopTimeline();
   loadFrame((state.index + delta + g.frames.length) % g.frames.length).then(() => {
-    announce(frameTimeText(g.frames[state.index]), { speak: true });
+    announce(frameTimeText(g.frames[state.index]));
     tutorial.notify("frame");
   });
 }
@@ -833,75 +824,88 @@ function stepFrame(delta) {
 // ---------------------------------------------------------------------------
 // Leitura e sonificação
 // ---------------------------------------------------------------------------
+// O mapa toca quando o mouse está sobre ele, quando ele tem o foco, durante o passeio ou
+// logo depois de ligar/retomar o som (state.listening): quem clica em "Retomar o som" está
+// com o foco no botão, e a música precisa voltar mesmo assim, no ponto onde o cursor estava.
 function isActive() {
-  return !$("exploreView").hidden && (state.pointerInside || state.keyboardActive || sweep.on) && !$("legendDialog").open && !$("helpDialog").open;
+  return !$("exploreView").hidden && (state.pointerInside || state.keyboardActive || tour.on || state.listening) && !$("legendDialog").open && !$("helpDialog").open;
 }
 
-function computeReading() {
-  return readAt(state.u, state.v);
-}
-
-// leitura completa (valor, instrumentos, lugar) em qualquer ponto do mapa
+// leitura completa (valor, lugar, paisagem) em qualquer ponto do mapa
 function readAt(u, v) {
   const { sampler, scale } = state;
   if (!sampler || !scale) return null;
   const r = sampler.read(u, v, scale, state.projection);
-  if (r.valid) {
-    r.weights = scale.roles(r);
-    r.valueText = scale.format(r.value);
-  } else {
-    r.weights = { low: 0, mid: 0, high: 0, arp: 0 };
-    r.valueText = "sem dado";
-  }
+  r.valueText = r.valid ? scale.format(r.value) : t("read.noData");
   // paisagem sonora: mar, gelo, floresta ou deserto (geo.js)
   r.env = r.geo && r.region ? landscapeAt(r.geo.lat, r.geo.lon, r.region, { scaleId: scale.id, value: r.value, valid: r.valid }) : null;
   return r;
 }
 
-function activeInstruments(r) {
-  return [...new Set(LAYER_ORDER.filter((id) => (r.weights?.[id] ?? 0) >= 0.25)
-    .sort((a, b) => r.weights[b] - r.weights[a])
-    .map(instLabel))];
-}
-
-function joinPt(list) {
-  if (list.length <= 1) return list[0] || "";
-  return `${list.slice(0, -1).join(", ")} e ${list[list.length - 1]}`;
-}
-
-function readingSentence(r) {
-  const env = r.env?.label && r.env.label !== "mar" ? `, ${r.env.label}` : "";
-  const place = `${r.region?.name || state.group?.title || "Imagem"}${env}`;
-  if (!r.valid) return `${place}: sem dados. ${r.reason}.`;
-  const inst = activeInstruments(r);
-  const instText = inst.length ? joinPt(inst) : "silêncio suave";
-  const alert = state.scale.alertLevel(r.value) > 0 ? ` Alerta: ${state.scale.alert.label}.` : "";
-  return `${place}: ${instText}. ${state.scale.sentence(r.valueText)}, ${r.zone.label.toLowerCase()}.${alert}`;
-}
-
-function announceReading(force = false) {
-  const r = state.reading;
+function processReading() {
+  const r = readAt(state.u, state.v);
   if (!r) return;
-  const key = r.valid ? `${r.region?.name}|${r.zone?.index}|${Math.round(r.norm * 40)}` : `x|${r.reason}`;
-  if (!force && key === state.announcedKey) return;
-  state.announcedKey = key;
-  announce(readingSentence(r));
+  state.reading = r;
+  const active = isActive();
+  tutorial.notify("reading", r);
+  // a barra de cores (pré-escuta da escala) e a legenda aberta têm prioridade sobre o mapa
+  if (state.legendHover !== null || $("legendDialog").open) {
+    updateReadingUI(r);
+    return;
+  }
+  engine.update({
+    active: active && r.valid,
+    pan: state.u * 2 - 1,
+    norm: r.valid ? r.norm : 0.5,
+    // sons dos lugares: mar, gelo, floresta, deserto (valem mesmo sem dado)
+    amb: active ? r.env?.levels ?? {} : {},
+  });
+  haptics.send(r, { active });
+  updateReadingUI(r);
+}
+
+function updateReadingUI(r) {
+  $("readRegion").textContent = r.region?.name || "—";
+  $("readCoord").textContent = (r.geo ? formatCoord(r.geo.lat, r.geo.lon) : "—") + (r.env?.label ? ` · ${r.env.label}` : "");
+  $("readValue").textContent = r.valid ? r.valueText : t("read.noData");
+  $("readZone").textContent = r.valid ? r.zone.label : r.reason;
+  if (state.legendHover === null) {
+    const marker = $("legendMarker");
+    marker.hidden = !r.valid;
+    if (r.valid) marker.style.left = `${(r.norm * 100).toFixed(2)}%`;
+  }
+}
+
+// O que a voz fala ao clicar no mapa ou apertar Espaço: o país e a característica do mapa
+// (temperatura, umidade, vento...). Ex.: "Brasil. Temperatura 27,3 graus Celsius."
+function readingSentence(r) {
+  const place = r.region?.name || title();
+  if (!r.valid) return t("read.sentenceNoData", { place });
+  return t("read.sentence", { place, value: state.scale.sentence(state.scale.spoken(r.value)) });
+}
+
+function readHere() {
+  if ($("exploreView").hidden) return;
+  state.readingDirty = true;
+  processReading();
+  if (state.reading) announce(readingSentence(state.reading));
+  tutorial.notify("announce");
 }
 
 // ---------------------------------------------------------------------------
 // Exploração sem ver o mapa: visão geral, posição e saltos entre regiões
 // ---------------------------------------------------------------------------
 function placeWords(u, v) {
-  const vert = v < 1 / 3 ? "em cima" : v > 2 / 3 ? "embaixo" : "";
-  const horiz = u < 1 / 3 ? "à esquerda" : u > 2 / 3 ? "à direita" : "";
-  if (!vert && !horiz) return "no centro do mapa";
-  return [vert || "a meia altura", horiz || "no centro"].join(", ");
+  const vert = v < 1 / 3 ? "top" : v > 2 / 3 ? "bottom" : "";
+  const horiz = u < 1 / 3 ? "left" : u > 2 / 3 ? "right" : "";
+  if (!vert && !horiz) return t("pos.center");
+  return t(`pos.${vert || "middle"}_${horiz || "center"}`);
 }
 
 // Tecla O: percorre o mapa numa grade e diz onde estão os valores mais alto e mais baixo
 function mapOverview() {
-  const { sampler, scale, projection, group } = state;
-  if (!sampler || !scale) return;
+  const { sampler, scale, projection } = state;
+  if ($("exploreView").hidden || !sampler || !scale) { announce(t("map.none")); return; }
   const COLS = 24;
   const ROWS = 12;
   let hi = null;
@@ -919,27 +923,26 @@ function mapOverview() {
     }
   }
   if (!n) {
-    announce(`Visão geral de ${group.title}: não encontrei dados legíveis nesta imagem.`);
+    announce(t("overview.none", { map: title() }));
     return;
   }
-  const where = (r) => {
-    const reg = r.region;
-    const prefix = reg?.country ? `${reg.country}, ` : reg?.name ? `na região ${reg.name}, ` : "";
-    return `${prefix}${placeWords(r.u, r.v)}`;
-  };
-  announce(
-    `Visão geral de ${group.title}. ${scale.sentence(scale.format(hi.value))} é o valor mais alto, ${where(hi)}. ` +
-    `${scale.sentence(scale.format(lo.value))} é o mais baixo, ${where(lo)}. Média do mapa: ${scale.format(sum / n)}. ` +
-    "Use as teclas de 1 a 9 para saltar entre as regiões."
-  );
+  const where = (r) => `${r.region?.name ? `${r.region.name}, ` : ""}${placeWords(r.u, r.v)}`;
+  announce(t("overview.text", {
+    map: title(),
+    hi: scale.sentence(scale.spoken(hi.value)), hiWhere: where(hi),
+    lo: scale.sentence(scale.spoken(lo.value)), loWhere: where(lo),
+    mean: scale.spoken(sum / n),
+  }));
 }
 
 // Tecla C: onde o cursor está
 function announcePosition() {
+  if ($("exploreView").hidden) { announce(t("map.none")); return; }
+  processReading();
   const r = state.reading;
-  const place = r?.region?.name || state.group?.title || "Imagem";
+  const place = r?.region?.name || title();
   const coord = r?.geo ? `${formatCoord(r.geo.lat, r.geo.lon)}. ` : "";
-  announce(`${place}. ${coord}Cursor ${placeWords(state.u, state.v)}: ${Math.round(state.u * 100)}% da largura e ${Math.round(state.v * 100)}% da altura do mapa.`);
+  announce(t("pos.text", { place, coord, where: placeWords(state.u, state.v), x: Math.round(state.u * 100), y: Math.round(state.v * 100) }));
 }
 
 // Teclas 1 a 9: nove regiões, como um teclado de telefone (1 = em cima à esquerda)
@@ -947,8 +950,7 @@ function jumpToCell(n) {
   state.u = ((n - 1) % 3 + 0.5) / 3;
   state.v = (Math.floor((n - 1) / 3) + 0.5) / 3;
   moveFocal(0, 0);
-  processReading();
-  announceReading(true);
+  readHere();
 }
 
 function changeVolume(delta) {
@@ -956,379 +958,81 @@ function changeVolume(delta) {
   const db = clamp(Number(slider.value) + delta, Number(slider.min), Number(slider.max));
   slider.value = String(db);
   setVolume(db);
-  announce(`Volume ${db} decibéis.`);
+  announce(t("sound.volumeNow", { db }));
 }
 
 function setVolume(db) {
   $("volumeOut").textContent = `${db} dB`;
-  $("volumeSlider").setAttribute("aria-valuetext", `${db} decibéis`);
+  $("volumeSlider").setAttribute("aria-valuetext", t("sound.db", { db }));
   engine.setVolume(db);
   savePrefs();
 }
 
-function processReading() {
-  const r = computeReading();
-  if (!r) return;
-  const prev = state.reading;
-  state.reading = r;
-  const active = isActive();
-  tutorial.notify("reading", r);
-  // a barra de cores (pré-escuta da escala) e a legenda aberta têm prioridade sobre o mapa
-  if (state.legendHover !== null || $("legendDialog").open) {
-    updateReadingUI(r, prev);
+// ---------------------------------------------------------------------------
+// Passeio sonoro: o cursor passeia sozinho pelo mapa, em movimentos aleatórios e contínuos
+// (js/passeio.js). O som começa NA HORA: nenhuma fala antes (a voz pausaria a música) e
+// nenhum relatório no fim. Quem usa leitor de tela recebe o aviso pela região ARIA.
+// ---------------------------------------------------------------------------
+function setTourUI(running) {
+  const btn = $("tourButton");
+  btn.setAttribute("aria-pressed", String(running));
+  btn.classList.toggle("is-on", running);
+  $("tourLabel").textContent = t(running ? "tour.stop" : "tour.play");
+}
+
+function toggleTour() {
+  if (tour.on) stopTour();
+  else startTour();
+}
+
+function startTour() {
+  if ($("exploreView").hidden || !state.sampler) {
+    announce(t("map.none"));
     return;
   }
-  // durante uma demonstração sonora do tutorial, o motor fica com ela
-  if (!tutorial.isDemoPlaying()) engine.update({
-    active: active && r.valid,
-    pan: state.u * 2 - 1,
-    norm: r.valid ? r.norm : 0.5,
-    weights: r.weights,
-    bright: r.bright ?? 0.5,
-    grad: r.grad ?? 0,
-    // sons dos lugares: mar, gelo, floresta, deserto (valem mesmo sem dado, como o oceano do GEDI)
-    amb: active ? r.env?.levels ?? {} : {},
-    // batimento de coração nos valores extremos
-    alert: r.valid ? state.scale.alertLevel(r.value) : 0,
-  });
-  if (sweep.on && sweep.stats && !sweep.score) addReading(sweep.stats, r, state.scale);
-  // sino suave ao passar de um país para outro
-  const c0 = prev?.region?.country;
-  const c1 = r.region?.country;
-  if (active && c0 && c1 && c0 !== c1 && !tutorial.isDemoPlaying()) engine.borderCue();
-  haptics.send(r, { active });
-  updateReadingUI(r, prev);
-}
-
-function updateReadingUI(r) {
-  $("readRegion").textContent = r.region?.name || (state.projection?.type === "none" ? "Imagem livre" : "—");
-  $("readCoord").textContent = (r.geo ? formatCoord(r.geo.lat, r.geo.lon) : `x ${(r.u * 100).toFixed(0)}% · y ${(r.v * 100).toFixed(0)}%`) + (r.env?.label ? ` · ${r.env.label}` : "");
-  $("readValue").textContent = r.valid ? r.valueText : "Sem dado";
-  $("readZone").textContent = r.valid ? r.zone.label : r.reason;
-  // nota da camada dominante (grave, médio, agudo ou arpejo)
-  const dom = LAYER_ORDER.reduce((a, b) => ((r.weights[b] ?? 0) > (r.weights[a] ?? 0) ? b : a));
-  const domOn = r.valid && (r.weights[dom] ?? 0) > 0.05;
-  $("readNote").textContent = domOn ? midiName(engine.noteFor(dom, r.norm)) : "—";
-  const pan = state.u * 2 - 1;
-  const side = Math.abs(pan) < 0.12 ? "centro" : pan < 0 ? `esquerda ${Math.round(-pan * 100)}%` : `direita ${Math.round(pan * 100)}%`;
-  $("readPan").textContent = domOn ? `${instLabel(dom)} · ${side}` : side;
-  if (state.legendHover === null) {
-    const marker = $("legendMarker");
-    marker.hidden = !r.valid;
-    if (r.valid) marker.style.left = `${(r.norm * 100).toFixed(2)}%`;
+  stopScale();
+  // uma fala em andamento (ex.: a leitura do botão) deixaria a música pausada: cala a voz
+  narrator.cancel();
+  // o clique é um gesto do usuário: liga o som sem esperar (o passeio já começa a andar)
+  if (!engine.started) {
+    engine.start().then(updateAudioUI).catch(() => { toast(t("audio.noTone")); stopTour({ silent: true }); });
+  } else if (engine.paused) {
+    engine.resume();
+    updateAudioUI();
   }
-  const meters = $("instMeters");
-  if (!meters.children.length) {
-    meters.innerHTML = LAYER_ORDER.map(
-      (id) => `<li style="--inst:${LAYERS[id].color}"><span>${instLabel(id)}</span><i><b id="m-${id}"></b></i></li>`
-    ).join("");
-  }
-  for (const id of LAYER_ORDER) {
-    $(`m-${id}`).style.transform = `scaleX(${(r.weights[id] ?? 0).toFixed(3)})`;
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Passeio sonoro: o cursor percorre o mapa sozinho; opcionalmente grava o áudio (WAV)
-// ---------------------------------------------------------------------------
-const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-
-function sweepWhere(route) {
-  if (state.projection?.type !== "equirectangular") return "";
-  const g = project(state.projection, sweep.origin.u, sweep.origin.v);
-  if (!g) return "";
-  if (route === "volta") {
-    return Math.abs(g.lat) < 1.5 ? "pela Linha do Equador" : `pela latitude ${Math.round(Math.abs(g.lat))}° ${g.lat >= 0 ? "Norte" : "Sul"}`;
-  }
-  if (route === "polos") return `pela longitude ${Math.round(Math.abs(g.lon))}° ${g.lon >= 0 ? "Leste" : "Oeste"}`;
-  return "";
-}
-
-function sweepIntro(route, secs) {
-  const geo = state.projection && state.projection.type !== "none";
-  const where = sweepWhere(route);
-  let t;
-  if (route === "sinfonia") {
-    t = `Sinfonia do mapa: uma faixa vai varrer o mapa da esquerda para a direita, em ${secs} segundos, e transformar cada trecho em música. `
-      + "As notas agudas vêm do alto do mapa e as graves, de baixo. Quanto maior o valor, mais forte a nota. "
-      + "A harmonia fica mais sombria onde os valores são baixos e mais tensa onde são altos. A peça tem abertura, desenvolvimento, clímax e final.";
-    if (geo) t += " Por baixo da música, você ouve os lugares: ondas no mar, vento e cristais no gelo, insetos e pássaros na floresta, vento seco no deserto.";
-    if (state.scale?.alert) t += ` Se ouvir um coração batendo, é ${state.scale.alert.label}.`;
-    if (sweep.rec) t += " O áudio será gravado.";
-    return `${t} As setas, um clique no mapa ou a tecla V param a música.`;
-  }
-  if (route === "volta") {
-    t = `Passeio sonoro: volta ao mundo${where ? ` ${where}` : ""}, ${secs} segundos ${geo ? "de oeste para leste" : "da esquerda para a direita"}. Com fones, o som caminha da esquerda para a direita.`;
-  } else if (route === "polos") {
-    t = `Passeio sonoro de polo a polo${where ? `, ${where}` : ""}: ${secs} segundos ${geo ? "do norte ao sul" : "de cima para baixo"}.`;
-  } else {
-    t = `Passeio sonoro pelo mapa inteiro: ${SETTINGS.sweep.rows} faixas de cima para baixo, em ${secs} segundos.`;
-  }
-  if (geo) t += " Cada lugar tem seu som: ondas no mar, insetos e pássaros na floresta, vento seco no deserto, vento gelado e cristais no gelo, e um sino nas fronteiras.";
-  if (state.scale?.alert) t += ` Se ouvir um coração batendo, é ${state.scale.alert.label}.`;
-  if (sweep.rec) t += " O áudio será gravado.";
-  return `${t} As setas, um clique no mapa ou a tecla V param o passeio.`;
-}
-
-function setSweepUI(mode) {
-  const running = mode === "preparing" || mode === "running";
-  const btn = $("sweepButton");
-  btn.setAttribute("aria-pressed", String(running));
-  const sinf = (running ? sweep.route : $("sweepRoute").value) === "sinfonia";
-  btn.textContent = running ? (sinf ? "Parar a sinfonia" : "Parar passeio") : sinf ? "Tocar a sinfonia" : "Iniciar passeio";
-  const hero = $("playSymphony");
-  hero.setAttribute("aria-pressed", String(running));
-  hero.classList.toggle("is-on", running);
-  $("playSymphonyLabel").textContent = running ? "Parar" : "Ouvir a sinfonia do mapa";
-  for (const id of ["sweepRoute", "sweepDuration", "sweepRecord"]) $(id).disabled = running || mode === "saving";
-  $("sweepProgress").hidden = mode !== "running";
-  if (mode !== "running") $("sweepProgress").value = 0;
-  $("sweepStatus").textContent = {
-    preparing: "Apresentando…",
-    running: `${ROUTES[sweep.route].label}${sweep.rec ? " · gravando o áudio" : ""}`,
-    saving: "Gerando o arquivo de áudio…",
-  }[mode] || "";
-}
-
-function placeSweep(p) {
-  const pt = routePoint(sweep.route, p, sweep.origin, SETTINGS.sweep.rows);
-  state.u = pt.u;
-  state.v = pt.v;
-  state.lastMove = performance.now();
+  const aspect = state.sampler.width / state.sampler.height;
+  // sem duração: o passeio segue até a pessoa pedir para parar
+  tour.wander = createWander({ u: state.u, v: state.v }, { aspect, speed: SETTINGS.sweep.speed });
+  tour.t0 = tour.last = performance.now();
+  tour.on = true;
   state.readingDirty = true;
-  state.trail.push({ u: state.u, v: state.v, t: state.lastMove });
+  setTourUI(true);
+  announce(t("tour.started", { key: keyName(SHORTCUTS.tour.key) }), { speak: false });
+}
+
+function tickTour(now) {
+  // som pausado ou janela aberta: o passeio só espera (não termina) e continua de onde parou
+  if (engine.paused || $("legendDialog").open || $("helpDialog").open) {
+    tour.last = now;
+    return;
+  }
+  const { u, v } = stepWander(tour.wander, (now - tour.last) / 1000);
+  tour.last = now;
+  state.u = u;
+  state.v = v;
+  state.lastMove = now;
+  state.readingDirty = true;
+  state.trail.push({ u, v, t: now });
   if (state.trail.length > 28) state.trail.shift();
 }
 
-function tickSweep() {
-  if (engine.paused || $("legendDialog").open || $("helpDialog").open) {
-    stopSweep(false);
-    return;
-  }
-  if (sweep.score) {
-    tickScore();
-    return;
-  }
-  const p = (performance.now() - sweep.t0) / sweep.dur;
-  $("sweepProgress").value = Math.min(p, 1);
-  if (p >= 1) stopSweep(true);
-  else placeSweep(p);
-}
-
-// ---- Sinfonia do mapa: a faixa varre a imagem e o compositor (js/sinfonia.js) gera a peça ----
-function buildScore() {
-  const bars = Math.max(6, Math.round(sweep.dur / 1000 / (BAR * STEP_S)));
-  const total = bars * BAR;
-  const stats = createStats();
-  const cols = analyze(readAt, state.scale, total, (r) => addReading(stats, r, state.scale));
-  const ranges = Object.fromEntries(LAYER_ORDER.map((l) => [l, SAMPLE_SET[engine.layerInstrument(l)].range]));
-  const poly = Object.fromEntries(LAYER_ORDER.map((l) => [l, engine.isPoly(l)]));
-  const piece = compose(cols, { root: MUSICAL_KEYS[engine.key].root, notes: (lo, hi) => engine.scaleNotes(lo, hi), ranges, poly, low: engine.low });
-  sweep.stats = stats;
-  sweep.dur = total * STEP_S * 1000;
-  return { cols, ...piece, total, next: 0, t0: window.Tone.now() + 0.25, marks: [], finalDone: false, section: "" };
-}
-
-function tickScore() {
-  const sc = sweep.score;
-  const now = window.Tone.now();
-  const play = (ev, time, u) => {
-    engine.scoreNote(ev.layer, ev.midi, ev.dur, ev.vel, time + ev.off);
-    if (ev.v !== undefined) sc.marks.push({ u, v: ev.v, t: time + ev.off, layer: ev.layer });
-  };
-  while (sc.next < sc.total && sc.t0 + sc.next * STEP_S < now + 0.2) {
-    const k = sc.next;
-    const col = sc.cols[k];
-    const time = sc.t0 + k * STEP_S;
-    for (const ev of sc.steps[k]) play(ev, time, col.u);
-    // paisagem e coração acompanham a faixa; no fim, a paisagem se recolhe
-    const fade = k / sc.total > 0.9 ? 0.5 : 1;
-    engine.scoreState({ pan: col.u * 2 - 1, alert: col.alert, amb: Object.fromEntries(Object.entries(col.amb).map(([n, x]) => [n, x * fade])) });
-    sc.next += 1;
-  }
-  const tEnd = sc.t0 + sc.total * STEP_S + 0.3;
-  if (sc.next >= sc.total && !sc.finalDone && tEnd < now + 0.2) {
-    sc.finalDone = true;
-    for (const ev of sc.final) play(ev, tEnd, 0.996);
-    engine.scoreState({ pan: 0, alert: 0, amb: {} });
-  }
-  const p = clamp((now - sc.t0) / (sc.total * STEP_S));
-  $("sweepProgress").value = p;
-  const sec = sectionAt(p);
-  if (sec !== sc.section) {
-    sc.section = sec;
-    $("sweepStatus").textContent = `Sinfonia do mapa · ${sec}${sweep.rec ? " · gravando o áudio" : ""}`;
-  }
-  // o cursor acompanha a faixa, na altura de onde vem a melodia (os cartões mostram esse ponto)
-  const col = sc.cols[Math.min(sc.total - 1, Math.floor(p * sc.total))];
-  state.u = col.u;
-  state.v = col.hotV;
-  state.lastMove = performance.now();
+function stopTour({ silent = false } = {}) {
+  if (!tour.on) return;
+  tour.on = false;
+  tour.wander = null;
   state.readingDirty = true;
-  if (sc.marks.length > 60) sc.marks.splice(0, sc.marks.length - 60);
-  if (now > tEnd + 1.2) stopSweep(true);
-}
-
-// a faixa e as notas desenhadas sobre o mapa (como nas sonificações da NASA)
-const MARK_COLORS = { mid: "#fcd34d", high: "#6ee7b7", arp: "#f0abfc", low: "#93c5fd" };
-function drawScore(w, h, dpr, hc) {
-  const sc = sweep.score;
-  const now = window.Tone.now();
-  const p = clamp((now - sc.t0) / (sc.total * STEP_S));
-  const x = p * w;
-  const grad = ctx.createLinearGradient(x - 46 * dpr, 0, x, 0);
-  grad.addColorStop(0, "rgba(255,255,255,0)");
-  grad.addColorStop(1, hc ? "rgba(255,255,0,.28)" : "rgba(255,255,255,.2)");
-  ctx.fillStyle = grad;
-  ctx.fillRect(x - 46 * dpr, 0, 46 * dpr, h);
-  ctx.strokeStyle = hc ? "#ffff00" : "rgba(255,255,255,.95)";
-  ctx.lineWidth = (hc ? 3 : 2) * dpr;
-  ctx.shadowColor = "rgba(0,0,0,.8)";
-  ctx.shadowBlur = 6 * dpr;
-  ctx.beginPath();
-  ctx.moveTo(x, 0);
-  ctx.lineTo(x, h);
-  ctx.stroke();
-  for (const m of sc.marks) {
-    const age = now - m.t;
-    if (age < 0 || age > 1.6) continue;
-    const k = 1 - age / 1.6;
-    ctx.globalAlpha = k;
-    ctx.fillStyle = hc ? "#ffff00" : MARK_COLORS[m.layer];
-    ctx.beginPath();
-    ctx.arc(m.u * w, m.v * h, (3 + 7 * k) * dpr, 0, Math.PI * 2);
-    ctx.fill();
-  }
-  ctx.globalAlpha = 1;
-  ctx.shadowBlur = 0;
-}
-
-function toggleSweep() {
-  if (sweep.on || sweep.preparing) stopSweep(false);
-  else startSweep();
-}
-
-async function startSweep() {
-  if ($("exploreView").hidden || !state.sampler) {
-    announce("Abra um mapa para fazer o passeio sonoro.");
-    return;
-  }
-  const token = ++sweep.token;
-  stopScale();
-  sweep.preparing = true;
-  sweep.route = $("sweepRoute").value;
-  sweep.dur = Number($("sweepDuration").value) * 1000;
-  sweep.origin = { u: state.u, v: state.v };
-  sweep.rec = $("sweepRecord").checked;
-  if (sweep.rec && !engine.canRecord) {
-    sweep.rec = false;
-    toast("Este navegador não consegue gravar o áudio; o passeio segue sem gravação.");
-  }
-  setSweepUI("preparing");
-  try {
-    if (!engine.started) await engine.start();
-    else if (engine.paused) engine.resume();
-    updateAudioUI();
-  } catch (err) {
-    toast(err.message || "Áudio indisponível.");
-    sweep.preparing = false;
-    setSweepUI("idle");
-    return;
-  }
-  placeSweep(0);
-  const secs = Math.round(sweep.dur / 1000);
-  announce(sweepIntro(sweep.route, secs));
-  // espera a voz terminar a apresentação: a gravação e o caminho começam juntos, depois dela
-  await wait(200);
-  const t0 = performance.now();
-  while (narrator.busy() && performance.now() - t0 < 25000) {
-    await wait(100);
-    if (token !== sweep.token) return;
-  }
-  if (token !== sweep.token) return;
-  if (sweep.rec) {
-    try {
-      await engine.startRecording();
-    } catch {
-      sweep.rec = false;
-      toast("Não foi possível gravar o áudio; o passeio segue sem gravação.");
-    }
-    if (token !== sweep.token) {
-      if (sweep.rec) engine.stopRecording();
-      return;
-    }
-  }
-  sweep.preparing = false;
-  sweep.stats = createStats();
-  sweep.score = null;
-  if (sweep.route === "sinfonia") {
-    stopTimeline(); // a peça é composta sobre o quadro atual
-    engine.beginScore();
-    sweep.score = buildScore();
-  }
-  sweep.on = true;
-  sweep.t0 = performance.now();
-  setSweepUI("running");
-}
-
-async function stopSweep(completed = false, { silent = false } = {}) {
-  if (!sweep.on && !sweep.preparing) return;
-  const wasRunning = sweep.on;
-  const recording = wasRunning && sweep.rec;
-  const secs = wasRunning ? Math.round((Math.min(performance.now() - sweep.t0, sweep.dur)) / 1000) : 0;
-  const stats = sweep.stats;
-  const route = sweep.route;
-  const wasScore = !!sweep.score;
-  if (wasScore) engine.endScore(completed ? 3.5 : 0.6);
-  sweep.score = null;
-  sweep.token += 1;
-  sweep.on = false;
-  sweep.preparing = false;
-  sweep.stats = null;
-  state.readingDirty = true;
-  if (!wasRunning) {
-    setSweepUI("idle");
-    if (!silent) announce("Passeio cancelado.");
-    return;
-  }
-  const summary = stats ? summarize(stats, state.scale, { secs, completed, whole: wasScore }) : "";
-  if (!recording) {
-    setSweepUI("idle");
-    // sinfonia completa: deixa o último acorde soar antes de a voz resumir
-    if (wasScore && completed) await wait(2600);
-    if (!silent) announce(summary);
-    return;
-  }
-  // gravação: espera o som se apagar (reverberação) antes de fechar o arquivo, e só então
-  // fala o resumo, para a voz não cortar o final da música
-  setSweepUI("saving");
-  await wait(wasScore && completed ? 3800 : 1800);
-  let note = "";
-  try {
-    const blob = await engine.stopRecording();
-    if (!blob || !blob.size) throw new Error("gravação vazia");
-    let out = blob;
-    let ext = /ogg/.test(blob.type) ? "ogg" : /mp4|aac/.test(blob.type) ? "m4a" : "webm";
-    try {
-      out = await toWav(blob, new OfflineAudioContext(2, 44100, 44100));
-      ext = "wav";
-    } catch {
-      /* sem conversão: oferece o arquivo original do navegador */
-    }
-    if (sweep.url) URL.revokeObjectURL(sweep.url);
-    sweep.url = URL.createObjectURL(out);
-    const a = $("sweepDownload");
-    a.href = sweep.url;
-    a.download = fileName(state.group?.title, route, ext);
-    const mb = (out.size / 1048576).toFixed(1).replace(".", ",");
-    a.textContent = `Baixar áudio (${ext.toUpperCase()}, ${secs + 2} s, ${mb} MB)`;
-    a.hidden = false;
-    note = " O áudio está pronto: use o botão Baixar áudio, no painel Sinfonia e passeios.";
-  } catch (err) {
-    toast(`Não foi possível salvar o áudio (${err.message}).`);
-  }
-  setSweepUI("idle");
-  if (!silent) announce(summary + note);
+  setTourUI(false);
+  if (!silent) announce(t("tour.stopped"));
 }
 
 // ---------------------------------------------------------------------------
@@ -1349,7 +1053,7 @@ function layoutCanvas() {
 }
 
 function setFromPointer(e) {
-  if (sweep.on || sweep.preparing) return; // durante o passeio o cursor anda sozinho
+  if (tour.on) return; // durante o passeio o cursor anda sozinho
   const rect = canvas.getBoundingClientRect();
   state.u = clamp((e.clientX - rect.left) / rect.width);
   state.v = clamp((e.clientY - rect.top) / rect.height);
@@ -1368,6 +1072,8 @@ function moveFocal(du, dv) {
   state.trail.push({ u: state.u, v: state.v, t: state.lastMove });
   if (state.trail.length > 28) state.trail.shift();
 }
+
+const CURSOR_SCALE = { normal: 1, grande: 1.35, enorme: 1.7 };
 
 function draw(time) {
   const w = canvas.width;
@@ -1399,11 +1105,9 @@ function draw(time) {
     ctx.stroke();
   }
 
-  if (sweep.on && sweep.score) drawScore(w, h, dpr, hc);
-
   // retícula do cursor focal
   const active = isActive();
-  const pulse = reducedMotion.matches || $("lowSensory").checked ? 0 : Math.sin(time / 380) * 2;
+  const pulse = reducedMotion.matches ? 0 : Math.sin(time / 380) * 2;
   const R = (14 + pulse) * dpr * CURSOR_SCALE[$("textSize").value]; // retícula maior com texto grande (baixa visão)
   ctx.lineWidth = (hc ? 3 : 2) * dpr;
   ctx.strokeStyle = hc ? "#ffff00" : "rgba(255,255,255,.95)";
@@ -1429,7 +1133,7 @@ function draw(time) {
   // etiqueta com o valor
   if (state.reading && (active || hc)) {
     const r = state.reading;
-    const label = r.valid ? `${r.valueText} · ${r.region?.name || r.zone.label}` : "sem dado";
+    const label = r.valid ? `${r.valueText} · ${r.region?.name || r.zone.label}` : t("read.noData");
     ctx.font = `600 ${12.5 * dpr}px system-ui, sans-serif`;
     const tw = ctx.measureText(label).width + 16 * dpr;
     const th = 24 * dpr;
@@ -1450,43 +1154,16 @@ function draw(time) {
   }
 }
 
-function drawScope() {
-  const w = scope.width;
-  const h = scope.height;
-  scopeCtx.clearRect(0, 0, w, h);
-  const data = engine.getWaveform();
-  const color = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim() || "#67e8f9";
-  scopeCtx.strokeStyle = color;
-  scopeCtx.lineWidth = 2;
-  scopeCtx.beginPath();
-  if (!data || engine.paused) {
-    scopeCtx.moveTo(0, h / 2);
-    scopeCtx.lineTo(w, h / 2);
-  } else {
-    for (let i = 0; i < data.length; i += 1) {
-      const px = (i / (data.length - 1)) * w;
-      const py = h / 2 - clamp(data[i] * 2.2, -1, 1) * (h / 2 - 4);
-      if (i) scopeCtx.lineTo(px, py);
-      else scopeCtx.moveTo(px, py);
-    }
-  }
-  scopeCtx.stroke();
-}
-
 let lastReadingTime = 0;
 function frame(time) {
   if (!$("exploreView").hidden) {
-    if (sweep.on) tickSweep();
+    if (tour.on) tickTour(performance.now());
     if (state.readingDirty || time - lastReadingTime > 250) {
       state.readingDirty = false;
       lastReadingTime = time;
       processReading();
     }
     draw(time);
-    drawScope();
-    // anuncia quando o cursor para (config.json → narracao.esperaParadoMs),
-    // sem interromper o que a voz ainda está falando
-    if (isActive() && performance.now() - state.lastMove > SETTINGS.narration.restMs && state.lastMove && !narrator.busy()) announceReading();
   }
   requestAnimationFrame(frame);
 }
@@ -1499,13 +1176,8 @@ function updateAudioUI() {
   const btn = $("audioToggle");
   btn.setAttribute("aria-pressed", String(on));
   btn.classList.toggle("is-on", on);
-  $("audioToggleLabel").textContent = on ? "Pausar áudio" : engine.started ? "Retomar áudio" : "Ativar áudio";
-  $("liveText").textContent = on ? "Som ao vivo" : engine.started ? "Áudio pausado" : "Áudio desligado";
-  $("livePill").classList.toggle("is-live", on);
-  $("audioDot").classList.toggle("is-on", on);
-  $("audioStatus").textContent = !engine.available
-    ? "Tone.js não carregou: verifique a conexão com a internet."
-    : on ? `Tocando · ${MUSICAL_KEYS[engine.key].label}${engine.low ? " · baixa sensibilidade" : ""}` : engine.started ? "Áudio pausado" : "Áudio aguardando ativação";
+  $("audioToggleLabel").textContent = t(on ? "audio.pause" : engine.started ? "audio.resume" : "audio.on");
+  $("audioStatus").textContent = !engine.available ? t("audio.noTone") : "";
 }
 
 async function toggleAudio() {
@@ -1513,40 +1185,31 @@ async function toggleAudio() {
     if (!engine.started) await engine.start();
     else if (engine.paused) engine.resume();
     else engine.pause();
-  } catch (err) {
-    toast(err.message || "Não foi possível iniciar o áudio.");
+  } catch {
+    toast(t("audio.noTone"));
   }
+  // ligou ou retomou: a música do mapa volta a tocar (até o mouse sair do mapa)
+  state.listening = engine.started && !engine.paused;
   updateAudioUI();
   state.readingDirty = true;
-  // só voz: o leitor de tela já recebe a mudança pelo status do painel de áudio
-  if (engine.started) announce(engine.paused ? "Som pausado." : "Som ligado.", { live: false });
+  if (engine.started) announce(t(engine.paused ? "audio.paused" : "audio.playing"));
 }
-
-engine.onSamplesState = (s, labels = []) => {
-  const el = $("samplesState");
-  const list = labels.join(", ");
-  el.textContent = {
-    loading: "Carregando amostras gravadas… (sintetizador enquanto isso)",
-    ready: `Amostras gravadas prontas: ${list}`,
-    partial: `Parte das amostras carregou: ${list}`,
-    failed: "Sem acesso às amostras: usando instrumentos sintetizados",
-    none: `Instrumentos sintetizados: ${list}`,
-  }[s] || el.textContent;
-};
 
 // ---------------------------------------------------------------------------
 // Smartphone
 // ---------------------------------------------------------------------------
+let phoneState = { kind: null, info: null };
 function onPhoneStatus(kind, info) {
+  if (kind !== "caps" && kind !== "ice") phoneState = { kind, info };
   const st = $("phoneStatus");
   const dot = $("phoneDot");
   dot.className = "status-dot";
-  if (kind === "waiting") { st.textContent = "Aguardando o celular escanear o QR Code…"; dot.classList.add("is-wait"); }
-  if (kind === "connected") { st.textContent = `Smartphone conectado ✓ · mova o mouse sobre o mapa`; dot.classList.add("is-on"); announce("Smartphone conectado para vibração."); }
-  if (kind === "caps" && info && info.vibrate === false) toast("O celular conectado não suporta vibração (ex.: iPhone). Ele mostrará pulsos visuais.", 6000);
-  if (kind === "reconnecting") st.textContent = "Reconectando ao serviço de sinalização…";
-  if (kind === "error") { st.textContent = `Erro na conexão WebRTC (${info}).`; dot.classList.add("is-err"); }
-  if (kind === "closed") st.textContent = "Desconectado.";
+  if (kind === "waiting") { st.textContent = t("phone.waiting"); dot.classList.add("is-wait"); }
+  if (kind === "connected") { st.textContent = t("phone.connected"); dot.classList.add("is-on"); announce(t("phone.connectedAnnounce")); }
+  if (kind === "caps" && info && info.vibrate === false) toast(t("phone.noVibrate"), 6000);
+  if (kind === "reconnecting") st.textContent = t("phone.reconnecting");
+  if (kind === "error") { st.textContent = t("phone.error", { e: info }); dot.classList.add("is-err"); }
+  if (kind === "closed") st.textContent = t("phone.closed");
 }
 
 // O celular precisa abrir receiver.html de algum lugar:
@@ -1574,6 +1237,7 @@ function receiverUrl() {
   return `${new URL("receiver.html", base).href}#${id}`;
 }
 
+let lanWarning = null;
 function refreshQr() {
   const mode = $("receiverMode").value;
   const manual = $("lanSelect").value === "__manual";
@@ -1585,97 +1249,80 @@ function refreshQr() {
     $("qrBox").innerHTML = "";
     $("qrUrl").textContent = "";
     warn.hidden = !haptics.peer?.id;
-    warn.textContent = "Não encontrei o endereço deste computador na rede. Digite o IP (ex.: 192.168.0.10:8000) ou rode python3 servidor.py, que detecta sozinho.";
+    warn.textContent = t("phone.noAddress");
     return;
   }
   const host = new URL(url).hostname;
   const internal = mode === "lan" && /^(localhost|127\.|\[::1\])/.test(host);
   warn.hidden = !(internal || (mode === "lan" && lanWarning));
-  warn.textContent = internal ? "Esse endereço é interno deste computador e o celular não vai alcançá-lo." : lanWarning || "";
+  warn.textContent = internal ? t("phone.internal") : lanWarning || "";
   renderQr($("qrBox"), url);
   $("qrUrl").textContent = url;
   $("receiverLink").href = url;
 }
 
-let lanWarning = null;
+let lastAddressInfo = null;
 // Detecta (de novo) os endereços: chamado ao gerar o QR e quando a rede muda
 async function detectAddresses() {
   const [info, pub] = await Promise.all([guessReceiverBase(), checkPublicReceiver()]);
+  lastAddressInfo = { info, pub };
   lanWarning = info.warning || null;
+  renderAddressOptions();
+  if (!pub && $("receiverMode").value === "public") $("receiverMode").value = "lan";
+  if (!info.candidates.length && pub) $("receiverMode").value = "public";
+  refreshQr();
+}
+
+function renderAddressOptions() {
+  if (!lastAddressInfo) return;
+  const { info, pub } = lastAddressInfo;
   const pubOpt = $("receiverMode").querySelector('option[value="public"]');
   pubOpt.disabled = !pub;
-  pubOpt.textContent = pub ? "Internet: GitHub Pages (HTTPS)" : "Internet: GitHub Pages (não publicado)";
-  if (!pub && $("receiverMode").value === "public") $("receiverMode").value = "lan";
-
+  pubOpt.textContent = t(pub ? "phone.public" : "phone.publicOff");
   const sel = $("lanSelect");
   const prevValue = sel.value;
-  sel.innerHTML =
-    info.candidates.map((c) => `<option value="${c.url}">${c.label}</option>`).join("") +
-    `<option value="__manual">Digitar outro endereço…</option>`;
+  sel.innerHTML = "";
+  for (const c of info.candidates) sel.add(new Option(c.label, c.url));
+  sel.add(new Option(t("phone.manual"), "__manual"));
   const keep = [...sel.options].some((o) => o.value === prevValue) && prevValue !== "__manual";
   sel.value = keep ? prevValue : info.candidates.length ? info.candidates[0].url : "__manual";
-  if (!info.candidates.length && pub) $("receiverMode").value = "public";
   $("lanHelp").textContent = info.fromServer
-    ? `Detectado automaticamente pelo servidor.py${info.candidates.length > 1 ? ". Há mais de uma rede: escolha a mesma do celular" : ""}.`
+    ? t(info.candidates.length > 1 ? "phone.fromServerMany" : "phone.fromServer")
     : !info.local
-      ? "É o endereço desta página, que o celular também consegue abrir."
-      : info.candidates.length
-        ? "Detectado pelo navegador. Se o celular não abrir, rode python3 servidor.py ou digite o IP."
-        : "Não deu para detectar o IP neste navegador. Rode python3 servidor.py ou digite o IP local do computador.";
-  refreshQr();
+      ? t("phone.samePage")
+      : t(info.candidates.length ? "phone.byBrowserHelp" : "phone.noDetect");
 }
 
 async function connectPhone() {
   $("phoneBox").hidden = false;
-  $("phoneStatus").textContent = "Conectando ao servidor de sinalização PeerJS…";
+  $("phoneStatus").textContent = t("phone.connecting");
   try {
     if (prefs.lan && !$("lanInput").value) $("lanInput").value = prefs.lan;
     await haptics.open();
-    haptics.setLowSensory($("lowSensory").checked);
     await detectAddresses();
-    $("phoneConnectLabel").textContent = "Gerar novo QR Code";
+    $("phoneConnectLabel").textContent = t("phone.newQr");
   } catch (err) {
-    $("phoneStatus").textContent = `Não foi possível falar com o servidor PeerJS (${err?.type || err?.message || err}). Este computador está com internet? Alguma extensão/antivírus bloqueia 0.peerjs.com?`;
+    $("phoneStatus").textContent = t("phone.peerError", { e: err?.type || err?.message || err });
   }
 }
 
 // ---------------------------------------------------------------------------
 // Acessibilidade
 // ---------------------------------------------------------------------------
-function applyLowSensory(on) {
-  $("lowSensory").checked = on;
-  $("quickLowSensory").setAttribute("aria-pressed", String(on));
-  document.documentElement.classList.toggle("low-sensory", on);
-  engine.setLowSensory(on);
-  haptics.setLowSensory(on);
-  updateAudioUI();
-  savePrefs();
-}
-
-// Narração por voz: lê os controles ao navegar e os lugares no mapa
-function applyVoice(on) {
+// Voz do site: fala o país e o valor quando a pessoa pede (clique, Espaço, atalhos) e lê os
+// controles ao navegar com Tab. Não há narração automática ao passar o mouse.
+function applyVoice(on, { quiet = false } = {}) {
   $("voiceToggle").checked = on;
-  voiceChosen = true;
+  tutorial.syncVoice();
   savePrefs();
-  if (on) announce("Narração por voz ligada. A música para enquanto eu falo. Aperte F1 para ouvir os atalhos.");
+  if (on) { if (!quiet) speak(t("voice.on")); }
   else {
     narrator.cancel();
-    announce("Narração por voz desligada.", { speak: false });
-    speak("Narração por voz desligada.", { force: true });
+    announce(t("voice.off"), { speak: false });
   }
 }
 
-// Ao sair do tutorial feito com narração, a voz continua ligada no resto do site:
-// quem não enxerga a tela não fica sem guia. Não muda nada se a pessoa já escolheu antes.
-function onTutorialClose({ started, voice }) {
-  if (!started || !voice || voiceChosen || $("voiceToggle").checked) return;
-  $("voiceToggle").checked = true;
-  savePrefs();
-  speak("A narração por voz continua ligada. Para desligar, aperte Alt, Shift e N. Para ouvir os atalhos, aperte F1.", { queue: true });
-}
-
 // Tamanho do texto (baixa visão)
-const CURSOR_SCALE = { normal: 1, grande: 1.35, enorme: 1.7 };
 function applyTextSize(size) {
   if (!(size in CURSOR_SCALE)) size = "normal";
   $("textSize").value = size;
@@ -1683,36 +1330,6 @@ function applyTextSize(size) {
   document.documentElement.classList.toggle("text-enorme", size === "enorme");
   if (!$("exploreView").hidden) layoutCanvas();
   savePrefs();
-}
-
-// ---------------------------------------------------------------------------
-// Ajuda e atalhos
-// ---------------------------------------------------------------------------
-function openHelp() {
-  const dlg = $("helpDialog");
-  if (!dlg.open) dlg.showModal();
-  $("helpTitle").focus();
-}
-
-// texto da ajuda para a voz: nomes de teclas que a síntese não lê bem viram palavras
-function helpSpeech() {
-  const clone = $("helpBody").cloneNode(true);
-  const names = { "[": "abre colchete", "]": "fecha colchete", "+": "mais", "-": "menos" };
-  clone.querySelectorAll("kbd").forEach((k) => { k.textContent = names[k.textContent] || k.textContent; });
-  return [...clone.querySelectorAll("h3, p, li")]
-    .map((el) => el.textContent.replace(/\s+/g, " ").replace(/ \+ /g, " mais ").trim())
-    .map((t) => (/[.!?:]$/.test(t) ? t : `${t}.`))
-    .join(" ");
-}
-
-function focusMapShortcut() {
-  if ($("exploreView").hidden) {
-    announce("Nenhum mapa aberto. Escolha um mapa na galeria.");
-    return;
-  }
-  for (const id of ["helpDialog", "legendDialog"]) if ($(id).open) $(id).close();
-  canvas.focus({ preventScroll: true });
-  canvas.scrollIntoView({ block: "center", behavior: "auto" });
 }
 
 function applyColorMode(mode) {
@@ -1730,63 +1347,255 @@ function applyColorMode(mode) {
 }
 
 // ---------------------------------------------------------------------------
+// Idioma
+// ---------------------------------------------------------------------------
+function toggleLanguage() {
+  const next = getLang() === "en" ? "pt" : "en";
+  setLang(next);
+}
+
+onLangChange(() => {
+  narrator.cancel();
+  narrator.setLang(speechLang());
+  applyI18n();
+  renderShortcutHints();
+  renderHelp();
+  renderGallery();
+  updateAudioUI();
+  setTourUI(tour.on);
+  updateFramesUI();
+  stopTimeline();
+  if (state.group && state.scale) {
+    setupExplorerFor(state.group);
+    if (state.reading) updateReadingUI(readAt(state.u, state.v) || state.reading);
+    state.readingDirty = true;
+  }
+  updateDocTitle();
+  renderAddressOptions();
+  if (phoneState.kind) onPhoneStatus(phoneState.kind, phoneState.info);
+  if (haptics.peer?.id) $("phoneConnectLabel").textContent = t("phone.newQr");
+  savePrefs();
+  // janelas abertas são redesenhadas no novo idioma
+  if (tutorial.isActive()) tutorial.refresh();
+  else if ($("legendDialog").open) openLegend();
+  else announce(t("lang.changed"));
+});
+
+// ---------------------------------------------------------------------------
+// Ajuda e atalhos (montados a partir de js/shortcuts.js)
+// ---------------------------------------------------------------------------
+function renderHelp() {
+  const body = $("helpBody");
+  body.innerHTML = "";
+  const section = (heading, build) => {
+    const s = document.createElement("section");
+    const h = document.createElement("h3");
+    h.textContent = heading;
+    s.append(h);
+    build(s);
+    body.append(s);
+  };
+  const para = (text) => { const p = document.createElement("p"); p.textContent = text; return p; };
+  const keyItem = (keys, text) => {
+    const li = document.createElement("li");
+    keys.forEach((k, i) => {
+      if (i) li.append(` ${t("help.or")} `);
+      const kbd = document.createElement("kbd");
+      kbd.textContent = keyName(k, { short: true });
+      li.append(kbd);
+    });
+    li.append(`: ${text}`);
+    return li;
+  };
+  section(t("help.how"), (s) => s.append(para(t("help.howText"))));
+  section(t("help.keys"), (s) => {
+    const ul = document.createElement("ul");
+    for (const n of SHORTCUT_ORDER) {
+      const sc = SHORTCUTS[n];
+      ul.append(keyItem([sc.key, ...(sc.alt || [])], `${t(`sc.${n}`)}${sc.scope === "map" ? ` ${t("help.mapOnly")}` : ""}`));
+    }
+    ul.append(keyItem(["Arrows"], t("help.arrows")));
+    ul.append(keyItem(["1–9"], t("help.digits")));
+    ul.append(keyItem(["Escape"], t("help.escape")));
+    s.append(ul);
+  });
+  section(t("help.scaleTitle"), (s) => s.append(para(t("help.scaleText"))));
+  section(t("help.srTitle"), (s) => s.append(para(t("help.srText"))));
+}
+
+// Texto da ajuda para a voz, com os nomes das teclas por extenso. Cada parte é uma fala
+// separada na fila do narrador (js/voz.js), então a leitura vai até o fim sem cortes.
+function helpSpeechParts() {
+  const sentence = (s) => s.replace(/[.\s]*$/, ".");
+  const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+  const parts = [sentence(t("help.title")), t("help.intro"), sentence(t("help.how")), t("help.howText"), sentence(t("help.keys"))];
+  for (const n of SHORTCUT_ORDER) parts.push(`${keyName(SHORTCUTS[n].key)}: ${sentence(t(`sc.${n}`))}`);
+  parts.push(
+    `${t("key.arrows")}: ${sentence(t("help.arrows"))}`,
+    `${t("key.digits")}: ${sentence(t("help.digits"))}`,
+    `${keyName("Escape")}: ${sentence(t("help.escape"))}`,
+    sentence(t("help.scaleTitle")), t("help.scaleText"),
+    sentence(t("help.srTitle")), t("help.srText"),
+  );
+  return parts.map(cap);
+}
+
+function readHelp() {
+  helpSpeechParts().forEach((text, k) => narrator.say(text, { ...voiceOpts(), queue: k > 0, tag: "ajuda", priority: true }));
+}
+
+function openHelp() {
+  const dlg = $("helpDialog");
+  if (!dlg.open) dlg.showModal();
+  $("helpTitle").focus();
+  // com a voz ligada, a ajuda é lida inteira ao abrir (como a legenda)
+  if (voiceOn()) readHelp();
+}
+
+// dica <kbd> e aria-keyshortcuts em cada botão que tem atalho
+function renderShortcutHints() {
+  for (const sc of Object.values(SHORTCUTS)) {
+    const btn = sc.button && $(sc.button);
+    if (!btn) continue;
+    btn.setAttribute("aria-keyshortcuts", [sc.key, ...(sc.alt || [])].map(ariaKey).join(" "));
+    let hint = btn.querySelector(".kbd-hint");
+    if (!hint) {
+      hint = document.createElement("kbd");
+      hint.className = "kbd-hint";
+      hint.setAttribute("aria-hidden", "true");
+      btn.append(hint);
+    }
+    hint.textContent = keyName(sc.key, { short: true });
+  }
+}
+
+function renderCanvasHelp() {
+  $("canvasHelp").textContent = t("map.help", {
+    read: keyName(SHORTCUTS.read.key, { short: true }),
+    help: keyName(SHORTCUTS.help.key, { short: true }),
+  });
+}
+
+function focusMapShortcut() {
+  if ($("exploreView").hidden) {
+    announce(t("map.none"));
+    return;
+  }
+  canvas.focus({ preventScroll: true });
+  canvas.scrollIntoView({ block: "center", behavior: "auto" });
+}
+
+// Ações dos atalhos que não têm botão (js/shortcuts.js → button: null)
+const ACTIONS = {
+  focusMap: focusMapShortcut,
+  overview: mapOverview,
+  position: announcePosition,
+  prevHour: () => stepFrame(-1),
+  nextHour: () => stepFrame(1),
+  volumeUp: () => changeVolume(2),
+  volumeDown: () => changeVolume(-2),
+  read: readHere,
+  center: () => {
+    state.u = 0.5;
+    state.v = 0.5;
+    moveFocal(0, 0);
+    tutorial.notify("home");
+  },
+};
+
+// Aviso quando o botão do atalho não está disponível na tela atual
+const UNAVAILABLE = {
+  gallery: () => announce(t("gallery.already")),
+  legend: () => announce(t("map.none")),
+  tour: () => announce(t("map.none")),
+  timeline: () => announce($("exploreView").hidden ? t("map.none") : t("time.none")),
+};
+
+function runShortcut(name) {
+  const sc = SHORTCUTS[name];
+  if (sc.button) {
+    const btn = $(sc.button);
+    // botão escondido (outra tela) ou desativado: avisa em vez de apertar
+    if (!btn || btn.disabled || btn.closest("[hidden]")) { UNAVAILABLE[name]?.(); return; }
+    btn.click();
+    return;
+  }
+  ACTIONS[name]?.();
+}
+
+// ---------------------------------------------------------------------------
+// Janelas: fechar com Escape (nativo) ou com um clique fora delas
+// ---------------------------------------------------------------------------
+function closeOnBackdrop(dlg, value = "") {
+  let downOutside = false;
+  const outside = (e) => {
+    if (e.target !== dlg) return false;
+    const r = dlg.getBoundingClientRect();
+    return e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom;
+  };
+  dlg.addEventListener("pointerdown", (e) => { downOutside = outside(e); });
+  dlg.addEventListener("click", (e) => {
+    if (downOutside && outside(e)) dlg.close(value);
+    downOutside = false;
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Eventos
 // ---------------------------------------------------------------------------
 function setupEvents() {
-  $("folderInput").addEventListener("change", (e) => { addFiles([...e.target.files]); e.target.value = ""; });
-  $("filesInput").addEventListener("change", (e) => { addFiles([...e.target.files]); e.target.value = ""; });
-  const dz = $("dropzone");
-  ["dragenter", "dragover"].forEach((t) => dz.addEventListener(t, (e) => { e.preventDefault(); dz.classList.add("is-drag"); }));
-  ["dragleave", "drop"].forEach((t) => dz.addEventListener(t, () => dz.classList.remove("is-drag")));
-  dz.addEventListener("drop", async (e) => {
-    e.preventDefault();
-    addFiles(await filesFromDrop(e.dataTransfer));
-  });
-
   $("brandLink").addEventListener("click", (e) => { e.preventDefault(); backToGallery(); });
   $("backButton").addEventListener("click", backToGallery);
   $("audioToggle").addEventListener("click", toggleAudio);
-  $("quickLowSensory").addEventListener("click", () => applyLowSensory(!$("lowSensory").checked));
+  $("langToggle").addEventListener("click", toggleLanguage);
   $("reviewLegend").addEventListener("click", openLegend);
   attachScaleHover($("legendTrack"), $("legendMarker"), $("legendTip"));
   attachScaleHover($("dlgTrack"), $("dlgMarker"), $("dlgTip"));
   $("tutorialOpen").addEventListener("click", () => tutorial.open());
-  $("tutorialSkipLink").addEventListener("click", (e) => { e.preventDefault(); tutorial.open(); });
 
-  // ajuda e atalhos
+  // ajuda
   $("helpOpen").addEventListener("click", openHelp);
-  $("helpOpenPanel").addEventListener("click", openHelp);
-  $("helpSkipLink").addEventListener("click", (e) => { e.preventDefault(); openHelp(); });
   $("helpClose").addEventListener("click", () => $("helpDialog").close());
-  $("helpDialog").addEventListener("close", () => narrator.cancel());
-  $("helpSpeak").addEventListener("click", () => speak(helpSpeech(), { force: true }));
+  $("helpDialog").addEventListener("close", () => {
+    narrator.drop("ajuda");
+    if (narrator.current?.tag === "ajuda") narrator.cancel();
+  });
+  $("helpSpeak").addEventListener("click", readHelp);
+  closeOnBackdrop($("helpDialog"));
 
-  // atalhos que valem na página toda (sempre com modificador, para não atrapalhar quem digita
-  // nem as teclas de navegação dos leitores de tela)
+  // ATALHOS: nenhuma tecla modificadora. O dicionário tecla → botão está em js/shortcuts.js.
   document.addEventListener("keydown", (e) => {
-    if (e.key === "F1") { e.preventDefault(); openHelp(); return; }
-    if (e.altKey && e.shiftKey && !e.ctrlKey && !e.metaKey) {
-      const actions = {
-        KeyH: openHelp,
-        KeyN: () => applyVoice(!$("voiceToggle").checked),
-        KeyM: focusMapShortcut,
-        KeyG: () => { for (const id of ["helpDialog", "legendDialog"]) if ($(id).open) $(id).close(); backToGallery(); },
-        KeyT: () => tutorial.open(),
-      };
-      if (actions[e.code]) { e.preventDefault(); actions[e.code](); }
+    if (e.defaultPrevented) return;
+    // Escape: para o passeio; senão, cala a voz (diálogos e tutorial tratam o próprio Escape)
+    if (e.key === "Escape") {
+      if (tour.on && !document.querySelector("dialog[open]:modal")) { e.preventDefault(); stopTour(); return; }
+      if (narrator.busy() && !tutorial.isActive() && !document.querySelector("dialog[open]:modal")) narrator.cancel();
       return;
     }
-    // Escape para o passeio sonoro; senão, cala a voz (o tutorial trata o próprio Escape)
-    if (e.key === "Escape" && (sweep.on || sweep.preparing) && !$("helpDialog").open && !$("legendDialog").open) { e.preventDefault(); stopSweep(false); return; }
-    if (e.key === "Escape" && narrator.busy() && !tutorial.isActive()) narrator.cancel();
+    const el = e.target;
+    // dentro de campos de texto e listas, as teclas são da própria caixa
+    if (el.closest?.("input:not([type=checkbox]):not([type=range]), textarea, select, [contenteditable='true']")) return;
+    const onMap = el === canvas;
+    // com uma janela modal aberta, só a ajuda e a troca de idioma valem (o resto é da janela)
+    const modalOpen = !!document.querySelector("dialog[open]:modal");
+    for (const [name, sc] of Object.entries(SHORTCUTS)) {
+      if (!matches(sc, e)) continue;
+      if (sc.scope === "map" && !onMap) continue;
+      if (modalOpen && name !== "language" && name !== "help") continue;
+      e.preventDefault();
+      runShortcut(name);
+      return;
+    }
   });
 
-  // diálogo da legenda
+  // diálogo da legenda (fecha com Escape ou clique fora: volta à galeria se o mapa não abriu)
   const dlg = $("legendDialog");
+  closeOnBackdrop(dlg);
   const markScroll = () => { legendHover.scrolledAt = performance.now(); };
   dlg.addEventListener("scroll", markScroll, { passive: true, capture: true });
   dlg.addEventListener("wheel", markScroll, { passive: true });
   $("dlgReadAloud").addEventListener("click", () => (legendVoice.active ? stopLegendVoice() : startLegendVoice()));
+  $("placesToggle").addEventListener("click", togglePlaces);
   dlg.addEventListener("close", () => {
     stopLegendVoice();
     endLegendPreview({ resume: false });
@@ -1795,24 +1604,13 @@ function setupEvents() {
     if (dlg.returnValue === "start") startExperience();
     else if (dlg.returnValue === "back" || dlg.returnValue === "") {
       if ($("exploreView").hidden) backToGallery();
+      else canvas.focus({ preventScroll: true });
     }
     dlg.returnValue = "";
   });
   dlg.addEventListener("cancel", () => { dlg.returnValue = ""; });
 
-  // escala manual
-  $("scaleSelect").innerHTML = SCALE_LIST.map((s) => `<option value="${s.id}">${s.label}</option>`).join("");
-  $("scaleSelect").addEventListener("change", (e) => {
-    state.scale = SCALES[e.target.value];
-    if (state.group) state.group.scaleId = state.scale.id;
-    applyInstruments();
-    updateLegendBar();
-    rebuildBase();
-    state.readingDirty = true;
-    announce(`Escala alterada para ${state.scale.label}.`, { speak: false });
-  });
-
-  // canvas: ponteiro
+  // canvas: ponteiro. Clique (ou toque) diz o país e o valor do ponto.
   canvas.addEventListener("pointerenter", (e) => { state.pointerInside = true; setFromPointer(e); });
   canvas.addEventListener("pointermove", (e) => {
     state.pointerInside = true;
@@ -1820,65 +1618,39 @@ function setupEvents() {
     setFromPointer(events[events.length - 1] || e);
   });
   canvas.addEventListener("pointerdown", (e) => {
-    if (sweep.on || sweep.preparing) stopSweep(false);
+    if (tour.on) stopTour({ silent: true });
     canvas.focus({ preventScroll: true });
-    if (!engine.started) toggleAudio();
+    if (!engine.started) engine.start().then(updateAudioUI).catch(() => {});
     if (e.pointerType !== "mouse") canvas.setPointerCapture(e.pointerId);
     state.pointerInside = true;
     setFromPointer(e);
+    readHere();
   });
-  canvas.addEventListener("pointerleave", () => { state.pointerInside = false; state.readingDirty = true; });
+  canvas.addEventListener("pointerleave", () => { state.pointerInside = false; state.listening = false; state.readingDirty = true; });
   canvas.addEventListener("pointerup", (e) => { if (e.pointerType !== "mouse") { state.pointerInside = false; state.readingDirty = true; } });
   canvas.addEventListener("focus", () => { state.keyboardActive = true; state.readingDirty = true; });
   canvas.addEventListener("blur", () => { state.keyboardActive = false; state.readingDirty = true; });
 
-  // canvas: teclado
+  // canvas: setas (segurar a seta anda mais rápido, sem Shift) e teclas 1 a 9
   canvas.addEventListener("keydown", (e) => {
-    if (e.ctrlKey || e.metaKey || e.altKey) return; // atalhos globais e do navegador
-    const big = e.shiftKey ? SETTINGS.keyboard.bigStep : SETTINGS.keyboard.step;
-    const map = { ArrowLeft: [-big, 0], ArrowRight: [big, 0], ArrowUp: [0, -big * 2], ArrowDown: [0, big * 2] };
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    const step = e.repeat ? SETTINGS.keyboard.holdStep : SETTINGS.keyboard.step;
+    const map = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step * 2], ArrowDown: [0, step * 2] };
     if (map[e.key]) {
       e.preventDefault();
-      if (sweep.on || sweep.preparing) stopSweep(false); // a pessoa retoma o controle
+      if (tour.on) stopTour({ silent: true }); // a pessoa retoma o controle
       const [u0, v0] = [state.u, state.v];
       moveFocal(...map[e.key]);
       tutorial.notify("move");
       // chegou à borda: avisa, para a pessoa não ficar apertando a seta sem sair do lugar
-      if (state.u === u0 && state.v === v0 && !tutorial.isSpeaking()) {
-        const edge = { ArrowLeft: "esquerda", ArrowRight: "direita", ArrowUp: "de cima", ArrowDown: "de baixo" }[e.key];
-        announce(`Borda ${edge} do mapa.`);
-      }
+      if (state.u === u0 && state.v === v0 && !tutorial.isSpeaking()) announce(t(`edge.${e.key}`));
       return;
     }
-    if (/^[1-9]$/.test(e.key)) { e.preventDefault(); jumpToCell(Number(e.key)); return; }
-    switch (e.key) {
-      case " ": e.preventDefault(); toggleAudio(); break;
-      case "Enter": e.preventDefault(); state.readingDirty = true; processReading(); announceReading(true); tutorial.notify("announce"); break;
-      case "Home": e.preventDefault(); state.u = 0.5; state.v = 0.5; moveFocal(0, 0); tutorial.notify("home"); break;
-      case "[": e.preventDefault(); stepFrame(-1); break;
-      case "]": e.preventDefault(); stepFrame(1); break;
-      case "+": case "=": e.preventDefault(); changeVolume(2); break;
-      case "-": case "_": e.preventDefault(); changeVolume(-2); break;
-      case "p": case "P": e.preventDefault(); toggleTimeline(); break;
-      case "l": case "L": e.preventDefault(); openLegend(); break;
-      case "t": case "T": e.preventDefault(); tutorial.open(); break;
-      case "o": case "O": e.preventDefault(); mapOverview(); break;
-      case "v": case "V": e.preventDefault(); toggleSweep(); break;
-      case "c": case "C": e.preventDefault(); processReading(); announcePosition(); break;
-      case "n": case "N": e.preventDefault(); applyVoice(!$("voiceToggle").checked); break;
-      case "g": case "G": e.preventDefault(); backToGallery(); break;
-      case "h": case "H": case "?": e.preventDefault(); openHelp(); break;
-      default:
-    }
+    if (/^[1-9]$/.test(e.key)) { e.preventDefault(); jumpToCell(Number(e.key)); }
   });
 
   // passeio sonoro
-  $("sweepButton").addEventListener("click", toggleSweep);
-  $("sweepRoute").addEventListener("change", () => { if (!sweep.on && !sweep.preparing) setSweepUI("idle"); });
-  $("playSymphony").addEventListener("click", () => {
-    if (!sweep.on && !sweep.preparing) $("sweepRoute").value = "sinfonia";
-    toggleSweep();
-  });
+  $("tourButton").addEventListener("click", toggleTour);
 
   // linha do tempo
   let sliderTimer;
@@ -1895,15 +1667,13 @@ function setupEvents() {
 
   // áudio
   $("volumeSlider").addEventListener("input", (e) => setVolume(Number(e.target.value)));
-  $("keySelect").addEventListener("change", (e) => { engine.setKey(e.target.value); updateAudioUI(); savePrefs(); });
-  $("samplesToggle").addEventListener("change", (e) => { engine.setUseSamples(e.target.checked); savePrefs(); });
 
   // smartphone
   $("phoneConnect").addEventListener("click", connectPhone);
   $("phoneDisconnect").addEventListener("click", () => {
     haptics.close();
     $("phoneBox").hidden = true;
-    $("phoneConnectLabel").textContent = "Gerar QR Code";
+    $("phoneConnectLabel").textContent = t("phone.connect");
   });
   $("lanInput").addEventListener("input", () => { refreshQr(); savePrefs(); });
   $("lanSelect").addEventListener("change", () => {
@@ -1914,12 +1684,12 @@ function setupEvents() {
   // alternativa ao QR Code para quem não enxerga a tela
   $("copyReceiver").addEventListener("click", async () => {
     const url = receiverUrl();
-    if (!url) { toast("Ainda não há link: o endereço deste computador não foi encontrado."); return; }
+    if (!url) { toast(t("phone.noLink")); return; }
     try {
       await navigator.clipboard.writeText(url);
-      announce("Link do receptor copiado. Envie para o celular e abra no navegador.");
+      announce(t("phone.copied"));
     } catch {
-      toast("Não foi possível copiar. O link está escrito logo acima deste botão.");
+      toast(t("phone.copyFail"));
     }
   });
   // rede mudou (outro Wi-Fi, cabo, VPN): refaz a detecção se o painel estiver aberto
@@ -1928,7 +1698,6 @@ function setupEvents() {
   navigator.connection?.addEventListener?.("change", redetect);
 
   // acessibilidade
-  $("lowSensory").addEventListener("change", (e) => applyLowSensory(e.target.checked));
   $("highContrast").addEventListener("change", (e) => { document.documentElement.classList.toggle("hc", e.target.checked); savePrefs(); });
   $("voiceToggle").addEventListener("change", (e) => applyVoice(e.target.checked));
   $("textSize").addEventListener("change", (e) => applyTextSize(e.target.value));
@@ -1944,56 +1713,53 @@ function setupEvents() {
 // Inicialização
 // ---------------------------------------------------------------------------
 async function init() {
+  applyI18n();
   setupEvents();
   // valores iniciais: config.json; as escolhas salvas no navegador vêm por cima
   if (prefs.receiver) $("receiverMode").value = prefs.receiver;
-  const volume = prefs.volume !== undefined && prefs.v === 2 ? prefs.volume : SETTINGS.audio.volumeDb;
+  const volume = prefs.volume !== undefined ? prefs.volume : SETTINGS.audio.volumeDb;
   $("volumeSlider").value = volume;
-  $("volumeOut").textContent = `${volume} dB`;
-  $("volumeSlider").setAttribute("aria-valuetext", `${volume} decibéis`);
-  engine.setVolume(volume);
-  $("keySelect").value = prefs.key || SETTINGS.audio.key;
-  engine.setKey($("keySelect").value);
-  const samples = prefs.samples ?? SETTINGS.audio.useSamples;
-  $("samplesToggle").checked = samples;
-  if (samples !== engine.useSamples) engine.setUseSamples(samples);
+  setVolume(volume);
   $("voiceToggle").checked = prefs.voice ?? SETTINGS.narration.onAtStart;
+  tutorial.syncVoice();
   const hc = prefs.hc ?? SETTINGS.a11y.highContrast ?? window.matchMedia("(prefers-contrast: more)").matches;
   $("highContrast").checked = !!hc;
   document.documentElement.classList.toggle("hc", !!hc);
-  $("textSize").value = prefs.text || SETTINGS.a11y.textSize;
-  applyTextSize($("textSize").value);
+  applyTextSize(prefs.text || SETTINGS.a11y.textSize);
   if (prefs.color) { $("colorMode").value = prefs.color; state.colorMode = prefs.color; }
   if (prefs.lan) $("lanInput").value = prefs.lan;
-  applyLowSensory(!!prefs.low);
-  const dur = String(SETTINGS.sweep.durationS);
-  if (![...$("sweepDuration").options].some((o) => o.value === dur)) $("sweepDuration").add(new Option(`${dur} segundos`, dur));
-  $("sweepDuration").value = dur;
 
-  // com a narração ligada, a voz lê cada controle que recebe o foco (js/a11y.js)
+  // com a voz do site ligada, ela lê cada controle que recebe o foco pelo teclado (js/a11y.js).
+  // Ao navegar com Tab, o botão selecionado é SEMPRE lido na hora, interrompendo qualquer fala
+  // (legenda, ajuda, tutorial), como faz um leitor de tela. Um foco movido pelo próprio app
+  // (abrir uma janela, por exemplo) espera as descrições importantes terminarem.
   initFocusEcho({
     enabled: () => SETTINGS.narration.readControls && voiceOn(),
-    speak: (text) => speak(text),
-    skip: (el) => el.id === "tutorialTitle", // o tutorial fala os próprios passos
+    speak: (text, { navigating = false } = {}) => {
+      if (!navigating) { narrator.sayLow(text, voiceOpts()); return; }
+      if (legendVoice.active) stopLegendVoice();
+      narrator.say(text, voiceOpts());
+    },
+    skip: (el) => ["tutorialTitle", "legendDialogTitle", "helpTitle"].includes(el.id) || el.tagName === "DIALOG",
   });
 
+  renderShortcutHints();
+  renderHelp();
   showView("gallery");
   renderGallery();
   updateAudioUI();
   requestAnimationFrame(frame);
   if (CONFIG_PROBLEMS.length) {
-    toast(`config.json: ${CONFIG_PROBLEMS.length === 1 ? "1 problema" : `${CONFIG_PROBLEMS.length} problemas`}. ${CONFIG_PROBLEMS[0]}`, 12000);
+    toast(`config.json: ${CONFIG_PROBLEMS.length} × ${CONFIG_PROBLEMS[0]}`, 12000);
   }
-  // primeira visita: o guia em áudio é a primeira coisa na tela (e no leitor de tela)
+  // primeira visita: as boas-vindas do tutorial são a primeira coisa na tela, no leitor de
+  // tela e na voz (que começa no primeiro gesto, se o navegador bloquear o som antes)
   if (!tutorial.seen()) tutorial.open({ gate: true });
 
   await Promise.all([loadLandMask(), loadCountries()]);
   await upgradeGmaoSequences(state.presets);
-  if (state.presets.some((g) => g.sequence)) {
-    $("presetsNote").textContent = "Prontos para uso imediato. A pasta dados/ foi encontrada: os mapas GMAO abrem como sequências de 372 horas com linha do tempo.";
-    renderGallery();
-  }
-  if (!engine.available) toast("Tone.js não carregou: o áudio precisa de internet na primeira vez.", 6000);
+  if (state.presets.some((g) => g.sequence)) renderGallery();
+  if (!engine.available) toast(t("audio.noTone"), 6000);
 }
 
 init();

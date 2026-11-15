@@ -4,13 +4,17 @@
 //   - decodificar uma cor RGB em valor físico (cor mais próxima na barra, em CIELAB);
 //   - converter valor <-> posição na barra (0..1), usada para a música (a barra é perceptual,
 //     inclusive a de CO, que não é linear);
-//   - dizer quais instrumentos soam e com que peso (papéis da legenda sensorial).
+//   - dizer qual característica do planeta ela representa (e, portanto, qual instrumento a
+//     toca: config.json → mapeamento). Cada mapa tem a sua escala própria e fixa.
+//
+// Os textos (nome, unidade, zonas, frases faladas) ficam em js/i18n.js → "scale.<id>.*",
+// para mudarem junto com o idioma escolhido.
 //
 // As barras GMAO foram amostradas pixel a pixel das legendas oficiais
 // (referencias/escalas/*.jpeg) por tools/extrair_escalas.py -> js/colormaps.js.
 
 import { GMAO_COLORMAPS } from "./colormaps.js";
-import { SETTINGS } from "./config.js";
+import { t, num } from "./i18n.js";
 
 // ---------------------------------------------------------------------------
 // Utilidades de cor
@@ -20,8 +24,6 @@ export const smooth = (e0, e1, x) => {
   const t = clamp((x - e0) / (e1 - e0));
   return t * t * (3 - 2 * t);
 };
-// sobe de a->b, platô b->c, desce c->d
-const bell = (x, a, b, c, d) => Math.min(smooth(a, b, x), 1 - smooth(c, d, x));
 
 function srgbToLinear(c) {
   c /= 255;
@@ -39,110 +41,14 @@ export function rgbToLab(r, g, b) {
   return [116 * fy - 16, 500 * (fx - fy), 200 * (fy - fz)];
 }
 
-// remove o brilho: escala o RGB para que o maior canal seja 255
-function chromaNorm(r, g, b) {
-  const m = Math.max(r, g, b) || 1;
-  return [(r * 255) / m, (g * 255) / m, (b * 255) / m];
-}
-
 export function luminance(r, g, b) {
   return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
 }
 
-function rgbToHsl(r, g, b) {
-  r /= 255; g /= 255; b /= 255;
-  const max = Math.max(r, g, b);
-  const min = Math.min(r, g, b);
-  const l = (max + min) / 2;
-  if (max === min) return [0, 0, l];
-  const d = max - min;
-  const s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
-  let h;
-  if (max === r) h = (g - b) / d + (g < b ? 6 : 0);
-  else if (max === g) h = (b - r) / d + 2;
-  else h = (r - g) / d + 4;
-  return [h * 60, s, l];
-}
-
-// Interpola uma paleta grosseira [{value, color}] em N passos para decodificação fina.
-function densify(palette, steps = 120) {
-  const out = [];
-  const min = palette[0].value;
-  const max = palette[palette.length - 1].value;
-  for (let i = 0; i <= steps; i += 1) {
-    const v = min + ((max - min) * i) / steps;
-    let k = 0;
-    while (k < palette.length - 2 && palette[k + 1].value < v) k += 1;
-    const a = palette[k];
-    const b = palette[k + 1];
-    const t = clamp((v - a.value) / (b.value - a.value));
-    out.push([v, ...a.color.map((c, j) => Math.round(c + (b.color[j] - c) * t))]);
-  }
-  return out;
-}
-
-// ---------------------------------------------------------------------------
-// Paletas das imagens NASA pré-carregadas (ECCO2 e GEDI), herdadas da versão inicial
-// ---------------------------------------------------------------------------
-const SST_PALETTE = [
-  { value: 0, color: [52, 92, 250] }, { value: 2, color: [50, 125, 227] },
-  { value: 4, color: [50, 154, 204] }, { value: 6, color: [51, 182, 181] },
-  { value: 8, color: [53, 208, 159] }, { value: 10, color: [56, 230, 137] },
-  { value: 12, color: [58, 250, 116] }, { value: 14, color: [61, 255, 95] },
-  { value: 16, color: [76, 255, 74] }, { value: 18, color: [115, 255, 54] },
-  { value: 20, color: [169, 255, 40] }, { value: 22, color: [221, 255, 34] },
-  { value: 24, color: [251, 255, 33] }, { value: 26, color: [250, 215, 31] },
-  { value: 28, color: [248, 157, 28] }, { value: 30, color: [247, 88, 25] },
-  { value: 32, color: [247, 0, 24] },
-];
-
-const GEDI_PALETTE = [
-  { value: 0, color: [77, 70, 42] }, { value: 9.4, color: [77, 83, 45] },
-  { value: 14.1, color: [77, 99, 52] }, { value: 18.8, color: [84, 111, 56] },
-  { value: 23.4, color: [96, 122, 59] }, { value: 28.1, color: [105, 131, 60] },
-  { value: 32.8, color: [119, 142, 62] }, { value: 37.5, color: [133, 151, 67] },
-  { value: 42.2, color: [148, 162, 75] }, { value: 46.9, color: [161, 170, 87] },
-  { value: 51.6, color: [182, 186, 110] }, { value: 56.2, color: [203, 203, 143] },
-  { value: 60.9, color: [223, 218, 178] }, { value: 65.6, color: [241, 230, 208] },
-  { value: 70.3, color: [253, 239, 228] }, { value: 75, color: [255, 250, 241] },
-];
-
-// ---------------------------------------------------------------------------
-// Camadas da sonificação (Tela de Legenda Auditiva)
-// O instrumento de cada camada vem do MAPPING_CONFIG (js/config.js).
-// ---------------------------------------------------------------------------
-export const LAYERS = {
-  low: {
-    id: "low",
-    register: "Grave",
-    role: "Águas frias, baixas temperaturas, ar seco e regiões polares",
-    color: "#6ea8ff",
-  },
-  mid: {
-    id: "mid",
-    register: "Médio",
-    role: "Valores amenos: temperaturas moderadas, relevo e vegetação moderada",
-    color: "#f4c76b",
-  },
-  high: {
-    id: "high",
-    register: "Agudo",
-    role: "Alta umidade, nuvens, dossel florestal elevado e pixels claros",
-    color: "#7fe0c4",
-  },
-  arp: {
-    id: "arp",
-    register: "Arpejos e ritmo",
-    role: "Velocidade de correntes marítimas, ventos fortes e frentes",
-    color: "#e59ad8",
-  },
-};
-export { LAYER_ORDER } from "./config.js";
-
 // Áreas sobrepostas pelo logotipo GMAO e pelo carimbo de data/hora (coordenadas 0..1)
 const GMAO_MASKS = [
-  { u0: 0, v0: 0, u1: 0.176, v1: 0.075, label: "Logotipo NASA/GMAO" },
-  { u0: 0, v0: 0.898, u1: 0.247, v1: 1, label: "Carimbo de data e hora" },
+  { u0: 0, v0: 0, u1: 0.176, v1: 0.075, key: "reason.logo" },
+  { u0: 0, v0: 0.898, u1: 0.247, v1: 1, key: "reason.stamp" },
 ];
 
 // Os frames GMAO são horários; o frame 0 mostra "30 Oct 2026 05:00:00 EDT" (= 09:00 UTC)
@@ -156,10 +62,10 @@ function linearTicks(min, max, values) {
   return values.map((v) => ({ value: v, pos: (v - min) / (max - min) }));
 }
 
+// Textos de cada escala em js/i18n.js: scale.<id>.label, .short, .unit (falada), .ends, .zones
 const RAW = {
   temp: {
-    label: "Temperatura do ar a 2 m (T2M)",
-    short: "Temperatura",
+    characteristic: "TEMPERATURE",
     family: "gmao",
     unit: "°C",
     decimals: 1,
@@ -167,33 +73,11 @@ const RAW = {
     max: 40,
     stops: GMAO_COLORMAPS.temp,
     ticks: linearTicks(-40, 40, [-40, -30, -20, -10, 0, 10, 20, 30, 40]),
-    ends: ["muito frio", "ponto de congelamento", "muito quente"],
     maxDist: 16,
-    keywords: /temp|t2m|temperat/i,
-    zones: [
-      { max: -10, label: "Polar, muito frio" },
-      { max: 0, label: "Frio, abaixo de zero" },
-      { max: 18, label: "Ameno" },
-      { max: 30, label: "Quente" },
-      { max: Infinity, label: "Muito quente" },
-    ],
-    roles: (r) => ({
-      low: smooth(8, -12, r.value),
-      mid: smooth(-4, 6, r.value) * (0.75 + 0.25 * smooth(28, 38, r.value)),
-      high: 0.4 * r.bright ** 1.6,
-      arp: clamp(r.grad * 1.3),
-    }),
-    legend: {
-      low: "Abaixo de 0 °C: azuis-escuros, roxos e brancos polares",
-      mid: "Acima de 5 °C: do ciano ao vermelho (amenos e quentes)",
-      high: "Camada de brilho: cresce nos pixels mais claros",
-      arp: "Frentes térmicas: mudanças bruscas de temperatura",
-    },
-    sentence: (v) => `Temperatura ${v}`,
+    zoneMax: [-10, 0, 18, 30, Infinity],
   },
   humidity: {
-    label: "Umidade específica a 2 m (Q2M)",
-    short: "Umidade",
+    characteristic: "HUMIDITY",
     family: "gmao",
     unit: "g/kg",
     decimals: 1,
@@ -201,32 +85,11 @@ const RAW = {
     max: 22,
     stops: GMAO_COLORMAPS.humidity,
     ticks: linearTicks(0, 22, [0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22]),
-    ends: ["seco", "moderado", "úmido"],
     maxDist: 12,
-    keywords: /humid|q2m|umid/i,
-    zones: [
-      { max: 4, label: "Ar seco" },
-      { max: 10, label: "Umidade moderada" },
-      { max: 16, label: "Úmido" },
-      { max: Infinity, label: "Muito úmido, tropical" },
-    ],
-    roles: (r) => ({
-      low: smooth(6, 1, r.value),
-      mid: bell(r.value, 2, 6, 13, 18),
-      high: smooth(9, 17, r.value),
-      arp: clamp(r.grad * 1.4),
-    }),
-    legend: {
-      low: "Ar seco (menos de 5 g/kg): marrons, desertos e polos",
-      mid: "Umidade moderada (5 a 14 g/kg): beges e verdes-claros",
-      high: "Ar muito úmido (acima de 12 g/kg): azuis tropicais",
-      arp: "Bordas de massas de ar: mudanças bruscas de umidade",
-    },
-    sentence: (v) => `Umidade ${v}`,
+    zoneMax: [4, 10, 16, Infinity],
   },
   wind: {
-    label: "Velocidade do vento perto da superfície",
-    short: "Vento",
+    characteristic: "WIND_SPEED",
     family: "gmao",
     unit: "m/s",
     decimals: 1,
@@ -234,38 +97,15 @@ const RAW = {
     max: 40,
     stops: GMAO_COLORMAPS.wind,
     ticks: linearTicks(0, 40, [0, 5, 10, 15, 20, 25, 30, 35, 40]),
-    ends: ["calmo", "forte", "força de furacão"],
     maxDist: 20,
     // Na legenda, 0 a 3,4 m/s é transparente: no frame aparece o relevo cinza dos
     // continentes ou o fundo escuro do oceano. Pixels quase neutros = calmaria.
     neutralChroma: 18,
     calmValue: 2,
-    keywords: /wind|vento/i,
-    zones: [
-      { max: 4, label: "Calmaria ou brisa leve" },
-      { max: 10, label: "Vento moderado" },
-      { max: 17, label: "Vento forte" },
-      { max: 25, label: "Vendaval" },
-      { max: 33, label: "Tempestade" },
-      { max: Infinity, label: "Força de furacão" },
-    ],
-    roles: (r) => ({
-      low: smooth(7, 2, r.value) * 0.8,
-      mid: bell(r.value, 2, 6, 14, 24),
-      high: 0.35 * r.bright ** 1.5,
-      arp: smooth(4, 22, r.value),
-    }),
-    legend: {
-      low: "Calmaria (menos de 5 m/s): fundo escuro e relevo cinza",
-      mid: "Ventos moderados (5 a 15 m/s): azuis e cianos",
-      high: "Camada de brilho: cresce nos tons claros e amarelos",
-      arp: "Ventos fortes: arpejos mais rápidos e intensos até a força de furacão",
-    },
-    sentence: (v) => `Vento ${v}`,
+    zoneMax: [4, 10, 17, 25, 33, Infinity],
   },
   co: {
-    label: "Monóxido de carbono (CO)",
-    short: "CO",
+    characteristic: "CARBON_MONOXIDE",
     family: "gmao",
     unit: "ppbv",
     decimals: 0,
@@ -280,134 +120,8 @@ const RAW = {
       { value: 200, pos: (370.5 - 72.5) / 391 },
       { value: 500, pos: 1 },
     ],
-    ends: ["baixo", "", "alto"],
     maxDist: 14,
-    keywords: /(^|[^a-z])co([^a-z]|$)|carbon|monox/i,
-    zones: [
-      { max: 80, label: "Ar limpo, nível de fundo" },
-      { max: 130, label: "CO moderado" },
-      { max: 200, label: "CO elevado" },
-      { max: Infinity, label: "CO muito alto, queimadas ou indústria" },
-    ],
-    roles: (r) => ({
-      low: smooth(120, 260, r.value),
-      mid: bell(r.value, 60, 90, 140, 220),
-      high: smooth(100, 55, r.value),
-      arp: clamp(r.grad * 1.4),
-    }),
-    legend: {
-      low: "CO alto (acima de 150 ppbv): vermelhos escuros, ar denso",
-      mid: "CO moderado (80 a 150 ppbv): laranjas",
-      high: "Ar limpo (menos de 80 ppbv): amarelos-claros",
-      arp: "Bordas de plumas de poluição: mudanças bruscas",
-    },
-    sentence: (v) => `Monóxido de carbono ${v}`,
-  },
-  sst: {
-    label: "Temperatura da superfície do mar (ECCO2)",
-    short: "Temperatura do mar",
-    family: "nasa",
-    unit: "°C",
-    decimals: 1,
-    min: 0,
-    max: 32,
-    stops: densify(SST_PALETTE),
-    ticks: linearTicks(0, 32, [0, 8, 16, 24, 32]),
-    ends: ["águas frias", "", "águas quentes"],
-    maxDist: 22,
-    // ECCO2 desenha as correntes como estrias: a matiz é a temperatura e o brilho é a
-    // velocidade da corrente. Decodifica só a cromaticidade (RGB normalizado pelo maior canal).
-    chroma: { minMax: 40, minSat: 0.4 },
-    patchRadius: 4,
-    fallbackRadius: 9,
-    invalidLabel: "Oceano sem corrente visível",
-    landLabel: "Continente (sem dado oceânico)",
-    keywords: /sst|ecco|ocean|mar/i,
-    zones: [
-      { max: 8, label: "Águas frias, polares" },
-      { max: 18, label: "Águas temperadas" },
-      { max: 26, label: "Águas amenas" },
-      { max: Infinity, label: "Águas quentes, tropicais" },
-    ],
-    roles: (r) => ({
-      low: smooth(14, 3, r.value),
-      mid: smooth(8, 16, r.value),
-      high: 0.3 * smooth(0.15, 0.5, r.peak),
-      arp: clamp(smooth(0.04, 0.3, r.peak) + r.grad * 0.4),
-    }),
-    legend: {
-      low: "Águas frias (menos de 10 °C): azuis",
-      mid: "Águas amenas e quentes (acima de 12 °C): verdes ao vermelho",
-      high: "Camada de brilho: tons mais claros",
-      arp: "Correntes marítimas: as estrias de textura aceleram os arpejos",
-    },
-    sentence: (v) => `Temperatura do mar ${v}`,
-  },
-  gedi: {
-    label: "Altura do dossel florestal (GEDI)",
-    short: "Altura do dossel",
-    family: "nasa",
-    unit: "m",
-    decimals: 0,
-    min: 0,
-    max: 75,
-    stops: densify(GEDI_PALETTE),
-    ticks: linearTicks(0, 75, [0, 15, 30, 45, 60, 75]),
-    ends: ["solo", "", "dossel alto"],
-    maxDist: 18,
-    rejectBlue: true, // oceano e lagos azuis do globo não têm dado de dossel
-    invalidLabel: "Oceano ou sem dado de dossel",
-    keywords: /gedi|forest|floresta|canopy|dossel/i,
-    zones: [
-      { max: 5, label: "Solo ou vegetação rasteira" },
-      { max: 25, label: "Vegetação moderada" },
-      { max: 45, label: "Floresta alta" },
-      { max: Infinity, label: "Dossel muito elevado" },
-    ],
-    roles: (r) => ({
-      low: smooth(10, 0, r.value) * 0.7,
-      mid: bell(r.value, 3, 10, 28, 45),
-      high: smooth(22, 50, r.value),
-      arp: clamp(r.texture * 2),
-    }),
-    legend: {
-      low: "Solo e vegetação baixa: oliva-escuro",
-      mid: "Vegetação moderada (10 a 30 m): verdes",
-      high: "Dossel elevado (acima de 30 m): tons creme",
-      arp: "Textura da floresta: bordas e clareiras",
-    },
-    sentence: (v) => `Dossel ${v}`,
-  },
-  generic: {
-    label: "Cor livre (matiz → temperatura)",
-    short: "Matiz",
-    family: "generic",
-    unit: "%",
-    decimals: 0,
-    min: 0,
-    max: 100,
-    stops: null,
-    ticks: linearTicks(0, 100, [0, 25, 50, 75, 100]),
-    ends: ["frio (azul)", "", "quente (vermelho)"],
-    keywords: null,
-    zones: [
-      { max: 25, label: "Tons frios" },
-      { max: 60, label: "Tons intermediários" },
-      { max: Infinity, label: "Tons quentes" },
-    ],
-    roles: (r) => ({
-      low: smooth(0.45, 0.1, r.norm),
-      mid: bell(r.norm, 0.15, 0.35, 0.7, 0.9),
-      high: Math.max(smooth(0.65, 0.95, r.norm) * 0.7, 0.5 * r.bright ** 1.4),
-      arp: clamp(r.grad * 1.2 + r.texture),
-    }),
-    legend: {
-      low: "Matizes frios (azul, roxo)",
-      mid: "Matizes intermediários (verde, amarelo)",
-      high: "Matizes quentes e pixels muito claros",
-      arp: "Bordas e texturas fortes da imagem",
-    },
-    sentence: (v) => `Intensidade de cor ${v}`,
+    zoneMax: [80, 130, 200, Infinity],
   },
 };
 
@@ -418,11 +132,20 @@ export class Scale {
   constructor(id, def) {
     Object.assign(this, def);
     this.id = id;
-    if (this.stops) {
-      this.labs = this.stops.map(([, r, g, b]) => (this.chroma ? rgbToLab(...chromaNorm(r, g, b)) : rgbToLab(r, g, b)));
-    }
+    this.labs = this.stops.map(([, r, g, b]) => rgbToLab(r, g, b));
     this._lut = null;
   }
+
+  // ---- textos no idioma atual (js/i18n.js) ----
+  get label() { return t(`scale.${this.id}.label`); }
+  get short() { return t(`scale.${this.id}.short`); }
+  /** Nome da característica do planeta (Temperatura, Umidade...) */
+  get characteristicName() { return t(`char.${this.characteristic}`); }
+  /** Rótulos sob as pontas e o meio da barra */
+  get ends() { return t(`scale.${this.id}.ends`); }
+
+  /** Frase falada/exibida com o valor já formatado: "Temperatura 27,3 °C" */
+  sentence(valueText) { return `${this.short} ${valueText}`; }
 
   // valor físico -> posição 0..1 na barra (piecewise linear pelas marcas)
   posOf(value) {
@@ -451,28 +174,10 @@ export class Scale {
 
   // Decodificação exata de uma cor: { value, dist, valid, calm? }
   decode(r, g, b) {
-    if (!this.stops) {
-      const [h, s, l] = rgbToHsl(r, g, b);
-      if (s < 0.12 || l < 0.06 || l > 0.96) return { value: NaN, dist: 99, valid: false };
-      // azul (240°) = 0, vermelho (0°/360°) = 1; magentas contam como quentes
-      const hh = h > 300 ? h - 360 : h;
-      const norm = clamp((240 - hh) / 240);
-      return { value: norm * 100, dist: 0, valid: true };
-    }
     if (this.neutralChroma && Math.max(r, g, b) - Math.min(r, g, b) < this.neutralChroma) {
       return { value: this.calmValue, dist: 0, valid: true, calm: true };
     }
-    if (this.rejectBlue && b > g * 0.95) return { value: NaN, dist: 99, valid: false };
-    let L, A, B;
-    if (this.chroma) {
-      const max = Math.max(r, g, b);
-      if (max < this.chroma.minMax || (max - Math.min(r, g, b)) / max < this.chroma.minSat) {
-        return { value: NaN, dist: 99, valid: false };
-      }
-      [L, A, B] = rgbToLab(...chromaNorm(r, g, b));
-    } else {
-      [L, A, B] = rgbToLab(r, g, b);
-    }
+    const [L, A, B] = rgbToLab(r, g, b);
     const labs = this.labs;
     let best = Infinity;
     let bi = 0;
@@ -525,26 +230,35 @@ export class Scale {
 
   zoneOf(value) {
     if (!Number.isFinite(value)) return null;
-    const zones = this.zones;
-    let idx = zones.findIndex((z) => value <= z.max);
-    if (idx < 0) idx = zones.length - 1;
-    return { index: idx, label: zones[idx].label };
+    let idx = this.zoneMax.findIndex((max) => value <= max);
+    if (idx < 0) idx = this.zoneMax.length - 1;
+    const scale = this;
+    // o rótulo é lido na hora: muda junto com o idioma
+    return { index: idx, get label() { return t(`scale.${scale.id}.zones`)[idx]; } };
   }
 
+  // valor na tela, com o símbolo da unidade: "27,3 °C" / "27.3 °C"
   format(value) {
     if (!Number.isFinite(value)) return "—";
-    let text = value.toFixed(this.decimals).replace(".", ",");
+    let text = num(value, this.decimals);
     if (this.id === "wind" && value <= this.calmValue + 0.01) text = "< 4";
     if (this.id === "temp" && value >= 39.9) text = "≥ 40";
     if (this.id === "co" && value >= 499) text = "≥ 500";
     return `${text} ${this.unit}`;
   }
 
+  // valor para a voz, com a unidade por extenso: "27,3 graus Celsius" / "27.3 degrees Celsius"
+  spoken(value) {
+    if (!Number.isFinite(value)) return t("read.noData");
+    const unit = t(`scale.${this.id}.unit`);
+    if (this.id === "wind" && value <= this.calmValue + 0.01) return t("spoken.lessThan", { n: num(4, 0), unit });
+    if (this.id === "temp" && value >= 39.9) return t("spoken.orMore", { n: num(40, 0), unit });
+    if (this.id === "co" && value >= 499) return t("spoken.orMore", { n: num(500, 0), unit });
+    return `${num(value, this.decimals)} ${unit}`;
+  }
+
   // CSS linear-gradient com as cores reais da barra
   gradientCss() {
-    if (!this.stops) {
-      return "linear-gradient(90deg, hsl(240 85% 55%), hsl(180 80% 50%), hsl(120 75% 48%), hsl(60 90% 52%), hsl(0 85% 52%))";
-    }
     const n = this.stops.length;
     const pick = this.stops.filter((_, i) => i % Math.max(1, Math.floor(n / 48)) === 0 || i === n - 1);
     return `linear-gradient(90deg, ${pick
@@ -554,10 +268,6 @@ export class Scale {
 
   // cor da barra numa posição 0..1
   colorAtPos(pos) {
-    if (!this.stops) {
-      const h = 240 - Math.min(1, Math.max(0, pos)) * 240;
-      return `hsl(${h} 85% 52%)`;
-    }
     const v = this.valueAtPos(pos);
     let best = this.stops[0];
     for (const s of this.stops) if (Math.abs(s[0] - v) < Math.abs(best[0] - v)) best = s;
@@ -567,67 +277,10 @@ export class Scale {
   masks() {
     return this.family === "gmao" ? GMAO_MASKS : [];
   }
-
-  // Quão extremo é o valor (0 = normal; 0,15 a 1 = dentro da faixa de alerta). O motor de
-  // áudio transforma isso num batimento de coração, mais rápido quanto mais extremo.
-  alertLevel(value) {
-    const a = this.alert;
-    if (!a || !Number.isFinite(value) || value < a.from) return 0;
-    return clamp(0.15 + (0.85 * (value - a.from)) / Math.max(a.full - a.from, 1e-6));
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Alertas: valores extremos ganham um batimento de coração (a urgência dos dados).
-// Os limites podem ser trocados em config.json → alerta.limites.
-// ---------------------------------------------------------------------------
-const num = (v) => String(v).replace(".", ",");
-const ALERTS = {
-  temp: { from: 35, full: 40, label: (v) => `calor extremo, acima de ${num(v)} °C` },
-  sst: { from: 30, full: 32, label: (v) => `mar muito quente, acima de ${num(v)} °C` },
-  co: { from: 200, full: 500, label: (v) => `poluição muito alta, acima de ${num(v)} ppbv de monóxido de carbono` },
-  wind: { from: 25, full: 40, label: (v) => `ventos de tempestade, acima de ${num(v)} m/s` },
-};
-for (const [id, a] of Object.entries(ALERTS)) {
-  if (!SETTINGS.alert.enabled) break;
-  const from = SETTINGS.alert.limits[id] ?? a.from;
-  RAW[id].alert = { from, full: Math.max(a.full, from + 1e-6), label: a.label(from) };
 }
 
 export const SCALE_LIST = Object.entries(RAW).map(([id, def]) => new Scale(id, def));
 export const SCALES = Object.fromEntries(SCALE_LIST.map((s) => [s.id, s]));
-
-// Detecta a escala pelo nome da pasta/arquivo
-export function scaleFromName(path) {
-  if (!path) return null;
-  const parts = path.split(/[\\/]/).reverse();
-  for (const part of parts) {
-    for (const s of SCALE_LIST) {
-      if (s.keywords && s.keywords.test(part)) return s.id;
-    }
-  }
-  return null;
-}
-
-// Detecta a escala pelas cores: mede a distância mediana de ~1500 pixels a cada barra
-export function scaleFromPixels(imageData) {
-  const { data, width, height } = imageData;
-  const samples = [];
-  for (let i = 0; i < 1500; i += 1) {
-    const x = Math.floor(((i * 7919) % 1499) / 1499 * width);
-    const y = Math.floor(((i * 104729) % 1493) / 1493 * height);
-    const o = (y * width + x) * 4;
-    samples.push([data[o], data[o + 1], data[o + 2]]);
-  }
-  let best = { id: "generic", score: Infinity };
-  for (const s of SCALE_LIST) {
-    if (!s.stops) continue;
-    const d = samples.map(([r, g, b]) => s.decode(r, g, b).dist).sort((a, b) => a - b);
-    const score = d[Math.floor(d.length * 0.6)];
-    if (score < best.score) best = { id: s.id, score };
-  }
-  return best.score < 7 ? best.id : "generic";
-}
 
 // Paletas acessíveis para recolorir (seguras para daltonismo)
 export const ACCESSIBLE_PALETTES = {

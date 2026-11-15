@@ -1,9 +1,14 @@
 // Camada de acessibilidade para quem navega sem ver a tela e sem leitor de tela.
 //
-// Quando a narração por voz está ligada, este módulo lê em voz alta cada controle que
-// recebe o foco (nome, tipo, estado e descrição), como um leitor de tela faria, e lê o
-// novo estado quando uma caixa, lista ou controle deslizante muda. Quem já usa NVDA,
-// JAWS, VoiceOver ou TalkBack deixa a narração desligada e usa o ARIA da página.
+// Com a voz do site ligada, este módulo lê em voz alta cada controle que recebe o foco PELO
+// TECLADO (nome, tipo, estado e descrição), como um leitor de tela faria, e lê o novo estado
+// quando uma caixa, lista ou controle deslizante muda. Cliques com o mouse não são lidos.
+// Quando o foco chega por Tab (ou Shift+Tab), a leitura é marcada como "navegação": o app
+// interrompe qualquer outra fala para ler o controle selecionado na hora.
+// Quem já usa NVDA, JAWS, VoiceOver ou TalkBack desliga a voz do site e usa o ARIA da página.
+// As palavras ("botão", "ligado"...) saem no idioma escolhido (js/i18n.js).
+
+import { t } from "./i18n.js";
 
 const text = (s) => (s || "").replace(/\s+/g, " ").trim();
 const byIds = (ids) => text((ids || "").split(/\s+/).map((id) => document.getElementById(id)?.textContent || "").join(" "));
@@ -36,6 +41,7 @@ export function accessibleName(el) {
 // descrição: aria-describedby, ou o texto pequeno do rótulo (interruptores)
 function description(el) {
   if (el.getAttribute("role") === "application") return ""; // o mapa tem ajuda própria (tecla H)
+  if (el.tagName === "DIALOG") return "";
   const d = byIds(el.getAttribute("aria-describedby"));
   if (d) return d.length > 400 ? `${d.slice(0, 400)}…` : d;
   if (/^(INPUT|SELECT)$/.test(el.tagName)) return text(el.closest("label")?.querySelector("small")?.textContent);
@@ -51,20 +57,21 @@ function roleAndState(el) {
   const role = el.getAttribute("role");
   const tag = el.tagName;
   const type = (el.getAttribute("type") || "").toLowerCase();
-  if (role === "slider" || (tag === "INPUT" && type === "range")) return `controle deslizante, ${rangeValue(el)}. Use as setas para ajustar`;
-  if (role === "application") return el.getAttribute("aria-roledescription") || "área interativa";
-  if (tag === "INPUT" && type === "checkbox") return `interruptor, ${el.checked ? "ligado" : "desligado"}. Espaço para alternar`;
-  if (tag === "INPUT" && type === "file") return "botão para escolher arquivos";
-  if (tag === "INPUT" || tag === "TEXTAREA") return `campo de texto${el.value ? `, ${el.value}` : ", vazio"}`;
-  if (tag === "SELECT") return `lista de opções, ${text(el.selectedOptions[0]?.textContent) || "nada escolhido"}. Use as setas para trocar`;
-  if (tag === "SUMMARY") return `seção recolhível, ${el.parentElement?.open ? "aberta" : "fechada"}`;
-  if (tag === "A") return "link";
+  if (role === "slider" || (tag === "INPUT" && type === "range")) return t("a11y.slider", { v: rangeValue(el) });
+  if (role === "application") return el.getAttribute("aria-roledescription") || t("a11y.app");
+  if (tag === "INPUT" && type === "checkbox") return t(el.checked ? "a11y.switchOn" : "a11y.switchOff");
+  if (tag === "INPUT" || tag === "TEXTAREA") return el.value ? t("a11y.textValue", { v: el.value }) : t("a11y.textEmpty");
+  if (tag === "SELECT") return t("a11y.select", { v: text(el.selectedOptions[0]?.textContent) || "—" });
+  if (tag === "SUMMARY") return t(el.parentElement?.open ? "a11y.detailsOpen" : "a11y.detailsClosed");
+  if (tag === "A") return t("a11y.link");
   if (tag === "BUTTON" || role === "button") {
     const pressed = el.getAttribute("aria-pressed");
-    const state = pressed === "true" ? ", ligado" : pressed === "false" ? ", desligado" : "";
-    return `botão${state}${el.disabled ? ", indisponível" : ""}`;
+    const expanded = el.getAttribute("aria-expanded");
+    const state = pressed === "true" ? t("a11y.pressedOn") : pressed === "false" ? t("a11y.pressedOff")
+      : expanded === "true" ? t("a11y.expanded") : expanded === "false" ? t("a11y.collapsed") : "";
+    return `${t("a11y.button")}${state}${el.disabled ? t("a11y.disabled") : ""}`;
   }
-  if (/^H[1-6]$/.test(tag)) return "título";
+  if (/^H[1-6]$/.test(tag)) return t("a11y.heading");
   return "";
 }
 
@@ -88,15 +95,24 @@ export function describeElement(el) {
 /**
  * Liga a leitura em voz alta dos controles.
  * @param {() => boolean} opts.enabled  a narração está ligada?
- * @param {(text: string) => void} opts.speak
+ * @param {(text: string, info?: { navigating: boolean }) => void} opts.speak
+ *        navigating = o foco chegou por Tab: a pessoa escolheu este controle agora
  * @param {(el: Element) => boolean} [opts.skip]  elementos que o app anuncia por conta própria
  */
 export function initFocusEcho({ enabled, speak, skip = () => false }) {
+  // última vez que Tab foi apertado (fase de captura: antes de o foco mudar)
+  let lastTab = -Infinity;
+  document.addEventListener("keydown", (e) => { if (e.key === "Tab") lastTab = performance.now(); }, true);
+
   document.addEventListener("focusin", (e) => {
     const el = e.target;
     if (!enabled() || !(el instanceof Element) || skip(el)) return;
+    // só o foco vindo do teclado (Tab, atalhos): um clique com o mouse não é lido
+    let keyboard = true;
+    try { keyboard = el.matches(":focus-visible"); } catch { /* navegador antigo */ }
+    if (!keyboard) return;
     const sentence = describeElement(el);
-    if (sentence) speak(sentence);
+    if (sentence) speak(sentence, { navigating: performance.now() - lastTab < 250 });
   });
 
   // mudança de estado: interruptor, lista ou controle deslizante
@@ -105,7 +121,7 @@ export function initFocusEcho({ enabled, speak, skip = () => false }) {
     const el = e.target;
     if (!enabled() || !(el instanceof Element) || el.hasAttribute("data-no-echo") || skip(el)) return;
     if (el.tagName === "SELECT") speak(text(el.selectedOptions[0]?.textContent));
-    else if (el.tagName === "INPUT" && el.type === "checkbox") speak(el.checked ? "Ligado" : "Desligado");
+    else if (el.tagName === "INPUT" && el.type === "checkbox") speak(t(el.checked ? "a11y.on" : "a11y.off"));
     else if (el.tagName === "INPUT" && el.type === "range") {
       clearTimeout(rangeTimer);
       rangeTimer = setTimeout(() => speak(rangeValue(el)), 350);
@@ -114,6 +130,6 @@ export function initFocusEcho({ enabled, speak, skip = () => false }) {
   document.addEventListener("change", changed);
   document.addEventListener("input", (e) => { if (e.target?.type === "range") changed(e); });
   document.addEventListener("toggle", (e) => {
-    if (enabled() && e.target.tagName === "DETAILS") speak(e.target.open ? "Aberta" : "Fechada");
+    if (enabled() && e.target.tagName === "DETAILS") speak(t(e.target.open ? "a11y.opened" : "a11y.closed"));
   }, true);
 }
