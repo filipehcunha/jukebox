@@ -6,6 +6,7 @@
 // que viram padrões de navigator.vibrate().
 
 import { SETTINGS } from "./config.js";
+import { t } from "./i18n.js";
 
 const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
 
@@ -20,7 +21,6 @@ export class HapticBridge {
     this.conns = new Set();
     this.lastSend = 0;
     this.lastZone = null;
-    this.low = false;
   }
 
   get available() {
@@ -46,7 +46,7 @@ export class HapticBridge {
           this.conns.add(conn);
           this.onStatus("connected", conn.metadata?.device || "smartphone");
           conn.on("iceStateChanged", (st) => this.onStatus("ice", st));
-          conn.send({ type: "hello", low: this.low });
+          conn.send({ type: "hello", low: false });
         });
         conn.on("data", (msg) => {
           if (msg?.type === "caps") this.onStatus("caps", msg);
@@ -76,11 +76,6 @@ export class HapticBridge {
     this.onStatus("closed");
   }
 
-  setLowSensory(on) {
-    this.low = on;
-    this._broadcast({ type: "mode", low: on });
-  }
-
   _broadcast(msg) {
     for (const c of this.conns) if (c.open) c.send(msg);
   }
@@ -103,7 +98,7 @@ export class HapticBridge {
     // VIBRAÇÃO PROPORCIONAL À COR: a posição na barra (0 = azul/frio/baixo, 1 = vermelho/
     // quente/alto) define o ritmo. Valores altos → pulsos curtos e de alta frequência
     // (~16 Hz); valores baixos → pulsos longos e lentos (~1,3 Hz). Frentes aceleram um pouco.
-    const p = hapticPattern(reading.norm, reading.grad, this.low);
+    const p = hapticPattern(reading.norm, reading.grad);
     this._broadcast({
       type: "haptic",
       ...p,
@@ -120,19 +115,12 @@ export class HapticBridge {
 const lerp = (a, b, t) => a + (b - a) * t;
 
 // norm 0..1 → { pulse (ms), gap (ms), strength 0..1, hz }
-export function hapticPattern(norm, grad = 0, low = false) {
+export function hapticPattern(norm, grad = 0) {
   const n = clamp(norm);
   const h = SETTINGS.haptics; // config.json → vibracao
-  let pulse = lerp(h.pulseColdMs, h.pulseHotMs, n);
-  let gap = lerp(h.gapColdMs, h.gapHotMs, n) * (1 - 0.35 * clamp(grad));
-  let strength = lerp(h.strengthCold, h.strengthHot, n);
-  if (low) {
-    pulse = Math.min(pulse * 0.6, 140);
-    gap = Math.max(gap * 1.5, 140);
-    strength *= SETTINGS.low.hapticStrength;
-  }
-  pulse = Math.round(pulse);
-  gap = Math.round(gap);
+  const pulse = Math.round(lerp(h.pulseColdMs, h.pulseHotMs, n));
+  const gap = Math.round(lerp(h.gapColdMs, h.gapHotMs, n) * (1 - 0.35 * clamp(grad)));
+  const strength = lerp(h.strengthCold, h.strengthHot, n);
   return { pulse, gap, strength, hz: 1000 / (pulse + gap) };
 }
 
@@ -140,7 +128,7 @@ export function hapticPattern(norm, grad = 0, low = false) {
 export function renderQr(el, text) {
   el.innerHTML = "";
   if (typeof window.QRCode === "undefined") {
-    el.textContent = "QRCode.js não carregou.";
+    el.textContent = t("phone.qrMissing");
     return;
   }
   // eslint-disable-next-line no-new
@@ -153,7 +141,7 @@ export function renderQr(el, text) {
     correctLevel: window.QRCode.CorrectLevel.M,
   });
   el.setAttribute("role", "img");
-  el.setAttribute("aria-label", `QR Code para abrir o receptor tátil: ${text}`);
+  el.setAttribute("aria-label", t("phone.qrAria", { url: text }));
 }
 
 // ---------------- Endereço que o celular deve abrir ----------------
@@ -171,7 +159,7 @@ export async function guessReceiverBase() {
   const here = new URL(".", location.href);
   const local = LOCAL_HOSTS.includes(location.hostname) || location.protocol === "file:";
   if (!local) {
-    return { local: false, candidates: [{ url: here.href, label: `${location.host} · endereço desta página` }] };
+    return { local: false, candidates: [{ url: here.href, label: `${location.host} · ${t("phone.thisPage")}` }] };
   }
   try {
     const res = await fetch("__lan", { cache: "no-store" });
@@ -192,7 +180,7 @@ export async function guessReceiverBase() {
   const ips = location.protocol === "file:" ? [] : await localIpsViaWebRTC();
   return {
     local: true,
-    candidates: ips.map((ip) => ({ url: `http://${ip}${port}${here.pathname}`, label: `${ip} · detectado pelo navegador` })),
+    candidates: ips.map((ip) => ({ url: `http://${ip}${port}${here.pathname}`, label: `${ip} · ${t("phone.byBrowser")}` })),
   };
 }
 
