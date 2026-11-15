@@ -39,6 +39,33 @@ function num(sec, key, fallback, min = -Infinity, max = Infinity) {
   }
   return v;
 }
+// objeto { escala: número } (ex.: alerta.limites); chaves desconhecidas ou não numéricas são avisadas
+function limits(sec, key, allowed) {
+  const v = section(sec)[key];
+  if (v === undefined) return {};
+  if (!v || typeof v !== "object") {
+    problem(`${sec}.${key} deve ser um objeto como { "temp": 35 }; usando os limites padrão.`);
+    return {};
+  }
+  const out = {};
+  for (const [k, n] of Object.entries(clean(v))) {
+    if (!allowed.includes(k)) problem(`${sec}.${key}.${k}: escala desconhecida (use ${allowed.join(", ")}).`);
+    else if (typeof n !== "number" || !Number.isFinite(n)) problem(`${sec}.${key}.${k} deve ser um número.`);
+    else out[k] = n;
+  }
+  return out;
+}
+// número dentro de um subobjeto (ex.: paisagem.mar.volumeDb)
+function sub(sec, key, field, fallback, min, max) {
+  const o = section(sec)[key];
+  const v = o && typeof o === "object" ? o[field] : undefined;
+  if (v === undefined) return fallback;
+  if (typeof v !== "number" || !Number.isFinite(v) || v < min || v > max) {
+    problem(`${sec}.${key}.${field} deve ser um número entre ${min} e ${max}; usando ${fallback}.`);
+    return fallback;
+  }
+  return v;
+}
 function bool(sec, key, fallback) {
   const v = section(sec)[key];
   if (v === undefined) return fallback;
@@ -114,16 +141,16 @@ const INSTRUMENT_TECH = {
 
 // padrões usados só quando o config.json não traz o instrumento ou o campo
 const INSTRUMENT_DEFAULTS = {
-  CELLO: ["Violoncelo", -1, 36, 57],
-  DOUBLE_BASS: ["Contrabaixo", -0.5, 28, 50],
+  CELLO: ["Violoncelo", -9, 36, 57],
+  DOUBLE_BASS: ["Contrabaixo", -4, 28, 50],
   GRAND_PIANO: ["Piano de cauda", -1.5, 55, 84],
-  MARIMBA: ["Marimba", -1, 48, 84],
-  FLUTE: ["Flauta", -5, 72, 93],
-  HARP: ["Harpa", -4.5, 55, 88],
-  VIOLIN: ["Violino", -5, 62, 88],
-  CLARINET: ["Clarinete", -4.5, 52, 81],
-  SYNTH_PAD: ["Sintetizador (pad)", -6, 48, 72],
-  STEEL_DRUM: ["Steel drum", -3, 57, 81],
+  MARIMBA: ["Marimba", 1, 48, 84],
+  FLUTE: ["Flauta", -12, 72, 93],
+  HARP: ["Harpa", -12, 55, 88],
+  VIOLIN: ["Violino", -8, 62, 88],
+  CLARINET: ["Clarinete", -10, 52, 81],
+  SYNTH_PAD: ["Sintetizador (pad)", 4, 48, 72],
+  STEEL_DRUM: ["Steel drum", 6, 57, 81],
 };
 
 function buildInstrument(id) {
@@ -245,6 +272,23 @@ export const SETTINGS = {
     limiterDb: num("audio", "limitadorDb", -3, -40, 0),
     reverb: num("audio", "reverberacao", 0.3, 0, 1),
   },
+  alert: {
+    enabled: bool("alerta", "ativo", true),
+    volumeDb: num("alerta", "volumeDb", -19, -60, 6),
+    limits: limits("alerta", "limites", ["temp", "sst", "co", "wind"]),
+  },
+  sweep: {
+    durationS: num("passeio", "duracaoS", 45, 10, 600),
+    rows: Math.round(num("passeio", "linhasMapaInteiro", 5, 1, 20)),
+  },
+  ambience: {
+    enabled: bool("paisagem", "ativo", true),
+    mar: { volumeDb: sub("paisagem", "mar", "volumeDb", -5, -60, 12), waveS: sub("paisagem", "mar", "periodoOndaS", 7, 2, 30) },
+    gelo: { volumeDb: sub("paisagem", "gelo", "volumeDb", 5, -60, 12) },
+    floresta: { volumeDb: sub("paisagem", "floresta", "volumeDb", 0, -60, 12) },
+    deserto: { volumeDb: sub("paisagem", "deserto", "volumeDb", -13, -60, 12) },
+    fronteira: { volumeDb: sub("paisagem", "fronteira", "volumeDb", -8, -60, 12) },
+  },
   narration: {
     onAtStart: bool("narracao", "ligadaAoAbrir", false),
     pauseMusic: bool("narracao", "pausarMusica", true),
@@ -255,6 +299,7 @@ export const SETTINGS = {
     volume: num("narracao", "volume", 1, 0, 1),
     restMs: num("narracao", "esperaParadoMs", 700, 200, 10000),
     readControls: bool("narracao", "lerControlesAoFocar", true),
+    readLegend: bool("narracao", "lerLegendaAoAbrir", true),
   },
   low: {
     reduceDb: num("baixaSensibilidade", "reducaoDb", -10, -40, 0),

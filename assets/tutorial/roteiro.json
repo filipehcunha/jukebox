@@ -49,6 +49,14 @@
         "Aperte o botão para ouvir a harpa crescer e depois diminuir."
       ]
     },
+    "lugares": {
+      "titulo": "Os sons dos lugares",
+      "texto": [
+        "Por baixo da música, cada tipo de lugar tem um som próprio, para você saber onde está. No mar, você ouve ondas. No gelo, um vento gelado com cristais. Na floresta, insetos e pássaros. No deserto, um vento seco. E um sino suave toca quando você passa de um país para outro.",
+        "Há também um coração. Ele bate quando o valor é extremo, como um calor acima de trinta e cinco graus, e bate mais rápido quanto mais extremo for.",
+        "Use os botões abaixo para ouvir cada som."
+      ]
+    },
     "praticar": {
       "titulo": "Hora de praticar",
       "texto": [
@@ -93,7 +101,8 @@
     "fim": {
       "titulo": "Pronto, você terminou!",
       "texto": [
-        "Um resumo das teclas, com o mapa em foco: as setas movem o cursor, e com Shift os passos ficam maiores. Enter diz onde você está. Home volta ao centro. Espaço liga ou pausa o som. Abre e fecha colchetes trocam a hora, P toca a linha do tempo, e L abre a legenda dos instrumentos.",
+        "Um resumo das teclas, com o mapa em foco: as setas movem o cursor, e com Shift os passos ficam maiores. Enter diz onde você está. Home volta ao centro. Espaço liga ou pausa o som. Abre e fecha colchetes trocam a hora, P toca a linha do tempo, e L abre a legenda, que é lida em voz alta.",
+        "Experimente também a tecla V. Ela toca a sinfonia do mapa: uma faixa percorre o mapa da esquerda para a direita e transforma os dados em uma música com começo, meio e fim. Você não precisa mover nada, só ouvir. No fim, a voz conta o que havia no mapa.",
         "Na galeria há outros mapas para explorar: a temperatura dos oceanos, a altura das florestas, a umidade, o vento e o monóxido de carbono. Também dá para conectar um celular e sentir o mapa em vibrações.",
         "Para ouvir este tutorial de novo, use o botão Tutorial em áudio no topo da página, ou a tecla T com o mapa em foco."
       ]
@@ -140,6 +149,11 @@
       "voz": "pt-BR-FranciscaNeural",
       "texto": "A harpa avisa mudanças. Quando o lugar muda de repente, como numa frente fria, ou quando há vento ou corrente marítima forte, a harpa entra com arpejos. Quanto mais forte, mais rápidos eles ficam. Aperte o botão para ouvir a harpa crescer e depois diminuir."
     },
+    "lugares": {
+      "arquivo": "lugares.mp3",
+      "voz": "pt-BR-FranciscaNeural",
+      "texto": "Os sons dos lugares. Por baixo da música, cada tipo de lugar tem um som próprio, para você saber onde está. No mar, você ouve ondas. No gelo, um vento gelado com cristais. Na floresta, insetos e pássaros. No deserto, um vento seco. E um sino suave toca quando você passa de um país para outro. Há também um coração. Ele bate quando o valor é extremo, como um calor acima de trinta e cinco graus, e bate mais rápido quanto mais extremo for. Use os botões abaixo para ouvir cada som."
+    },
     "praticar": {
       "arquivo": "praticar.mp3",
       "voz": "pt-BR-FranciscaNeural",
@@ -173,7 +187,7 @@
     "fim": {
       "arquivo": "fim.mp3",
       "voz": "pt-BR-FranciscaNeural",
-      "texto": "Pronto, você terminou! Um resumo das teclas, com o mapa em foco: as setas movem o cursor, e com Shift os passos ficam maiores. Enter diz onde você está. Home volta ao centro. Espaço liga ou pausa o som. Abre e fecha colchetes trocam a hora, P toca a linha do tempo, e L abre a legenda dos instrumentos. Na galeria há outros mapas para explorar: a temperatura dos oceanos, a altura das florestas, a umidade, o vento e o monóxido de carbono. Também dá para conectar um celular e sentir o mapa em vibrações. Para ouvir este tutorial de novo, use o botão Tutorial em áudio no topo da página, ou a tecla T com o mapa em foco."
+      "texto": "Pronto, você terminou! Um resumo das teclas, com o mapa em foco: as setas movem o cursor, e com Shift os passos ficam maiores. Enter diz onde você está. Home volta ao centro. Espaço liga ou pausa o som. Abre e fecha colchetes trocam a hora, P toca a linha do tempo, e L abre a legenda, que é lida em voz alta. Experimente também a tecla V. Ela toca a sinfonia do mapa: uma faixa percorre o mapa da esquerda para a direita e transforma os dados em uma música com começo, meio e fim. Você não precisa mover nada, só ouvir. No fim, a voz conta o que havia no mapa. Na galeria há outros mapas para explorar: a temperatura dos oceanos, a altura das florestas, a umidade, o vento e o monóxido de carbono. Também dá para conectar um celular e sentir o mapa em vibrações. Para ouvir este tutorial de novo, use o botão Tutorial em áudio no topo da página, ou a tecla T com o mapa em foco."
     },
     "ok-mover": {
       "arquivo": "ok-mover.mp3",

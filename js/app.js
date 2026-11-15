@@ -3,7 +3,7 @@
 
 import { SCALES, SCALE_LIST, LAYERS, LAYER_ORDER, GMAO_T0_UTC, scaleFromPixels, paletteColor } from "./scales.js";
 import { MAPPING_CONFIG, SAMPLE_SET, SETTINGS, CONFIG_PROBLEMS, layerInstruments, layerVariable, VARIABLE_LABELS } from "./config.js";
-import { loadLandMask, loadCountries, formatCoord } from "./geo.js";
+import { loadLandMask, loadCountries, formatCoord, project, landscapeAt } from "./geo.js";
 import { ImageSampler, loadBitmap } from "./sampler.js";
 import { SonificationEngine, MUSICAL_KEYS, midiName } from "./audio.js";
 import { HapticBridge, renderQr, guessReceiverBase, checkPublicReceiver, PUBLIC_RECEIVER_BASE } from "./haptics.js";
@@ -11,6 +11,8 @@ import { presetGroups, upgradeGmaoSequences, groupFiles, filesFromDrop, renderPr
 import { createTutorial } from "./tutorial.js";
 import { narrator } from "./voz.js";
 import { initFocusEcho } from "./a11y.js";
+import { ROUTES, routePoint, createStats, addReading, summarize, toWav, fileName } from "./passeio.js";
+import { analyze, compose, sectionAt, STEP_S, BAR } from "./sinfonia.js";
 
 const $ = (id) => document.getElementById(id);
 const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
@@ -66,6 +68,9 @@ const state = {
   pendingStart: false,
   legendHover: null, // posição 0..1 sob o mouse na barra de cores (pré-escuta da escala)
 };
+
+// passeio sonoro (varredura automática): ver a seção "Passeio sonoro" mais abaixo
+const sweep = { on: false, preparing: false, route: "volta", origin: null, t0: 0, dur: 0, rec: false, stats: null, token: 0, url: null };
 
 // ---------------------------------------------------------------------------
 // Preferências
@@ -146,6 +151,7 @@ function showView(name) {
     ? "Galeria · A Sinfonia da Terra"
     : `${state.group.title} · A Sinfonia da Terra`;
   if (gallery) {
+    stopSweep(false, { silent: true });
     stopTimeline();
     engine.update({ active: false });
     haptics.send(null, { active: false });
@@ -229,7 +235,9 @@ function openLegend() {
   const g = state.group;
   engine.update({ active: false });
   $("legendDialogTitle").textContent = "Legenda auditiva e sensorial";
-  $("legendDialogIntro").textContent = `${g.title}: passe o mouse sobre cada instrumento, ou use Tab e Enter nos botões Ouvir, para conhecer os sons antes de explorar. ${scale.label}.`;
+  const heart = scale.alert ? ` Com ${scale.alert.label}, soa um coração batendo, mais rápido quanto mais extremo.` : "";
+  $("legendDialogIntro").textContent = `${g.title}: passe o mouse sobre cada instrumento e cada lugar, ou use Tab e Enter nos botões Ouvir, para conhecer os sons antes de explorar. ${scale.label}.${heart} Cada lugar tem um som próprio por baixo da música: ondas no mar, vento e cristais no gelo, insetos e pássaros na floresta, vento seco no deserto.`;
+  renderPlaceList(scale);
   $("dlgVoiceText").textContent = SETTINGS.narration.pauseMusic
     ? "Quando a narração fala, a música para por completo e volta ao fim da frase."
     : `Quando a narração fala, os instrumentos abaixam ${Math.abs(SETTINGS.narration.duckDb)} dB e voltam ao fim da frase.`;
@@ -268,39 +276,227 @@ function openLegend() {
     btn.innerHTML = `<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l10-6.5-10-6.5Z" fill="currentColor"/></svg> Ouvir`;
     li.querySelector(".instrument__actions").append(btn);
 
-    const play = async () => {
-      try {
-        narrator.cancel(); // a música fica muda enquanto a voz fala: cala a voz para ouvir o instrumento
-        list.querySelectorAll(".is-playing").forEach((el) => el.classList.remove("is-playing"));
-        li.classList.add("is-playing");
-        const secs = await engine.preview(id);
-        updateAudioUI();
-        clearTimeout(li._t);
-        li._t = setTimeout(() => li.classList.remove("is-playing"), secs * 1000);
-      } catch (err) {
-        li.classList.remove("is-playing");
-        toast(err.message || "Não foi possível iniciar o áudio.");
-      }
-    };
-    const stop = () => {
-      clearTimeout(li._hover);
-      clearTimeout(li._t);
-      li.classList.remove("is-playing");
-      engine.stopPreview();
-    };
-    // PRÉ-ESCUTA NO HOVER: tocar ao entrar no card (pequeno atraso evita disparos ao só atravessar)
-    li.addEventListener("mouseenter", () => { clearTimeout(li._hover); li._hover = setTimeout(play, 90); });
-    li.addEventListener("mouseleave", stop);
-    btn.addEventListener("click", play);
+    // PRÉ-ESCUTA NO HOVER: a voz pausa, o som entra com fade; ao sair, a voz retoma
+    bindLegendCard(li, btn, { play: () => engine.preview(id), stop: () => engine.stopPreview() });
     list.append(li);
   }
 
   const dlg = $("legendDialog");
+  engine.stopPreview();
+  engine.stopPlacePreview();
+  legendHover.current = null;
+  legendHover.openedAt = performance.now();
+  stopLegendVoice();
   if (!dlg.open) dlg.showModal();
   $("legendDialogTitle").focus();
+  // ao abrir, só a voz: lê a legenda inteira (config.json → narracao.lerLegendaAoAbrir)
+  if (voiceOn() || SETTINGS.narration.readLegend) setTimeout(() => { if (dlg.open) startLegendVoice(); }, 250);
 }
 
 // gradiente com as cores da escala onde a camada domina (ou um ícone de brilho/borda)
+// Sons dos lugares na legenda: cada card toca a assinatura daquele lugar (hover ou botão)
+const PLACE_ICON = (d) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
+const PLACES = [
+  { id: "mar", name: "Mar", color: "#38bdf8", text: "Ondas que vêm e vão: rumor grave e espuma.", icon: '<path d="M2 15c2.5 0 2.5-2 5-2s2.5 2 5 2 2.5-2 5-2 2.5 2 5 2"/><path d="M2 19c2.5 0 2.5-2 5-2s2.5 2 5 2 2.5-2 5-2 2.5 2 5 2"/><path d="M6 10c1.5-3 4-5 8-5"/>' },
+  { id: "gelo", name: "Gelo", color: "#bae6fd", text: "Vento gelado assobiando e cristais agudos. Polos, Groenlândia e frio extremo.", icon: '<path d="M12 2v20M4.9 6l14.2 12M19.1 6 4.9 18"/><path d="m9 4 3 2 3-2M9 20l3-2 3 2"/>' },
+  { id: "floresta", name: "Floresta", color: "#4ade80", text: "Trilo de insetos e pássaros cantando nas notas da escala.", icon: '<path d="M12 22v-6"/><path d="M12 2 6 11h3l-4 6h14l-4-6h3Z"/>' },
+  { id: "deserto", name: "Deserto", color: "#fbbf24", text: "Vento seco em rajadas, areia fina e um bordão grave: a vastidão.", icon: '<circle cx="17" cy="7" r="3"/><path d="M2 19c3-4 6-5 9-3s6 1 11-3"/>' },
+  { id: "fronteira", name: "Fronteira", color: "#c4b5fd", text: "Um sino suave toca quando o cursor passa de um país para outro.", icon: '<path d="M6 16V11a6 6 0 0 1 12 0v5l2 2H4Z"/><path d="M10 21h4"/>' },
+  { id: "coracao", name: "Coração", color: "#fb7185", text: "", icon: '<path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10Z"/>' },
+];
+
+function placeText(p, scale) {
+  if (p.id !== "coracao") return p.text;
+  return scale.alert
+    ? `Bate nos valores extremos deste mapa (${scale.alert.label}), mais rápido quanto mais extremo.`
+    : "Bate nos valores extremos (calor extremo, mar muito quente, poluição alta, tempestades). Este mapa não tem faixa de alerta.";
+}
+
+// ---------------------------------------------------------------------------
+// Legenda falada e pré-escutas sem atropelo
+// A voz lê a legenda ao abrir (com a narração ligada, ou pelo botão "Ouvir a legenda").
+// Passar o mouse num card pausa a voz e toca o som com fade; ao sair, o som some com fade e
+// a voz retoma da frase em que parou. Nunca tocam dois sons juntos, e rolar a legenda (os
+// cards passando sob o cursor parado) não dispara nada: só um movimento real do mouse.
+// ---------------------------------------------------------------------------
+const legendVoice = { parts: [], idx: 0, active: false, held: false, timer: 0 };
+const legendHover = { openedAt: 0, scrolledAt: 0, current: null, stop: null };
+
+function voiceOpts() {
+  const low = $("lowSensory").checked;
+  return { rate: low ? SETTINGS.low.voiceRate : SETTINGS.narration.rate, volume: low ? SETTINGS.low.voiceVolume : SETTINGS.narration.volume };
+}
+
+function legendSpeechParts() {
+  const scale = state.scale || SCALES.generic;
+  const parts = [
+    `Legenda de ${state.group?.title || "este mapa"}.`,
+    "Passe o mouse sobre um cartão, ou use Tab e Enter nos botões Ouvir, para escutar cada som. A voz pausa enquanto o som toca e continua quando você sai do cartão.",
+    `${scale.label}.`,
+    "Os instrumentos.",
+  ];
+  for (const id of LAYER_ORDER) {
+    const inst = SAMPLE_SET[engine.layerInstrument(id)];
+    parts.push(`${LAYERS[id].register}: ${inst.label}. ${LAYERS[id].role}. ${scale.legend[id]}.`);
+  }
+  parts.push("Os sons dos lugares, que tocam por baixo da música.");
+  for (const p of PLACES) parts.push(`${p.name}: ${placeText(p, scale)}`);
+  parts.push("Quando quiser começar, aperte Iniciar Experiência Multissensorial, no fim da legenda.");
+  return parts.map((t) => t.replace(/\.(\s*\.)+/g, "."));
+}
+
+function updateReadAloudBtn() {
+  const b = $("dlgReadAloud");
+  b.setAttribute("aria-pressed", String(legendVoice.active));
+  b.textContent = legendVoice.active ? "Parar a leitura" : "Ouvir a legenda";
+}
+
+function queueLegendFrom(i) {
+  const { parts } = legendVoice;
+  if (i >= parts.length) {
+    legendVoice.active = false;
+    updateReadAloudBtn();
+    return;
+  }
+  parts.slice(i).forEach((text, k) => narrator.say(text, {
+    ...voiceOpts(),
+    queue: k > 0,
+    tag: "legenda",
+    onstart: () => { legendVoice.idx = i + k; },
+    onend: () => { if (i + k === parts.length - 1) { legendVoice.active = false; updateReadAloudBtn(); } },
+  }));
+}
+
+function startLegendVoice() {
+  clearTimeout(legendVoice.timer);
+  legendVoice.parts = legendSpeechParts();
+  legendVoice.idx = 0;
+  legendVoice.active = true;
+  legendVoice.held = !!legendHover.current; // abriu com um som tocando: começa quando ele acabar
+  if (!legendVoice.held) queueLegendFrom(0);
+  else releaseLegendVoice();
+  updateReadAloudBtn();
+}
+
+function stopLegendVoice() {
+  clearTimeout(legendVoice.timer);
+  const was = legendVoice.active;
+  legendVoice.active = false;
+  legendVoice.held = false;
+  if (was) {
+    narrator.drop("legenda");
+    if (narrator.current?.tag === "legenda") narrator.cancel();
+  }
+  updateReadAloudBtn();
+}
+
+// pausa a leitura (a frase atual é interrompida e será repetida ao retomar)
+function holdLegendVoice() {
+  clearTimeout(legendVoice.timer);
+  if (legendVoice.active && !legendVoice.held) {
+    legendVoice.held = true;
+    narrator.cancel();
+  } else if (!legendVoice.active) {
+    narrator.cancel(); // outra fala qualquer: o som da pré-escuta tem a vez
+  }
+}
+
+// retoma depois que o som terminou de sumir
+function releaseLegendVoice(delay = 700) {
+  clearTimeout(legendVoice.timer);
+  if (!legendVoice.active || !legendVoice.held) return;
+  legendVoice.timer = setTimeout(() => {
+    if (!legendVoice.active || legendHover.current) return;
+    legendVoice.held = false;
+    queueLegendFrom(legendVoice.idx);
+  }, delay);
+}
+
+const legendSettled = () => performance.now() - Math.max(legendHover.openedAt, legendHover.scrolledAt) > 450;
+
+// encerra a pré-escuta em andamento (card ou barra de cores), com fade
+function endLegendPreview({ resume = true } = {}) {
+  const cur = legendHover.current;
+  if (!cur) return;
+  legendHover.current = null;
+  clearTimeout(cur._t);
+  cur.classList?.remove("is-playing");
+  try { legendHover.stop?.(); } catch { /* noop */ }
+  legendHover.stop = null;
+  if (resume) releaseLegendVoice();
+}
+
+function bindLegendCard(li, btn, { play, stop }) {
+  let timer = 0;
+  let armed = false;
+  const begin = async () => {
+    if (legendHover.current === li) return;
+    endLegendPreview({ resume: false });
+    stopScale();
+    holdLegendVoice();
+    legendHover.current = li;
+    legendHover.stop = stop;
+    li.classList.add("is-playing");
+    try {
+      const secs = await play();
+      updateAudioUI();
+      clearTimeout(li._t);
+      // o som acabou: com o mouse ainda em cima, a voz espera; pelo teclado, ela retoma
+      li._t = setTimeout(() => {
+        li.classList.remove("is-playing");
+        if (legendHover.current === li && !li.matches(":hover")) endLegendPreview();
+      }, secs * 1000);
+    } catch (err) {
+      endLegendPreview();
+      toast(err.message || "Não foi possível iniciar o áudio.");
+    }
+  };
+  const arm = () => { clearTimeout(timer); timer = setTimeout(begin, 280); };
+  li.addEventListener("pointerenter", (e) => {
+    if (e.pointerType !== "mouse") return;
+    if (legendSettled()) arm();
+    else armed = true; // entrou porque a página rolou ou acabou de abrir: espera o mouse mexer
+  });
+  li.addEventListener("pointermove", (e) => {
+    if (e.pointerType !== "mouse" || !armed || !legendSettled()) return;
+    armed = false;
+    arm();
+  });
+  li.addEventListener("pointerleave", () => {
+    clearTimeout(timer);
+    armed = false;
+    if (legendHover.current === li) endLegendPreview();
+  });
+  btn.addEventListener("click", begin);
+}
+
+function renderPlaceList(scale) {
+  const list = $("placeList");
+  list.innerHTML = "";
+  for (const p of PLACES) {
+    const text = placeText(p, scale);
+    const li = document.createElement("li");
+    li.className = "instrument instrument--place";
+    li.style.setProperty("--inst", p.color);
+    li.innerHTML = `
+      <span class="instrument__icon" aria-hidden="true">${PLACE_ICON(p.icon)}</span>
+      <div class="instrument__body">
+        <h3 class="instrument__name" id="place-${p.id}">${p.name}</h3>
+        <p class="instrument__role" id="place-${p.id}-text">${text}</p>
+      </div>
+      <div class="instrument__actions"></div>`;
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "button button--ghost instrument__play";
+    btn.setAttribute("aria-label", `Ouvir o som de ${p.name.toLowerCase()}`);
+    btn.setAttribute("aria-describedby", `place-${p.id}-text`);
+    btn.innerHTML = `<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l10-6.5-10-6.5Z" fill="currentColor"/></svg> Ouvir`;
+    li.querySelector(".instrument__actions").append(btn);
+    bindLegendCard(li, btn, { play: () => engine.previewPlace(p.id), stop: () => engine.stopPlacePreview() });
+    list.append(li);
+  }
+}
+
 function instrumentSwatch(scale, id) {
   const stops = [];
   for (let i = 0; i <= 60; i += 1) {
@@ -468,7 +664,7 @@ async function playScaleAt(pos) {
   if (state.legendHover === null) return null;
   const r = legendReading(scale, state.legendHover);
   engine.stopPreview();
-  engine.update({ active: true, pan: state.legendHover * 2 - 1, norm: state.legendHover, weights: r.weights, bright: r.bright, grad: 0 });
+  engine.update({ active: true, pan: state.legendHover * 2 - 1, norm: state.legendHover, weights: r.weights, bright: r.bright, grad: 0, alert: scale.alertLevel(r.value) });
   haptics.send(r, { active: true });
   return r;
 }
@@ -506,7 +702,17 @@ function attachScaleHover(track, marker, tip) {
     const rect = track.getBoundingClientRect();
     return clamp((e.clientX - rect.left) / rect.width);
   };
+  const inDialog = track.id === "dlgTrack";
   const move = (e) => {
+    if (inDialog && e.type !== "pointerdown") {
+      if (!legendSettled()) return;
+      if (legendHover.current !== track) {
+        endLegendPreview({ resume: false });
+        holdLegendVoice();
+        legendHover.current = track;
+        legendHover.stop = null;
+      }
+    }
     pending = at(e);
     if (raf) return;
     raf = requestAnimationFrame(() => {
@@ -521,6 +727,7 @@ function attachScaleHover(track, marker, tip) {
     tip.hidden = true;
     if (track.id === "dlgTrack") marker.hidden = true;
     stopScale();
+    if (inDialog && legendHover.current === track) endLegendPreview();
   };
   track.addEventListener("pointerenter", move);
   track.addEventListener("pointermove", move);
@@ -627,13 +834,18 @@ function stepFrame(delta) {
 // Leitura e sonificação
 // ---------------------------------------------------------------------------
 function isActive() {
-  return !$("exploreView").hidden && (state.pointerInside || state.keyboardActive) && !$("legendDialog").open && !$("helpDialog").open;
+  return !$("exploreView").hidden && (state.pointerInside || state.keyboardActive || sweep.on) && !$("legendDialog").open && !$("helpDialog").open;
 }
 
 function computeReading() {
+  return readAt(state.u, state.v);
+}
+
+// leitura completa (valor, instrumentos, lugar) em qualquer ponto do mapa
+function readAt(u, v) {
   const { sampler, scale } = state;
   if (!sampler || !scale) return null;
-  const r = sampler.read(state.u, state.v, scale, state.projection);
+  const r = sampler.read(u, v, scale, state.projection);
   if (r.valid) {
     r.weights = scale.roles(r);
     r.valueText = scale.format(r.value);
@@ -641,6 +853,8 @@ function computeReading() {
     r.weights = { low: 0, mid: 0, high: 0, arp: 0 };
     r.valueText = "sem dado";
   }
+  // paisagem sonora: mar, gelo, floresta ou deserto (geo.js)
+  r.env = r.geo && r.region ? landscapeAt(r.geo.lat, r.geo.lon, r.region, { scaleId: scale.id, value: r.value, valid: r.valid }) : null;
   return r;
 }
 
@@ -656,11 +870,13 @@ function joinPt(list) {
 }
 
 function readingSentence(r) {
-  const place = r.region?.name || state.group?.title || "Imagem";
+  const env = r.env?.label && r.env.label !== "mar" ? `, ${r.env.label}` : "";
+  const place = `${r.region?.name || state.group?.title || "Imagem"}${env}`;
   if (!r.valid) return `${place}: sem dados. ${r.reason}.`;
   const inst = activeInstruments(r);
   const instText = inst.length ? joinPt(inst) : "silêncio suave";
-  return `${place}: ${instText}. ${state.scale.sentence(r.valueText)}, ${r.zone.label.toLowerCase()}.`;
+  const alert = state.scale.alertLevel(r.value) > 0 ? ` Alerta: ${state.scale.alert.label}.` : "";
+  return `${place}: ${instText}. ${state.scale.sentence(r.valueText)}, ${r.zone.label.toLowerCase()}.${alert}`;
 }
 
 function announceReading(force = false) {
@@ -711,6 +927,11 @@ function mapOverview() {
     const prefix = reg?.country ? `${reg.country}, ` : reg?.name ? `na região ${reg.name}, ` : "";
     return `${prefix}${placeWords(r.u, r.v)}`;
   };
+  announce(
+    `Visão geral de ${group.title}. ${scale.sentence(scale.format(hi.value))} é o valor mais alto, ${where(hi)}. ` +
+    `${scale.sentence(scale.format(lo.value))} é o mais baixo, ${where(lo)}. Média do mapa: ${scale.format(sum / n)}. ` +
+    "Use as teclas de 1 a 9 para saltar entre as regiões."
+  );
 }
 
 // Tecla C: onde o cursor está
@@ -765,14 +986,23 @@ function processReading() {
     weights: r.weights,
     bright: r.bright ?? 0.5,
     grad: r.grad ?? 0,
+    // sons dos lugares: mar, gelo, floresta, deserto (valem mesmo sem dado, como o oceano do GEDI)
+    amb: active ? r.env?.levels ?? {} : {},
+    // batimento de coração nos valores extremos
+    alert: r.valid ? state.scale.alertLevel(r.value) : 0,
   });
+  if (sweep.on && sweep.stats && !sweep.score) addReading(sweep.stats, r, state.scale);
+  // sino suave ao passar de um país para outro
+  const c0 = prev?.region?.country;
+  const c1 = r.region?.country;
+  if (active && c0 && c1 && c0 !== c1 && !tutorial.isDemoPlaying()) engine.borderCue();
   haptics.send(r, { active });
   updateReadingUI(r, prev);
 }
 
 function updateReadingUI(r) {
   $("readRegion").textContent = r.region?.name || (state.projection?.type === "none" ? "Imagem livre" : "—");
-  $("readCoord").textContent = r.geo ? formatCoord(r.geo.lat, r.geo.lon) : `x ${(r.u * 100).toFixed(0)}% · y ${(r.v * 100).toFixed(0)}%`;
+  $("readCoord").textContent = (r.geo ? formatCoord(r.geo.lat, r.geo.lon) : `x ${(r.u * 100).toFixed(0)}% · y ${(r.v * 100).toFixed(0)}%`) + (r.env?.label ? ` · ${r.env.label}` : "");
   $("readValue").textContent = r.valid ? r.valueText : "Sem dado";
   $("readZone").textContent = r.valid ? r.zone.label : r.reason;
   // nota da camada dominante (grave, médio, agudo ou arpejo)
@@ -799,6 +1029,309 @@ function updateReadingUI(r) {
 }
 
 // ---------------------------------------------------------------------------
+// Passeio sonoro: o cursor percorre o mapa sozinho; opcionalmente grava o áudio (WAV)
+// ---------------------------------------------------------------------------
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+
+function sweepWhere(route) {
+  if (state.projection?.type !== "equirectangular") return "";
+  const g = project(state.projection, sweep.origin.u, sweep.origin.v);
+  if (!g) return "";
+  if (route === "volta") {
+    return Math.abs(g.lat) < 1.5 ? "pela Linha do Equador" : `pela latitude ${Math.round(Math.abs(g.lat))}° ${g.lat >= 0 ? "Norte" : "Sul"}`;
+  }
+  if (route === "polos") return `pela longitude ${Math.round(Math.abs(g.lon))}° ${g.lon >= 0 ? "Leste" : "Oeste"}`;
+  return "";
+}
+
+function sweepIntro(route, secs) {
+  const geo = state.projection && state.projection.type !== "none";
+  const where = sweepWhere(route);
+  let t;
+  if (route === "sinfonia") {
+    t = `Sinfonia do mapa: uma faixa vai varrer o mapa da esquerda para a direita, em ${secs} segundos, e transformar cada trecho em música. `
+      + "As notas agudas vêm do alto do mapa e as graves, de baixo. Quanto maior o valor, mais forte a nota. "
+      + "A harmonia fica mais sombria onde os valores são baixos e mais tensa onde são altos. A peça tem abertura, desenvolvimento, clímax e final.";
+    if (geo) t += " Por baixo da música, você ouve os lugares: ondas no mar, vento e cristais no gelo, insetos e pássaros na floresta, vento seco no deserto.";
+    if (state.scale?.alert) t += ` Se ouvir um coração batendo, é ${state.scale.alert.label}.`;
+    if (sweep.rec) t += " O áudio será gravado.";
+    return `${t} As setas, um clique no mapa ou a tecla V param a música.`;
+  }
+  if (route === "volta") {
+    t = `Passeio sonoro: volta ao mundo${where ? ` ${where}` : ""}, ${secs} segundos ${geo ? "de oeste para leste" : "da esquerda para a direita"}. Com fones, o som caminha da esquerda para a direita.`;
+  } else if (route === "polos") {
+    t = `Passeio sonoro de polo a polo${where ? `, ${where}` : ""}: ${secs} segundos ${geo ? "do norte ao sul" : "de cima para baixo"}.`;
+  } else {
+    t = `Passeio sonoro pelo mapa inteiro: ${SETTINGS.sweep.rows} faixas de cima para baixo, em ${secs} segundos.`;
+  }
+  if (geo) t += " Cada lugar tem seu som: ondas no mar, insetos e pássaros na floresta, vento seco no deserto, vento gelado e cristais no gelo, e um sino nas fronteiras.";
+  if (state.scale?.alert) t += ` Se ouvir um coração batendo, é ${state.scale.alert.label}.`;
+  if (sweep.rec) t += " O áudio será gravado.";
+  return `${t} As setas, um clique no mapa ou a tecla V param o passeio.`;
+}
+
+function setSweepUI(mode) {
+  const running = mode === "preparing" || mode === "running";
+  const btn = $("sweepButton");
+  btn.setAttribute("aria-pressed", String(running));
+  const sinf = (running ? sweep.route : $("sweepRoute").value) === "sinfonia";
+  btn.textContent = running ? (sinf ? "Parar a sinfonia" : "Parar passeio") : sinf ? "Tocar a sinfonia" : "Iniciar passeio";
+  const hero = $("playSymphony");
+  hero.setAttribute("aria-pressed", String(running));
+  hero.classList.toggle("is-on", running);
+  $("playSymphonyLabel").textContent = running ? "Parar" : "Ouvir a sinfonia do mapa";
+  for (const id of ["sweepRoute", "sweepDuration", "sweepRecord"]) $(id).disabled = running || mode === "saving";
+  $("sweepProgress").hidden = mode !== "running";
+  if (mode !== "running") $("sweepProgress").value = 0;
+  $("sweepStatus").textContent = {
+    preparing: "Apresentando…",
+    running: `${ROUTES[sweep.route].label}${sweep.rec ? " · gravando o áudio" : ""}`,
+    saving: "Gerando o arquivo de áudio…",
+  }[mode] || "";
+}
+
+function placeSweep(p) {
+  const pt = routePoint(sweep.route, p, sweep.origin, SETTINGS.sweep.rows);
+  state.u = pt.u;
+  state.v = pt.v;
+  state.lastMove = performance.now();
+  state.readingDirty = true;
+  state.trail.push({ u: state.u, v: state.v, t: state.lastMove });
+  if (state.trail.length > 28) state.trail.shift();
+}
+
+function tickSweep() {
+  if (engine.paused || $("legendDialog").open || $("helpDialog").open) {
+    stopSweep(false);
+    return;
+  }
+  if (sweep.score) {
+    tickScore();
+    return;
+  }
+  const p = (performance.now() - sweep.t0) / sweep.dur;
+  $("sweepProgress").value = Math.min(p, 1);
+  if (p >= 1) stopSweep(true);
+  else placeSweep(p);
+}
+
+// ---- Sinfonia do mapa: a faixa varre a imagem e o compositor (js/sinfonia.js) gera a peça ----
+function buildScore() {
+  const bars = Math.max(6, Math.round(sweep.dur / 1000 / (BAR * STEP_S)));
+  const total = bars * BAR;
+  const stats = createStats();
+  const cols = analyze(readAt, state.scale, total, (r) => addReading(stats, r, state.scale));
+  const ranges = Object.fromEntries(LAYER_ORDER.map((l) => [l, SAMPLE_SET[engine.layerInstrument(l)].range]));
+  const poly = Object.fromEntries(LAYER_ORDER.map((l) => [l, engine.isPoly(l)]));
+  const piece = compose(cols, { root: MUSICAL_KEYS[engine.key].root, notes: (lo, hi) => engine.scaleNotes(lo, hi), ranges, poly, low: engine.low });
+  sweep.stats = stats;
+  sweep.dur = total * STEP_S * 1000;
+  return { cols, ...piece, total, next: 0, t0: window.Tone.now() + 0.25, marks: [], finalDone: false, section: "" };
+}
+
+function tickScore() {
+  const sc = sweep.score;
+  const now = window.Tone.now();
+  const play = (ev, time, u) => {
+    engine.scoreNote(ev.layer, ev.midi, ev.dur, ev.vel, time + ev.off);
+    if (ev.v !== undefined) sc.marks.push({ u, v: ev.v, t: time + ev.off, layer: ev.layer });
+  };
+  while (sc.next < sc.total && sc.t0 + sc.next * STEP_S < now + 0.2) {
+    const k = sc.next;
+    const col = sc.cols[k];
+    const time = sc.t0 + k * STEP_S;
+    for (const ev of sc.steps[k]) play(ev, time, col.u);
+    // paisagem e coração acompanham a faixa; no fim, a paisagem se recolhe
+    const fade = k / sc.total > 0.9 ? 0.5 : 1;
+    engine.scoreState({ pan: col.u * 2 - 1, alert: col.alert, amb: Object.fromEntries(Object.entries(col.amb).map(([n, x]) => [n, x * fade])) });
+    sc.next += 1;
+  }
+  const tEnd = sc.t0 + sc.total * STEP_S + 0.3;
+  if (sc.next >= sc.total && !sc.finalDone && tEnd < now + 0.2) {
+    sc.finalDone = true;
+    for (const ev of sc.final) play(ev, tEnd, 0.996);
+    engine.scoreState({ pan: 0, alert: 0, amb: {} });
+  }
+  const p = clamp((now - sc.t0) / (sc.total * STEP_S));
+  $("sweepProgress").value = p;
+  const sec = sectionAt(p);
+  if (sec !== sc.section) {
+    sc.section = sec;
+    $("sweepStatus").textContent = `Sinfonia do mapa · ${sec}${sweep.rec ? " · gravando o áudio" : ""}`;
+  }
+  // o cursor acompanha a faixa, na altura de onde vem a melodia (os cartões mostram esse ponto)
+  const col = sc.cols[Math.min(sc.total - 1, Math.floor(p * sc.total))];
+  state.u = col.u;
+  state.v = col.hotV;
+  state.lastMove = performance.now();
+  state.readingDirty = true;
+  if (sc.marks.length > 60) sc.marks.splice(0, sc.marks.length - 60);
+  if (now > tEnd + 1.2) stopSweep(true);
+}
+
+// a faixa e as notas desenhadas sobre o mapa (como nas sonificações da NASA)
+const MARK_COLORS = { mid: "#fcd34d", high: "#6ee7b7", arp: "#f0abfc", low: "#93c5fd" };
+function drawScore(w, h, dpr, hc) {
+  const sc = sweep.score;
+  const now = window.Tone.now();
+  const p = clamp((now - sc.t0) / (sc.total * STEP_S));
+  const x = p * w;
+  const grad = ctx.createLinearGradient(x - 46 * dpr, 0, x, 0);
+  grad.addColorStop(0, "rgba(255,255,255,0)");
+  grad.addColorStop(1, hc ? "rgba(255,255,0,.28)" : "rgba(255,255,255,.2)");
+  ctx.fillStyle = grad;
+  ctx.fillRect(x - 46 * dpr, 0, 46 * dpr, h);
+  ctx.strokeStyle = hc ? "#ffff00" : "rgba(255,255,255,.95)";
+  ctx.lineWidth = (hc ? 3 : 2) * dpr;
+  ctx.shadowColor = "rgba(0,0,0,.8)";
+  ctx.shadowBlur = 6 * dpr;
+  ctx.beginPath();
+  ctx.moveTo(x, 0);
+  ctx.lineTo(x, h);
+  ctx.stroke();
+  for (const m of sc.marks) {
+    const age = now - m.t;
+    if (age < 0 || age > 1.6) continue;
+    const k = 1 - age / 1.6;
+    ctx.globalAlpha = k;
+    ctx.fillStyle = hc ? "#ffff00" : MARK_COLORS[m.layer];
+    ctx.beginPath();
+    ctx.arc(m.u * w, m.v * h, (3 + 7 * k) * dpr, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+  ctx.shadowBlur = 0;
+}
+
+function toggleSweep() {
+  if (sweep.on || sweep.preparing) stopSweep(false);
+  else startSweep();
+}
+
+async function startSweep() {
+  if ($("exploreView").hidden || !state.sampler) {
+    announce("Abra um mapa para fazer o passeio sonoro.");
+    return;
+  }
+  const token = ++sweep.token;
+  stopScale();
+  sweep.preparing = true;
+  sweep.route = $("sweepRoute").value;
+  sweep.dur = Number($("sweepDuration").value) * 1000;
+  sweep.origin = { u: state.u, v: state.v };
+  sweep.rec = $("sweepRecord").checked;
+  if (sweep.rec && !engine.canRecord) {
+    sweep.rec = false;
+    toast("Este navegador não consegue gravar o áudio; o passeio segue sem gravação.");
+  }
+  setSweepUI("preparing");
+  try {
+    if (!engine.started) await engine.start();
+    else if (engine.paused) engine.resume();
+    updateAudioUI();
+  } catch (err) {
+    toast(err.message || "Áudio indisponível.");
+    sweep.preparing = false;
+    setSweepUI("idle");
+    return;
+  }
+  placeSweep(0);
+  const secs = Math.round(sweep.dur / 1000);
+  announce(sweepIntro(sweep.route, secs));
+  // espera a voz terminar a apresentação: a gravação e o caminho começam juntos, depois dela
+  await wait(200);
+  const t0 = performance.now();
+  while (narrator.busy() && performance.now() - t0 < 25000) {
+    await wait(100);
+    if (token !== sweep.token) return;
+  }
+  if (token !== sweep.token) return;
+  if (sweep.rec) {
+    try {
+      await engine.startRecording();
+    } catch {
+      sweep.rec = false;
+      toast("Não foi possível gravar o áudio; o passeio segue sem gravação.");
+    }
+    if (token !== sweep.token) {
+      if (sweep.rec) engine.stopRecording();
+      return;
+    }
+  }
+  sweep.preparing = false;
+  sweep.stats = createStats();
+  sweep.score = null;
+  if (sweep.route === "sinfonia") {
+    stopTimeline(); // a peça é composta sobre o quadro atual
+    engine.beginScore();
+    sweep.score = buildScore();
+  }
+  sweep.on = true;
+  sweep.t0 = performance.now();
+  setSweepUI("running");
+}
+
+async function stopSweep(completed = false, { silent = false } = {}) {
+  if (!sweep.on && !sweep.preparing) return;
+  const wasRunning = sweep.on;
+  const recording = wasRunning && sweep.rec;
+  const secs = wasRunning ? Math.round((Math.min(performance.now() - sweep.t0, sweep.dur)) / 1000) : 0;
+  const stats = sweep.stats;
+  const route = sweep.route;
+  const wasScore = !!sweep.score;
+  if (wasScore) engine.endScore(completed ? 3.5 : 0.6);
+  sweep.score = null;
+  sweep.token += 1;
+  sweep.on = false;
+  sweep.preparing = false;
+  sweep.stats = null;
+  state.readingDirty = true;
+  if (!wasRunning) {
+    setSweepUI("idle");
+    if (!silent) announce("Passeio cancelado.");
+    return;
+  }
+  const summary = stats ? summarize(stats, state.scale, { secs, completed, whole: wasScore }) : "";
+  if (!recording) {
+    setSweepUI("idle");
+    // sinfonia completa: deixa o último acorde soar antes de a voz resumir
+    if (wasScore && completed) await wait(2600);
+    if (!silent) announce(summary);
+    return;
+  }
+  // gravação: espera o som se apagar (reverberação) antes de fechar o arquivo, e só então
+  // fala o resumo, para a voz não cortar o final da música
+  setSweepUI("saving");
+  await wait(wasScore && completed ? 3800 : 1800);
+  let note = "";
+  try {
+    const blob = await engine.stopRecording();
+    if (!blob || !blob.size) throw new Error("gravação vazia");
+    let out = blob;
+    let ext = /ogg/.test(blob.type) ? "ogg" : /mp4|aac/.test(blob.type) ? "m4a" : "webm";
+    try {
+      out = await toWav(blob, new OfflineAudioContext(2, 44100, 44100));
+      ext = "wav";
+    } catch {
+      /* sem conversão: oferece o arquivo original do navegador */
+    }
+    if (sweep.url) URL.revokeObjectURL(sweep.url);
+    sweep.url = URL.createObjectURL(out);
+    const a = $("sweepDownload");
+    a.href = sweep.url;
+    a.download = fileName(state.group?.title, route, ext);
+    const mb = (out.size / 1048576).toFixed(1).replace(".", ",");
+    a.textContent = `Baixar áudio (${ext.toUpperCase()}, ${secs + 2} s, ${mb} MB)`;
+    a.hidden = false;
+    note = " O áudio está pronto: use o botão Baixar áudio, no painel Sinfonia e passeios.";
+  } catch (err) {
+    toast(`Não foi possível salvar o áudio (${err.message}).`);
+  }
+  setSweepUI("idle");
+  if (!silent) announce(summary + note);
+}
+
+// ---------------------------------------------------------------------------
 // Canvas: layout, ponteiro, teclado e desenho
 // ---------------------------------------------------------------------------
 function layoutCanvas() {
@@ -816,6 +1349,7 @@ function layoutCanvas() {
 }
 
 function setFromPointer(e) {
+  if (sweep.on || sweep.preparing) return; // durante o passeio o cursor anda sozinho
   const rect = canvas.getBoundingClientRect();
   state.u = clamp((e.clientX - rect.left) / rect.width);
   state.v = clamp((e.clientY - rect.top) / rect.height);
@@ -864,6 +1398,8 @@ function draw(time) {
     ctx.lineTo(b.u * w, b.v * h);
     ctx.stroke();
   }
+
+  if (sweep.on && sweep.score) drawScore(w, h, dpr, hc);
 
   // retícula do cursor focal
   const active = isActive();
@@ -940,6 +1476,7 @@ function drawScope() {
 let lastReadingTime = 0;
 function frame(time) {
   if (!$("exploreView").hidden) {
+    if (sweep.on) tickSweep();
     if (state.readingDirty || time - lastReadingTime > 250) {
       state.readingDirty = false;
       lastReadingTime = time;
@@ -1239,13 +1776,22 @@ function setupEvents() {
       if (actions[e.code]) { e.preventDefault(); actions[e.code](); }
       return;
     }
-    // Escape cala a voz (o tutorial trata o próprio Escape)
+    // Escape para o passeio sonoro; senão, cala a voz (o tutorial trata o próprio Escape)
+    if (e.key === "Escape" && (sweep.on || sweep.preparing) && !$("helpDialog").open && !$("legendDialog").open) { e.preventDefault(); stopSweep(false); return; }
     if (e.key === "Escape" && narrator.busy() && !tutorial.isActive()) narrator.cancel();
   });
 
   // diálogo da legenda
   const dlg = $("legendDialog");
+  const markScroll = () => { legendHover.scrolledAt = performance.now(); };
+  dlg.addEventListener("scroll", markScroll, { passive: true, capture: true });
+  dlg.addEventListener("wheel", markScroll, { passive: true });
+  $("dlgReadAloud").addEventListener("click", () => (legendVoice.active ? stopLegendVoice() : startLegendVoice()));
   dlg.addEventListener("close", () => {
+    stopLegendVoice();
+    endLegendPreview({ resume: false });
+    engine.stopPreview();
+    engine.stopPlacePreview();
     if (dlg.returnValue === "start") startExperience();
     else if (dlg.returnValue === "back" || dlg.returnValue === "") {
       if ($("exploreView").hidden) backToGallery();
@@ -1274,6 +1820,7 @@ function setupEvents() {
     setFromPointer(events[events.length - 1] || e);
   });
   canvas.addEventListener("pointerdown", (e) => {
+    if (sweep.on || sweep.preparing) stopSweep(false);
     canvas.focus({ preventScroll: true });
     if (!engine.started) toggleAudio();
     if (e.pointerType !== "mouse") canvas.setPointerCapture(e.pointerId);
@@ -1292,6 +1839,7 @@ function setupEvents() {
     const map = { ArrowLeft: [-big, 0], ArrowRight: [big, 0], ArrowUp: [0, -big * 2], ArrowDown: [0, big * 2] };
     if (map[e.key]) {
       e.preventDefault();
+      if (sweep.on || sweep.preparing) stopSweep(false); // a pessoa retoma o controle
       const [u0, v0] = [state.u, state.v];
       moveFocal(...map[e.key]);
       tutorial.notify("move");
@@ -1315,12 +1863,21 @@ function setupEvents() {
       case "l": case "L": e.preventDefault(); openLegend(); break;
       case "t": case "T": e.preventDefault(); tutorial.open(); break;
       case "o": case "O": e.preventDefault(); mapOverview(); break;
+      case "v": case "V": e.preventDefault(); toggleSweep(); break;
       case "c": case "C": e.preventDefault(); processReading(); announcePosition(); break;
       case "n": case "N": e.preventDefault(); applyVoice(!$("voiceToggle").checked); break;
       case "g": case "G": e.preventDefault(); backToGallery(); break;
       case "h": case "H": case "?": e.preventDefault(); openHelp(); break;
       default:
     }
+  });
+
+  // passeio sonoro
+  $("sweepButton").addEventListener("click", toggleSweep);
+  $("sweepRoute").addEventListener("change", () => { if (!sweep.on && !sweep.preparing) setSweepUI("idle"); });
+  $("playSymphony").addEventListener("click", () => {
+    if (!sweep.on && !sweep.preparing) $("sweepRoute").value = "sinfonia";
+    toggleSweep();
   });
 
   // linha do tempo
@@ -1409,6 +1966,9 @@ async function init() {
   if (prefs.color) { $("colorMode").value = prefs.color; state.colorMode = prefs.color; }
   if (prefs.lan) $("lanInput").value = prefs.lan;
   applyLowSensory(!!prefs.low);
+  const dur = String(SETTINGS.sweep.durationS);
+  if (![...$("sweepDuration").options].some((o) => o.value === dur)) $("sweepDuration").add(new Option(`${dur} segundos`, dur));
+  $("sweepDuration").value = dur;
 
   // com a narração ligada, a voz lê cada controle que recebe o foco (js/a11y.js)
   initFocusEcho({

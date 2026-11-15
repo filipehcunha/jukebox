@@ -159,7 +159,8 @@ function distToSegKm(px, py, ax, ay, bx, by, kx, ky) {
   return Math.hypot(x0 - t * dx, y0 - t * dy);
 }
 
-const NEAR_KM = 15; // tolerância padrão do fallback de costa
+const NEAR_KM = 15; // tolerância do fallback de costa quando a máscara diz terra
+const COAST_KM = 8; // tolerância quando a máscara diz oceano (ela erra no litoral)
 const nearCache = new Map();
 
 // País mais próximo dentro de `maxKm` (para pontos que caem logo fora da costa do GeoJSON).
@@ -225,6 +226,29 @@ export function project(projection, u, v) {
     if (lon < -180) lon += 360;
     return { lat, lon };
   }
+  if (projection.type === "perspective") {
+    // Globo visto por uma câmera a `dist` raios da Terra do centro (perspectiva vertical).
+    // cx, cy = centro do disco; r = raio do disco VISÍVEL (o limbo), em fração da altura;
+    // o ponto central do globo é (lat0, lon0). Com dist enorme vira a ortográfica.
+    const { cx, cy, r, lon0, lat0 = 0, dist, aspect } = projection;
+    const x = ((u - cx) * aspect) / r;
+    const y = (cy - v) / r;
+    if (x * x + y * y > 1) return null;
+    // raio saindo da câmera (0, 0, dist), olhando para -z; o limbo fica em tan = 1/√(dist²−1)
+    const tmax = 1 / Math.sqrt(dist * dist - 1);
+    const n = Math.hypot(x * tmax, y * tmax, 1);
+    const dx = (x * tmax) / n, dy = (y * tmax) / n, dz = -1 / n;
+    const b = dist * dz;
+    const s = -b - Math.sqrt(Math.max(b * b - (dist * dist - 1), 0));
+    const qx = s * dx, qy = s * dy, qz = dist + s * dz; // ponto da esfera no referencial da câmera
+    // referencial da câmera -> Terra: z aponta para (lat0, lon0), x para leste, y para norte
+    const D = Math.PI / 180;
+    const sL = Math.sin(lon0 * D), cL = Math.cos(lon0 * D), sF = Math.sin(lat0 * D), cF = Math.cos(lat0 * D);
+    const gx = -qx * sL - qy * sF * cL + qz * cF * cL;
+    const gy = qx * cL - qy * sF * sL + qz * cF * sL;
+    const gz = qy * cF + qz * sF;
+    return { lat: Math.asin(clamp(gz, -1, 1)) / D, lon: Math.atan2(gy, gx) / D };
+  }
   return null;
 }
 
@@ -287,8 +311,10 @@ function landRegion(lat, lon) {
 export function regionName(lat, lon) {
   const maskLand = isLand(lat, lon);
   let country = countryAt(lat, lon);
-  // Máscara diz terra, mas o ponto caiu logo fora do polígono (costa): usa o país mais próximo.
-  if (!country && maskLand === true) country = nearestCountry(lat, lon);
+  // Ponto logo fora do polígono (costa recortada, cidade no litoral, ilha pequena): usa o país
+  // mais próximo. A máscara de terra tem só 0,5°/px e erra no litoral (Lisboa e Suva caem no
+  // "mar"), então mesmo com ela dizendo oceano aceitamos um país a até COAST_KM.
+  if (!country) country = nearestCountry(lat, lon, maskLand === true ? NEAR_KM : COAST_KM);
   // Se há país no ponto, é terra, mesmo que a máscara divirja um pouco na costa.
   const land = country ? true : maskLand;
 
@@ -300,6 +326,71 @@ export function regionName(lat, lon) {
 
   // Prioriza o país: é o que a narração deve falar.
   return { name: country || region, land, country, region };
+}
+
+// ---------------------------------------------------------------------------
+// Paisagem sonora: que tipo de lugar está sob o cursor (mar, gelo, floresta, deserto)
+// ---------------------------------------------------------------------------
+// Caixas aproximadas [latMín, latMáx, lonMín, lonMáx]. Quando o mapa tem um dado que diz
+// mais (altura do dossel no GEDI, temperatura, umidade, temperatura do mar), o dado manda.
+const DESERTS = [
+  [15, 32, -17, 33], // Saara
+  [13, 31, 36, 59], // Península Arábica
+  [-28, -17, 12, 25], // Namíbia e Kalahari
+  [-27, -18, -71, -68.5], // Atacama
+  [-31, -19, 117, 142], // interior da Austrália
+  [37, 46, 92, 112], // Gobi
+  [36.5, 41.5, 76, 90], // Taklamakan
+  [24, 29.5, 69, 73.5], // Thar
+  [27, 34, 53, 66], // planaltos do Irã e do Afeganistão
+  [27, 37, -117, -109], // Sonora e Mojave
+];
+const FORESTS = [
+  [-15, 5, -75, -48], // Amazônia
+  [-6, 5, 10, 30], // Bacia do Congo
+  [-10, 7, 95, 152], // Sudeste Asiático insular e Nova Guiné
+  [7, 18, -92, -77], // América Central
+];
+const inBox = (boxes, lat, lon) => boxes.some(([a, b, c, d]) => lat >= a && lat <= b && lon >= c && lon <= d);
+const ramp = (e0, e1, x) => clamp((x - e0) / (e1 - e0), 0, 1);
+
+const PLACE_LABELS = { mar: "mar", gelo: "gelo", floresta: "floresta", deserto: "deserto" };
+
+// region = resultado de regionName; data = { scaleId, value, valid } da leitura atual.
+// Retorna { levels: { mar, gelo, floresta, deserto } (0 a 1), label } ou null sem geografia.
+export function landscapeAt(lat, lon, region, data = {}) {
+  if (!region || region.land === null || region.land === undefined) return null;
+  const v = data.valid ? data.value : NaN;
+  const has = (id) => data.scaleId === id && Number.isFinite(v);
+  const L = { mar: 0, gelo: 0, floresta: 0, deserto: 0 };
+
+  if (region.land === false) {
+    L.mar = 1;
+    // mar gelado: perto do ponto de congelamento (ECCO2) ou nas latitudes do gelo marinho
+    L.gelo = has("sst") ? 0.7 * ramp(4, 0, v) : Math.abs(lat) >= 66 ? 0.5 : 0;
+  } else {
+    L.gelo = lat <= -60 || lat >= 70 || region.country === "Groenlândia" ? 1 : 0;
+    if (has("temp")) L.gelo = Math.max(L.gelo * ramp(5, -5, v), ramp(-5, -18, v));
+    L.deserto = inBox(DESERTS, lat, lon) ? 1 : 0;
+    L.floresta = inBox(FORESTS, lat, lon) ? 1 : 0;
+    if (has("humidity") && Math.abs(lat) < 50) {
+      L.deserto = Math.max(L.deserto, ramp(5, 2, v));
+      L.floresta = Math.max(L.floresta, 0.8 * ramp(15, 19, v));
+    }
+    if (has("gedi")) L.floresta = ramp(6, 25, v); // altura do dossel: o dado manda
+    // o gelo prevalece sobre os outros
+    L.deserto *= 1 - L.gelo;
+    L.floresta *= 1 - L.gelo;
+    if (L.floresta && L.deserto) L[L.floresta >= L.deserto ? "deserto" : "floresta"] = 0;
+  }
+
+  let label = "";
+  if (L.mar) label = L.gelo >= 0.35 ? "mar gelado" : "mar";
+  else {
+    const top = ["gelo", "floresta", "deserto"].reduce((a, b) => (L[b] > L[a] ? b : a));
+    if (L[top] >= 0.35) label = PLACE_LABELS[top];
+  }
+  return { levels: L, label };
 }
 
 export function formatCoord(lat, lon) {

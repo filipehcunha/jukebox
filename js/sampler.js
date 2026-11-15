@@ -96,7 +96,7 @@ export class ImageSampler {
     if (mask) {
       return { u, v, rgb, valid: false, reason: mask.label, geo, region, bright: luminance(...rgb), grad: 0, texture: 0 };
     }
-    if (projection?.type === "orthographic" && !geo) {
+    if ((projection?.type === "orthographic" || projection?.type === "perspective") && !geo) {
       return { u, v, rgb, valid: false, reason: "Fora do globo", geo, region, bright: 0, grad: 0, texture: 0 };
     }
 

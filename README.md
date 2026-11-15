@@ -45,7 +45,7 @@ Casos especiais:
 
 - **Vento:** a faixa calma é transparente. No frame ela aparece como relevo cinza nos continentes ou fundo escuro no oceano. Pixels quase neutros contam como calmaria (< 4 m/s), e a transição púrpura sobre o oceano foi medida empiricamente.
 - **ECCO2:** as correntes são estrias brilhantes. A **matiz** dá a temperatura (decodificada pela cromaticidade, ignorando o brilho) e o **brilho** dá a intensidade da corrente, que aciona a harpa.
-- **GEDI:** o oceano azul é descartado. O globo inclinado usa uma projeção ortográfica ajustada por mínimos quadrados a 6 pontos de controle.
+- **GEDI:** o oceano azul é descartado. O globo foi renderizado por uma câmera em perspectiva, a ~3,5 raios da Terra, e por isso usa a projeção `perspective` (perspectiva vertical) de `js/geo.js`. Os parâmetros foram ajustados comparando terra e oceano da imagem com `assets/countries.geojson`: discordam em 4,4% dos pixels, contra 36% da projeção ortográfica usada antes, que errava sobretudo perto da borda do globo.
 - **Imagens desconhecidas:** a escala é detectada pelo nome da pasta (`temp`, `humid`, `wind`, `co`, `sst`, `gedi`…) ou pelas cores. Sem correspondência, usa o matiz (azul = frio, vermelho = quente). A escala pode ser trocada manualmente.
 
 Validação (`python3 tools/extrair_escalas.py --validar`, 12 mil pixels por variável): ΔE mediano de 1,0 a 2,3. O Pacífico equatorial lê 28,8 °C, a Antártida −39,7 °C, a umidade da Amazônia 19 g/kg e o CO no leste da China 311 ppbv.
@@ -60,6 +60,9 @@ Tudo o que é ajustável fica em **`config.json`**, na raiz do projeto. O arquiv
 | `camadasPorEscala` | Qual característica alimenta cada camada (`low`, `mid`, `high`, `arp`). `default` vale para todos os mapas; `gedi`, `temp`, `wind` etc. trocam só as camadas indicadas. |
 | `instrumentos` | Para cada um dos 10 instrumentos: `nome`, **`volumeDb`** (volume na mixagem, em decibéis) e a faixa de notas MIDI (`notaMaisGrave`, `notaMaisAguda`). |
 | `audio` | Volume geral inicial, tonalidade (`C` ou `G`), amostras gravadas, limitador e reverberação. |
+| `paisagem` | Sons dos lugares: `ativo` e o `volumeDb` de `mar` (mais `periodoOndaS`), `gelo`, `floresta`, `deserto` e `fronteira`. |
+| `alerta` | Batimento de coração nos valores extremos: `ativo`, `volumeDb` e `limites` por escala (`temp` 35 °C, `sst` 30 °C, `co` 200 ppbv, `wind` 25 m/s). |
+| `passeio` | Passeio sonoro: duração padrão (`duracaoS`) e número de faixas do caminho "Mapa inteiro" (`linhasMapaInteiro`). |
 | `narracao` | `pausarMusica` (a música para enquanto a voz fala), `reducaoDb` (usado se `pausarMusica` for `false`), rampas, velocidade e volume da voz, espera com o cursor parado, leitura dos controles. |
 | `baixaSensibilidade` | Redução de volume, limitador, filtro, voz e vibração do modo de baixa sensibilidade. |
 | `teclado` | Tamanho do passo do cursor no mapa. |
@@ -87,12 +90,75 @@ Chaves que começam com `_` são comentários. Um valor ausente ou inválido (in
 | Arpejos | Harpa / Percussão leve | ventos fortes, correntes marítimas, frentes (gradientes) |
 
 - **Eixo X → panorama estéreo** (`Panner`, com rampa).
+- **Mixagem equilibrada:** o volume de cada instrumento (`config.json` → `instrumentos.*.volumeDb`) foi medido no navegador para todos soarem com a mesma força, com flauta e violino um pouco abaixo porque o ouvido percebe mais os agudos. A compressão é leve, só para colar as camadas. Quando várias camadas tocam juntas, todas descem um pouco, então o conjunto pesa como uma ou duas. Os arpejos da harpa ficaram mais lentos (no máximo ~6 notas por segundo).
 - **Valor/cor → nota**, quantizada na **pentatônica maior de Dó ou Sol**. Todas as camadas usam o mesmo conjunto de notas e por isso nunca dissonam. Há histerese para a nota não oscilar na fronteira entre graus.
 - **Brilho → filtro passa-baixas** e camadas secundárias. **Intensidade (vento, corrente, gradiente) → velocidade e volume do arpejo.**
 - Todas as mudanças de volume, filtro e panorama usam `rampTo`. Violoncelo e flauta fazem glide ou legato, e o piano re-toca suavemente quando o cursor repousa.
 - As amostras são gravações reais (piano Salamander; violoncelo, contrabaixo, violino, clarinete, flauta e harpa do *tonejs-instruments*), carregadas só para os instrumentos em uso e com fallback sintetizado.
+- **Coração nos extremos:** quando o valor passa do limite de alerta (calor extremo acima de 35 °C, mar acima de 30 °C, CO acima de 200 ppbv, ventos de tempestade acima de 25 m/s), soa um coração grave, no centro e sem eco. Ele bate a ~57 bpm no limite e acelera até ~110 bpm no máximo da escala. A narração e o resumo do passeio também dizem "Alerta: calor extremo…". Funciona na barra de cores, então dá para ouvir o limite antes de explorar.
+- **Sons dos lugares (saber onde se está pelo som):** por baixo da música, cada tipo de lugar tem uma assinatura própria, sintetizada na hora e na mesma tonalidade dos instrumentos:
+  - **mar:** ondas que vêm e vão (rumor grave e espuma, a cada ~7 s);
+  - **gelo:** vento gelado assobiando e cristais agudos raros (polos, Groenlândia, frio extremo; no mar perto de 0 °C vira "mar gelado", ondas e gelo juntos);
+  - **floresta:** trilo de insetos e pássaros que cantam nas notas da pentatônica (no GEDI, pela altura do dossel);
+  - **deserto:** vento seco em rajadas, areia fina e um bordão grave em quinta, que dá a sensação de vastidão;
+  - **fronteira:** um sino suave (tônica e quinta) ao passar de um país para outro.
+
+  O lugar vem de `landscapeAt` (`js/geo.js`): terra ou mar pelo `countries.geojson`, caixas aproximadas para desertos e florestas tropicais, e o **dado do mapa quando ele diz mais**: altura do dossel no GEDI, frio extremo na temperatura, ar muito seco ou muito úmido na umidade, mar perto de 0 °C no ECCO2. Os sons seguem o cursor no estéreo, entram e saem com rampas e ficam uns 9 dB abaixo da música. A legenda tem um cartão para ouvir cada um, a narração e o cartão "Local" dizem o lugar ("Brasil, floresta"), e o resumo do passeio conta as paisagens atravessadas. Volumes em `paisagem` no `config.json`.
 - **Barra de cores tocável:** passar o mouse (ou usar as setas com a barra em foco) toca exatamente o que um pixel daquela cor tocaria no mapa e também vibra o celular.
 - **A voz tem prioridade:** enquanto qualquer narração fala (tutorial, leitura do mapa, leitura dos controles), a música **para por completo** e volta sozinha ao fim da fala, com uma rampa curta. O narrador (`js/voz.js`) avisa o motor de áudio quando começa e quando termina. Com `narracao.pausarMusica: false` no `config.json`, a música só abaixa `reducaoDb` decibéis.
+
+### Legenda falada, sem atropelo
+
+Ao abrir a legenda, nada toca: **só a voz**, que lê a legenda inteira (o mapa, como usar, cada instrumento e cada som de lugar). Isso vale mesmo com a narração desligada, e pode ser desativado em `narracao.lerLegendaAoAbrir`. O botão **Ouvir a legenda / Parar a leitura** controla a leitura.
+
+- **Passar o mouse num cartão** (instrumento, lugar ou barra de cores): a voz pausa e o som entra com fade.
+- **Sair do cartão:** o som some com fade e, 0,7 s depois, a voz **continua da frase em que parou** (a frase interrompida é repetida inteira).
+- **Pelo teclado** (Tab e Enter em "Ouvir"): a voz volta sozinha quando o som termina.
+- **Nunca tocam dois sons juntos:** entrar num cartão encerra o som do anterior.
+- **Rolar a legenda não dispara nada.** Os cartões que passam sob o cursor parado (ao rolar ou logo ao abrir) só tocam depois que o mouse realmente se mexe, e o mouse precisa parar ~0,3 s sobre o cartão.
+- As pré-escutas soam um pouco abaixo da música (de −14 a −20 dB de pico) e os lugares, mais baixo ainda.
+
+## Sinfonia do mapa (a faixa que varre a imagem)
+
+O botão **Ouvir a sinfonia do mapa** (ou a tecla `V`) faz uma faixa vertical varrer a imagem da esquerda para a direita, como nas sonificações da NASA, e transforma o mapa inteiro em uma música com começo, meio e fim. A faixa e as notas aparecem desenhadas sobre o mapa. O compositor fica em `js/sinfonia.js`:
+
+| Elemento | De onde vem |
+| --- | --- |
+| Forma | abertura (baixo e paisagem) → desenvolvimento → clímax (60% a 82%) → final, com cadência V → I e acorde final arpejado |
+| Harmonia | um acorde por compasso (2 s), pelo valor médio daquele trecho do mapa: baixo → vi (menor), depois IV, I e, nos mais altos, V (tensão) |
+| Melodia (camada média) | a altura da nota é a **altura no mapa** de onde os valores são mais altos; a força é o valor |
+| Contracanto (camada aguda) | notas longas na altura de onde os valores são mais baixos |
+| Arpejos | entram nas frentes e contrastes fortes, e em todo o clímax |
+| Baixo (camada grave) | fundamental e quinta do acorde |
+| Paisagem e coração | a proporção de mar, gelo, floresta e deserto de cada coluna; o coração bate onde há valores extremos |
+
+Cada coluna é lida em 24 pontos. As notas saem da pentatônica e o baixo só usa fundamental e quinta, então nada dissona. O ritmo fica mais denso conforme a seção e a energia do trecho. No fim, a voz resume o mapa (países, oceano, paisagens, extremos). Com **Gravar o áudio**, a peça vira WAV.
+
+### Playlist
+
+A galeria traz seis faixas prontas (`assets/playlist/*.mp3`, 46 s cada), uma por mapa, gravadas pelo próprio site com a sinfonia de 45 s e convertidas de WAV para MP3 com `ffmpeg`. Cada faixa tem um texto dizendo o que se ouve.
+
+## Passeio sonoro e exportação do áudio
+
+No painel **Sinfonia e passeios**, além da sinfonia, há três passeios em que o cursor percorre o mapa sozinho:
+
+| Caminho | Percurso |
+| --- | --- |
+| Volta ao mundo | de oeste para leste na altura do cursor (no centro do mapa, pela Linha do Equador) |
+| De polo a polo | de norte a sul na posição horizontal do cursor |
+| Mapa inteiro | faixas em zigue-zague, de cima para baixo (`passeio.linhasMapaInteiro`) |
+
+A duração é de 30, 45 ou 90 s (padrão em `passeio.duracaoS`). Antes de começar, a voz apresenta o caminho (por exemplo, "volta ao mundo pela Linha do Equador") e explica os sons dos lugares e o coração. Durante o passeio, a narração fica quieta para não interromper a música. Ao terminar, a voz faz um resumo da travessia: países atravessados, quanto do caminho foi oceano, por quais paisagens passou (gelo, floresta, deserto), onde estavam o maior e o menor valor e quanto do percurso estava em alerta. Exemplo no ECCO2: *"Você atravessou 10 países, e 77% do caminho foi sobre o oceano. Mais alto: Oceano Índico, temperatura do mar 31,0 °C. […] 33% do caminho com mar muito quente, acima de 30 °C: foi o coração que você ouviu."* As setas, um clique no mapa, `V` ou `Escape` param o passeio. A linha do tempo pode continuar tocando durante o percurso: o tempo passa enquanto o cursor viaja.
+
+**Gravar o áudio:** com a opção ligada, a saída final (depois do limitador, exatamente o que se ouve, sem a voz) é gravada do início ao fim do caminho, com 1,8 s de cauda. Depois é convertida para **WAV** estéreo 44,1 kHz, que toca em qualquer lugar, e aparece o botão **Baixar áudio**. Se o pico passar de −0,3 dBFS, o arquivo inteiro é abaixado (nunca aumentado) para não saturar. Assim, cada mapa pode virar uma faixa de uma "playlist" da Terra. Código: `js/passeio.js` (caminhos, resumo e WAV) e a seção "Passeio sonoro" de `js/app.js`.
+
+### Por que o mar e o coração
+
+O desafio pede que a paisagem sonora carregue o impacto emocional dos dados: a urgência das mudanças climáticas e a beleza dos sistemas interligados do planeta. Fizemos isso sem deixar de ser fiel aos dados:
+
+- **Urgência:** o coração só bate onde o dado passa de um limite físico com significado (calor extremo, mar quente, poluição alta, tempestade), e acelera conforme o valor se afasta dele. É um som que todo mundo reconhece no corpo, não precisa de explicação nem de visão. O resumo do passeio diz quanto do caminho estava nesse estado.
+- **Saber onde se está:** cada lugar tem seu som (ondas, vento gelado e cristais, insetos e pássaros, vento seco do deserto, sino nas fronteiras), então quem não vê o mapa sabe pelo ouvido se está no mar, no gelo, na floresta ou no deserto, e quando cruzou uma fronteira. São sons que qualquer pessoa reconhece, todos na tonalidade da música.
+- **Beleza e ligação:** a música nunca dissona (pentatônica) e flui sem cortes entre terra e mar. Os instrumentos contam o dado e a paisagem conta o lugar, e o passeio atravessa tudo como uma única peça. Na volta ao mundo pelo Equador, o som cruza continentes e oceanos e mostra que é um sistema só.
 
 ## Smartphone (vibração tátil)
 
@@ -116,6 +182,7 @@ Enquanto a voz fala, a música para.
 | Setas (`Shift` = passo maior) | movem o cursor; a voz avisa ao chegar à borda |
 | `Enter` | lê o lugar, os instrumentos e o valor |
 | `O` | visão geral: valores mais alto e mais baixo, onde ficam, e a média |
+| `V` | toca ou para a sinfonia do mapa (as setas e `Escape` também param) |
 | `C` | posição do cursor e coordenadas |
 | `1` a `9` | saltam para nove regiões do mapa (1 = em cima à esquerda, 5 = centro) |
 | `Home` | volta ao centro |
@@ -139,7 +206,7 @@ Outros recursos:
 
 O tutorial tem duas partes:
 
-1. **Ouvir (guia modal no centro da tela):** boas-vindas; botões para ouvir cada instrumento; demonstrações de "grave é frio, agudo é quente", do som passando da esquerda para a direita (com fones) e dos arpejos da harpa.
+1. **Ouvir (guia modal no centro da tela):** boas-vindas; botões para ouvir cada instrumento; demonstrações de "grave é frio, agudo é quente", do som passando da esquerda para a direita (com fones) dos arpejos da harpa e dos sons dos lugares (mar, gelo, floresta, deserto e o coração dos extremos). O resumo final ensina a tecla `V`, da sinfonia do mapa.
 2. **Praticar:** abre o mapa de temperatura do ar sem passar pela legenda (o tutorial já a ensinou). O painel encolhe para a base da tela, sem modal, e o foco vai para o mapa. O app detecta sozinho cada desafio:
    - mover o cursor com as setas;
    - apertar `Enter` para ouvir onde está;
@@ -177,12 +244,15 @@ js/app.js        orquestração: galeria → legenda → exploração, teclado, 
 js/scales.js     escalas, cor → valor, papéis dos instrumentos, paletas acessíveis
 js/colormaps.js  barras GMAO amostradas (gerado)
 js/sampler.js    leitura robusta de pixels, gradiente, recoloração
-js/geo.js        projeções, máscara terra/oceano, nomes de regiões e países
-js/audio.js      motor Tone.js em 4 camadas, pré-escuta e pausa da música durante a voz
+js/geo.js        projeções, máscara terra/oceano, países, regiões e paisagem sonora (landscapeAt)
+js/audio.js      motor Tone.js em 4 camadas, mar, coração de alerta, gravação, pré-escuta e pausa durante a voz
 js/haptics.js    PeerJS + QR Code
 js/receiver.js   página do celular
 js/gallery.js    pastas locais, presets, miniaturas
 js/tutorial.js   tutorial guiado em áudio e teclado (demonstrações + desafios no mapa)
+js/passeio.js    passeio sonoro: caminhos, resumo da travessia e exportação WAV
+js/sinfonia.js   sinfonia do mapa: lê o mapa em colunas e compõe a peça (forma, harmonia, melodia)
+assets/playlist/ seis sinfonias prontas em MP3
 js/voz.js        narrador com fila: MP3 neural do tutorial ou a melhor voz pt-BR do navegador
 assets/tutorial/ roteiro.json (textos do tutorial) + MP3 gravados
 assets/countries.geojson  fronteiras dos países (Natural Earth, 1:50m) usadas para dizer o país sob o cursor

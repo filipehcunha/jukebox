@@ -24,17 +24,17 @@
   },
 
   "instrumentos": {
-    "_comentario": "volumeDb = volume do instrumento na mixagem, em decibéis. notaMaisGrave e notaMaisAguda = faixa tocada, em número MIDI (60 = Dó central; 12 a mais = uma oitava acima). nome = como o instrumento aparece na tela e na narração.",
-    "CELLO":       { "nome": "Violoncelo",         "volumeDb": -1,   "notaMaisGrave": 36, "notaMaisAguda": 57 },
-    "DOUBLE_BASS": { "nome": "Contrabaixo",        "volumeDb": -0.5, "notaMaisGrave": 28, "notaMaisAguda": 50 },
-    "GRAND_PIANO": { "nome": "Piano de cauda",     "volumeDb": -1.5, "notaMaisGrave": 55, "notaMaisAguda": 84 },
-    "MARIMBA":     { "nome": "Marimba",            "volumeDb": -1,   "notaMaisGrave": 48, "notaMaisAguda": 84 },
-    "FLUTE":       { "nome": "Flauta",             "volumeDb": -5,   "notaMaisGrave": 72, "notaMaisAguda": 93 },
-    "HARP":        { "nome": "Harpa",              "volumeDb": -4.5, "notaMaisGrave": 55, "notaMaisAguda": 88 },
-    "VIOLIN":      { "nome": "Violino",            "volumeDb": -5,   "notaMaisGrave": 62, "notaMaisAguda": 88 },
-    "CLARINET":    { "nome": "Clarinete",          "volumeDb": -4.5, "notaMaisGrave": 52, "notaMaisAguda": 81 },
-    "SYNTH_PAD":   { "nome": "Sintetizador (pad)", "volumeDb": -6,   "notaMaisGrave": 48, "notaMaisAguda": 72 },
-    "STEEL_DRUM":  { "nome": "Steel drum",         "volumeDb": -3,   "notaMaisGrave": 57, "notaMaisAguda": 81 }
+    "_comentario": "volumeDb = volume do instrumento na mixagem, em decibéis. Os valores padrão foram medidos para todos soarem com a mesma força (flauta e violino um pouco abaixo, porque o ouvido percebe mais os agudos). notaMaisGrave e notaMaisAguda = faixa tocada, em número MIDI (60 = Dó central; 12 a mais = uma oitava acima). nome = como o instrumento aparece na tela e na narração.",
+    "CELLO":       { "nome": "Violoncelo",          "volumeDb": -9,   "notaMaisGrave": 36, "notaMaisAguda": 57 },
+    "DOUBLE_BASS": { "nome": "Contrabaixo",         "volumeDb": -4,   "notaMaisGrave": 28, "notaMaisAguda": 50 },
+    "GRAND_PIANO": { "nome": "Piano de cauda",      "volumeDb": -1.5, "notaMaisGrave": 55, "notaMaisAguda": 84 },
+    "MARIMBA":     { "nome": "Marimba",             "volumeDb": 1,    "notaMaisGrave": 48, "notaMaisAguda": 84 },
+    "FLUTE":       { "nome": "Flauta",              "volumeDb": -12,  "notaMaisGrave": 72, "notaMaisAguda": 93 },
+    "HARP":        { "nome": "Harpa",               "volumeDb": -12,  "notaMaisGrave": 55, "notaMaisAguda": 88 },
+    "VIOLIN":      { "nome": "Violino",             "volumeDb": -8,   "notaMaisGrave": 62, "notaMaisAguda": 88 },
+    "CLARINET":    { "nome": "Clarinete",           "volumeDb": -10,  "notaMaisGrave": 52, "notaMaisAguda": 81 },
+    "SYNTH_PAD":   { "nome": "Sintetizador (pad)",  "volumeDb": 4,    "notaMaisGrave": 48, "notaMaisAguda": 72 },
+    "STEEL_DRUM":  { "nome": "Steel drum",          "volumeDb": 6,    "notaMaisGrave": 57, "notaMaisAguda": 81 }
   },
 
   "audio": {
@@ -46,8 +46,31 @@
     "reverberacao": 0.3
   },
 
+  "alerta": {
+    "_comentario": "Batimento de coração que soa nos valores extremos, para os dados terem urgência. ativo = false desliga. volumeDb = volume do batimento. limites = a partir de que valor bate, por escala: temp (temperatura do ar, °C), sst (temperatura do mar, °C), co (monóxido de carbono, ppbv), wind (vento, m/s). Quanto mais além do limite, mais rápido o coração.",
+    "ativo": true,
+    "volumeDb": -19,
+    "limites": { "temp": 35, "sst": 30, "co": 200, "wind": 25 }
+  },
+
+  "passeio": {
+    "_comentario": "Passeio sonoro: o cursor percorre o mapa sozinho (tecla V ou painel Passeio sonoro). duracaoS = duração padrão, em segundos. linhasMapaInteiro = quantas faixas o caminho 'Mapa inteiro' percorre, de cima para baixo.",
+    "duracaoS": 45,
+    "linhasMapaInteiro": 5
+  },
+
+  "paisagem": {
+    "_comentario": "Sons dos lugares, para saber pelo som onde o cursor está: mar (ondas), gelo (vento gelado e cristais), floresta (insetos e pássaros), deserto (vento seco e bordão grave) e fronteira (sino suave ao passar de um país para outro). Todos sintetizados na hora e na tonalidade da música. ativo = false desliga tudo. volumeDb = volume de cada som. periodoOndaS = segundos entre uma onda e outra.",
+    "ativo": true,
+    "mar":       { "volumeDb": -5, "periodoOndaS": 7 },
+    "gelo":      { "volumeDb": 5 },
+    "floresta":  { "volumeDb": 0 },
+    "deserto":   { "volumeDb": -13 },
+    "fronteira": { "volumeDb": -8 }
+  },
+
   "narracao": {
-    "_comentario": "pausarMusica = true: a música para por completo enquanto a voz fala e volta quando ela termina. Com false, a música só abaixa 'reducaoDb' decibéis. tempoParaSilenciarS e tempoParaVoltarS = duração das rampas, em segundos. esperaParadoMs = tempo com o cursor parado antes de a voz ler o lugar. lerControlesAoFocar = a voz também lê botões e controles ao navegar com Tab.",
+    "_comentario": "pausarMusica = true: a música para por completo enquanto a voz fala e volta quando ela termina. Com false, a música só abaixa 'reducaoDb' decibéis. tempoParaSilenciarS e tempoParaVoltarS = duração das rampas, em segundos. esperaParadoMs = tempo com o cursor parado antes de a voz ler o lugar. lerControlesAoFocar = a voz também lê botões e controles ao navegar com Tab. lerLegendaAoAbrir = ao abrir a legenda, a voz a lê inteira (mesmo com a narração desligada); passar o mouse num cartão pausa a voz e toca o som, e ao sair ela continua de onde parou. Quem usa leitor de tela pode pôr false.",
     "ligadaAoAbrir": false,
     "pausarMusica": true,
     "reducaoDb": -15,
@@ -56,7 +79,8 @@
     "velocidade": 1.05,
     "volume": 1,
     "esperaParadoMs": 700,
-    "lerControlesAoFocar": true
+    "lerControlesAoFocar": true,
+    "lerLegendaAoAbrir": true
   },
 
   "baixaSensibilidade": {

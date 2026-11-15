@@ -31,6 +31,7 @@ export function midiName(midi) {
   return `${NOTE_NAMES[((midi % 12) + 12) % 12]}${Math.floor(midi / 12) - 1}`;
 }
 const midiToNote = (m) => T().Frequency(m, "midi").toNote();
+const midiHz = (m) => 440 * 2 ** ((m - 69) / 12);
 
 // ---------------------------------------------------------------------------
 // Timbres sintetizados (funcionam offline e enquanto as amostras carregam)
@@ -172,8 +173,10 @@ export class SonificationEngine {
     // saída: volume do usuário → pausa/ducking (voz) → compressor → ganho de compensação → limitador
     // (o compressor nivela camadas fracas e fortes; o limitador impede clipping)
     this.limiter = new Tone.Limiter(SETTINGS.audio.limiterDb).toDestination();
-    this.makeup = new Tone.Gain(Tone.dbToGain(9)).connect(this.limiter);
-    this.compressor = new Tone.Compressor({ threshold: -26, ratio: 3.5, attack: 0.01, release: 0.25, knee: 8 }).connect(this.makeup);
+    // compressão leve (só cola as camadas) e pouco ganho de compensação: a mixagem respira e
+    // nenhum instrumento salta na frente; o equilíbrio vem dos volumes medidos (config.json)
+    this.makeup = new Tone.Gain(Tone.dbToGain(3)).connect(this.limiter);
+    this.compressor = new Tone.Compressor({ threshold: -24, ratio: 2, attack: 0.02, release: 0.3, knee: 10 }).connect(this.makeup);
     this.duckGain = new Tone.Gain(this.ducked ? duckedGain() : 1).connect(this.compressor);
     this.volume = new Tone.Volume(this.userVolumeDb).connect(this.duckGain);
     this.reverb = new Tone.Reverb({ decay: 5, preDelay: 0.03, wet: SETTINGS.audio.reverb }).connect(this.volume);
@@ -185,6 +188,8 @@ export class SonificationEngine {
     this.limiter.connect(this.meter);
 
     for (const layer of LAYER_ORDER) this._assign(layer, this.assignment[layer]);
+    this._buildAmbience();
+    this._buildHeart();
 
     // arpejo: intervalo varia com a intensidade (ventos/correntes)
     const transport = Tone.getTransport ? Tone.getTransport() : Tone.Transport;
@@ -192,6 +197,296 @@ export class SonificationEngine {
     transport.start();
     this.transport = transport;
     this._applyLow();
+  }
+
+  // ---------------- sons dos lugares (paisagem sonora) ----------------
+  // Cada tipo de lugar tem uma assinatura sonora própria, sintetizada na hora e sempre na
+  // tonalidade da música, para dizer ONDE o cursor está sem precisar de palavras:
+  //   mar       ondas: rumor grave (ruído marrom) + espuma (ruído rosa) num ciclo lento
+  //   gelo      vento gelado assobiando + cristais (sinos agudos raros, na pentatônica)
+  //   floresta  trilo de insetos + cantos curtos de pássaros (notas da pentatônica)
+  //   deserto   vento seco em rajadas + areia fina + bordão grave em quinta (vastidão)
+  // A mistura (0 a 1 para cada lugar) vem de geo.js → landscapeAt. Tudo passa pelo panner
+  // (acompanha o cursor no estéreo) e pela saída da música (volume, pausa, voz). As fontes
+  // só rodam enquanto o som está audível.
+  _buildAmbience() {
+    const Tone = T();
+    const A = SETTINGS.ambience;
+    this.amb = {};
+    if (!A.enabled) return;
+    const pick = (list) => list[Math.floor(Math.random() * list.length)];
+    const add = (name, build) => {
+      const out = new Tone.Gain(0).connect(this.panner);
+      this.amb[name] = { out, db: A[name].volumeDb, level: 0, running: false, stopTimer: null, ...build(out) };
+    };
+
+    add("mar", (out) => {
+      const hz = 1 / A.mar.waveS;
+      const swell = new Tone.Gain(0.6).connect(out);
+      const rumble = new Tone.Filter({ type: "lowpass", frequency: 420, rolloff: -24 }).connect(swell);
+      const surf = new Tone.Filter({ type: "bandpass", frequency: 1200, Q: 0.6 });
+      surf.connect(new Tone.Gain(0.45).connect(swell));
+      return {
+        nodes: [
+          new Tone.Noise({ type: "brown", volume: -8 }).connect(rumble),
+          new Tone.Noise({ type: "pink", volume: -14 }).connect(surf),
+          new Tone.LFO({ frequency: hz, min: 0.18, max: 1 }).connect(swell.gain),
+          new Tone.LFO({ frequency: hz, min: 600, max: 2600 }).connect(surf.frequency),
+        ],
+      };
+    });
+
+    add("gelo", (out) => {
+      const gust = new Tone.Gain(0.5).connect(out);
+      const wind = new Tone.Filter({ type: "bandpass", frequency: 1200, Q: 4 }).connect(gust);
+      const whistle = new Tone.Filter({ type: "bandpass", frequency: 1800, Q: 16 });
+      whistle.connect(new Tone.Gain(0.9).connect(gust));
+      const bell = new Tone.PolySynth(Tone.FMSynth, {
+        harmonicity: 3, modulationIndex: 7, oscillator: { type: "sine" }, modulation: { type: "sine" },
+        envelope: { attack: 0.002, decay: 2.2, sustain: 0, release: 2 },
+        modulationEnvelope: { attack: 0.002, decay: 0.4, sustain: 0, release: 0.5 },
+        volume: -12,
+      }).connect(out);
+      const crystals = new Tone.Loop((time) => {
+        if (Math.random() > 0.3) return;
+        bell.triggerAttackRelease(midiToNote(pick(this.scaleNotes(84, 100))), 0.1, time, 0.12 + Math.random() * 0.18);
+      }, 0.8);
+      return {
+        nodes: [
+          new Tone.Noise({ type: "white", volume: -12 }).connect(wind),
+          new Tone.Noise({ type: "pink", volume: -6 }).connect(whistle),
+          new Tone.LFO({ frequency: 0.05, min: 700, max: 2000 }).connect(wind.frequency),
+          new Tone.LFO({ frequency: 0.037, min: 1300, max: 2600 }).connect(whistle.frequency),
+          new Tone.LFO({ frequency: 0.12, min: 0.2, max: 1 }).connect(gust.gain),
+          crystals,
+        ],
+      };
+    });
+
+    add("floresta", (out) => {
+      // insetos: ruído agudo modulado a 24 Hz (o trilo) e pulsando 3 vezes por segundo
+      const swell = new Tone.Gain(0.6).connect(out);
+      const pulse = new Tone.Gain(0).connect(swell);
+      const trill = new Tone.Gain(0).connect(pulse);
+      const bug = new Tone.Filter({ type: "bandpass", frequency: 5200, Q: 5 }).connect(trill);
+      // pássaros: grupos de 2 a 4 notas curtas que deslizam entre graus da pentatônica
+      const birdPan = new Tone.Panner(0).connect(out);
+      const bird = new Tone.Synth({ oscillator: { type: "sine" }, envelope: { attack: 0.004, decay: 0.05, sustain: 0.5, release: 0.05 }, volume: -14 }).connect(birdPan);
+      const songs = new Tone.Loop((time) => {
+        if (Math.random() > 0.25) return;
+        const n = this.scaleNotes(86, 103);
+        birdPan.pan.setValueAtTime(Math.random() * 1.4 - 0.7, time);
+        let t = time;
+        for (let i = 0, k = 2 + Math.floor(Math.random() * 3); i < k; i += 1) {
+          const ia = Math.floor(Math.random() * n.length);
+          const ib = clamp(ia + (Math.random() < 0.5 ? 2 : -2), 0, n.length - 1);
+          bird.triggerAttackRelease(midiHz(n[ia]), 0.07, t, 0.5);
+          bird.frequency.exponentialRampToValueAtTime(midiHz(n[ib]), t + 0.07);
+          t += 0.11;
+        }
+      }, 0.5);
+      return {
+        nodes: [
+          new Tone.Noise({ type: "white", volume: -10 }).connect(bug),
+          new Tone.LFO({ frequency: 24, min: 0, max: 1 }).connect(trill.gain),
+          new Tone.LFO({ frequency: 3, min: 0, max: 1 }).connect(pulse.gain),
+          new Tone.LFO({ frequency: 0.15, min: 0.25, max: 1 }).connect(swell.gain),
+          songs,
+        ],
+      };
+    });
+
+    add("deserto", (out) => {
+      const gust = new Tone.Gain(0.5).connect(out);
+      const gust2 = new Tone.Gain(0.7).connect(gust);
+      const wind = new Tone.Filter({ type: "lowpass", frequency: 650, Q: 0.8 }).connect(gust2);
+      const sand = new Tone.Filter({ type: "highpass", frequency: 4500 });
+      sand.connect(new Tone.Gain(0.25).connect(gust2));
+      // bordão: tônica e quinta da tonalidade atual (Dó3/Sol3 ou Sol3/Ré4), bem baixo
+      const drone = new Tone.Gain(0.08).connect(out);
+      const osc = [new Tone.Oscillator(130.8, "sine").connect(drone), new Tone.Oscillator(196, "sine").connect(drone)];
+      return {
+        onStart: () => {
+          const root = 48 + MUSICAL_KEYS[this.key].root;
+          osc[0].frequency.value = midiHz(root);
+          osc[1].frequency.value = midiHz(root + 7);
+        },
+        nodes: [
+          new Tone.Noise({ type: "pink", volume: -4 }).connect(wind),
+          new Tone.Noise({ type: "white", volume: -16 }).connect(sand),
+          new Tone.LFO({ frequency: 0.07, min: 0.15, max: 1 }).connect(gust.gain),
+          new Tone.LFO({ frequency: 0.19, min: 0.5, max: 1 }).connect(gust2.gain),
+          new Tone.LFO({ frequency: 0.09, min: 450, max: 900 }).connect(wind.frequency),
+          ...osc,
+        ],
+      };
+    });
+
+    // fronteira: sino suave (tônica e quinta) ao passar de um país para outro
+    this.borderBell = new Tone.PolySynth(Tone.FMSynth, {
+      harmonicity: 2, modulationIndex: 2.5, oscillator: { type: "sine" }, modulation: { type: "sine" },
+      envelope: { attack: 0.002, decay: 1.0, sustain: 0, release: 0.8 },
+      modulationEnvelope: { attack: 0.002, decay: 0.2, sustain: 0, release: 0.2 },
+    }).connect(new Tone.Volume(A.fronteira.volumeDb).connect(this.panner));
+  }
+
+  // levels = { mar, gelo, floresta, deserto } de 0 a 1; o que não vier vai a zero
+  setAmbience(levels = {}) {
+    if (!this.amb) return;
+    for (const [name, a] of Object.entries(this.amb)) {
+      const target = clamp(levels[name] ?? 0);
+      if (Math.abs(target - a.level) < 0.03 && target > 0 === a.level > 0) continue;
+      a.level = target;
+      const now = T().now();
+      clearTimeout(a.stopTimer);
+      a.out.gain.cancelScheduledValues(now);
+      if (target > 0) {
+        if (!a.running) {
+          a.onStart?.();
+          for (const n of a.nodes) if (n.state !== "started") n.start();
+          a.running = true;
+        }
+        a.out.gain.rampTo(target * dbToGain(a.db), this.low ? 1.6 : 0.9, now);
+      } else {
+        a.out.gain.rampTo(0, this.low ? 1.4 : 0.8, now);
+        a.stopTimer = setTimeout(() => {
+          if (a.level > 0) return;
+          for (const n of a.nodes) if (n.state === "started") n.stop();
+          a.running = false;
+        }, 1800);
+      }
+    }
+  }
+
+  borderCue() {
+    if (!this.borderBell || !this.started || this.paused || this.scoring) return;
+    const now = T().now();
+    if (now - (this._lastBorder || 0) < 0.6) return;
+    this._lastBorder = now;
+    const root = 72 + MUSICAL_KEYS[this.key].root;
+    this.borderBell.triggerAttackRelease(midiToNote(root), 0.2, now, 0.5);
+    this.borderBell.triggerAttackRelease(midiToNote(root + 7), 0.3, now + 0.12, 0.4);
+  }
+
+  // pré-escuta na legenda: "mar", "gelo", "floresta", "deserto", "coracao" ou "fronteira"
+  async previewPlace(name, secs = 5) {
+    await this.start();
+    if (this.paused) this.resume();
+    this.stopPlacePreview();
+    if (name === "coracao") {
+      this._heartPreview = T().now() + secs;
+      if (this.heartLoop) this.heartLoop.interval = 0.85;
+    } else if (name === "fronteira") {
+      this._lastBorder = 0;
+      this.borderCue();
+      this._placeTimers = [setTimeout(() => { this._lastBorder = 0; this.borderCue(); }, 1300)];
+      secs = 2.8;
+    } else {
+      this.setAmbience({ [name]: 1 });
+    }
+    (this._placeTimers ||= []).push(setTimeout(() => this.stopPlacePreview(), secs * 1000));
+    return secs;
+  }
+
+  stopPlacePreview() {
+    (this._placeTimers || []).forEach(clearTimeout);
+    this._placeTimers = [];
+    this._heartPreview = 0;
+    if (this.started && !this.state.active) this.setAmbience({});
+  }
+
+  // ---------------- batimento de alerta ----------------
+  // Nos valores extremos (calor extremo, mar muito quente, CO muito alto, tempestade) soa um
+  // coração grave, "tum-tum", no centro e sem eco: de ~57 bpm no limite a ~110 bpm no máximo
+  // da escala. É a urgência dos dados dita sem palavras. Limites: scales.js / config.json.
+  _buildHeart() {
+    const Tone = T();
+    if (!SETTINGS.alert.enabled) return;
+    this.heartOut = new Tone.Volume(SETTINGS.alert.volumeDb).connect(this.volume);
+    const lp = new Tone.Filter({ type: "lowpass", frequency: 420, rolloff: -24 }).connect(this.heartOut);
+    this.heart = new Tone.MembraneSynth({
+      pitchDecay: 0.05,
+      octaves: 2.5,
+      oscillator: { type: "sine" },
+      envelope: { attack: 0.002, decay: 0.3, sustain: 0, release: 0.12 },
+    }).connect(lp);
+    this.heartLoop = new Tone.Loop((time) => this._beat(time), 1).start(0);
+  }
+
+  _beat(time) {
+    const s = this.state;
+    const preview = this._heartPreview && T().now() < this._heartPreview;
+    const a = preview ? 0.6 : s.alert || 0;
+    if (!this.heart || !this.started || this.paused || (!preview && (!s.active || a <= 0))) return;
+    const vel = (0.55 + 0.45 * a) * (this.low ? 0.6 : 1);
+    this.heart.triggerAttackRelease("A1", 0.12, time, vel);
+    this.heart.triggerAttackRelease("G1", 0.1, time + 0.2, vel * 0.7);
+  }
+
+  // ---------------- modo partitura (Sinfonia do mapa) ----------------
+  // O app agenda as notas (js/sinfonia.js); o motor só toca. Enquanto dura, update() é ignorado.
+  beginScore() {
+    this.stopPreview();
+    this.stopPlacePreview();
+    this._releaseAll();
+    this.scoring = true;
+    this.notes = {};
+    this.state = { ...this.state, active: true, weights: { low: 0, mid: 0, high: 0, arp: 0 }, alert: 0 };
+    const mix = { low: 0.55, mid: 1.6, high: 0.6, arp: 1.15 }; // a melodia na frente, o baixo como chão
+    for (const layer of LAYER_ORDER) this.layers[layer].out.gain.rampTo(this.layers[layer].cfg.level * mix[layer], 0.4);
+    this.filter.frequency.rampTo(this.low ? SETTINGS.low.filterMaxHz : 7000, 0.5);
+  }
+
+  isPoly(layer) {
+    return this._sampling(layer) || !this.layers[layer].mono;
+  }
+
+  scoreNote(layer, midi, dur, vel, time) {
+    if (!this.scoring || this.paused) return;
+    this._voice(layer).triggerAttackRelease(midiToNote(midi), dur, time, clamp(vel, 0.02, 1));
+  }
+
+  scoreState({ pan = 0, amb = {}, alert = 0 }) {
+    if (!this.scoring) return;
+    this.panner.pan.rampTo(clamp(pan, -1, 1) * 0.8, 0.3);
+    this.setAmbience(amb);
+    this.state.alert = alert;
+    if (this.heartLoop) this.heartLoop.interval = this.low ? lerp(1.25, 0.85, alert) : lerp(1.05, 0.55, alert);
+  }
+
+  // tail = segundos para o último acorde se apagar
+  endScore(tail = 0.6) {
+    if (!this.scoring) return;
+    this.scoring = false;
+    this.state = { ...this.state, active: false, alert: 0 };
+    this.setAmbience({});
+    this.panner.pan.rampTo(0, Math.max(0.3, tail));
+    for (const layer of LAYER_ORDER) this.layers[layer].out.gain.rampTo(0, Math.max(0.3, tail));
+    if (tail < 1) this._releaseAll();
+  }
+
+  // ---------------- gravação (exportar o áudio) ----------------
+  // Grava a saída final (depois do limitador): exatamente o que a pessoa ouve, sem a voz.
+  get canRecord() {
+    return this.available && typeof window.MediaRecorder !== "undefined" && !!T().Recorder;
+  }
+
+  async startRecording() {
+    if (!this.started) await this.start();
+    if (this.recorder) return;
+    this.recorder = new (T().Recorder)();
+    this.limiter.connect(this.recorder);
+    await this.recorder.start();
+  }
+
+  async stopRecording() {
+    const rec = this.recorder;
+    if (!rec) return null;
+    this.recorder = null;
+    const blob = await rec.stop();
+    this.limiter.disconnect(rec);
+    rec.dispose();
+    return blob;
   }
 
   // ---------------- instrumentos por camada ----------------
@@ -389,23 +684,28 @@ export class SonificationEngine {
   // ---------------- atualização contínua ----------------
   // s = { active, pan (-1..1), norm (0..1), weights {low,mid,high,arp}, bright, grad }
   update(s) {
-    if (!this.started || this.paused) return;
+    if (!this.started || this.paused || this.scoring) return;
     const prev = this.state;
-    this.state = { ...prev, ...s };
+    this.state = { ...prev, ...s, alert: s.alert ?? 0 };
     const ramp = this.low ? 0.6 : 0.12;
     const now = T().now();
 
     this.panner.pan.rampTo(clamp(s.pan ?? 0, -1, 1) * 0.85, this.low ? 0.4 : 0.08);
+    this.setAmbience(s.amb || {});
     const bright = clamp(s.bright ?? 0.5);
     const cutoff = this.low ? lerp(SETTINGS.low.filterMinHz, SETTINGS.low.filterMaxHz, bright) : lerp(2000, 12000, bright ** 0.8);
     this.filter.frequency.rampTo(cutoff, this.low ? 0.8 : 0.2);
 
     if (this._previewLayer && s.active) this.stopPreview();
+    // teto para a soma das camadas: quando várias soam juntas, todas descem um pouco, e o
+    // conjunto fica com o mesmo peso de uma ou duas camadas (harmonia em vez de acúmulo)
+    const ws = Object.fromEntries(LAYER_ORDER.map((l) => [l, s.active ? Math.sqrt(clamp(s.weights?.[l] ?? 0)) : 0]));
+    const sum = LAYER_ORDER.reduce((a, l) => a + ws[l], 0);
+    const k = sum > 1.5 ? 1.5 / sum : 1;
     for (const layer of LAYER_ORDER) {
       if (layer === this._previewLayer) continue; // não abafa a pré-escuta em andamento
       const L = this.layers[layer];
-      const w = s.active ? Math.sqrt(clamp(s.weights?.[layer] ?? 0)) : 0;
-      L.out.gain.rampTo(w * L.cfg.level * (this.low && layer === "arp" ? 0.6 : 1), s.active ? ramp : 0.5);
+      L.out.gain.rampTo(ws[layer] * k * L.cfg.level * (this.low && layer === "arp" ? 0.6 : 1), s.active ? ramp : 0.5);
     }
 
     if (!s.active) {
@@ -421,8 +721,12 @@ export class SonificationEngine {
       else if (w > 0.05 && midi !== this.notes[layer]) this._strike(layer, midi, w, now);
     }
     // arpejo: o loop lê o estado; ajusta a velocidade
+    if (this.heartLoop) {
+      const al = clamp(s.alert ?? 0);
+      this.heartLoop.interval = this.low ? lerp(1.25, 0.85, al) : lerp(1.05, 0.55, al);
+    }
     const wa = clamp(s.weights.arp ?? 0);
-    this.arpLoop.interval = this.low ? lerp(0.7, 0.36, wa) : lerp(0.48, 0.085, wa ** 0.8);
+    this.arpLoop.interval = this.low ? lerp(0.75, 0.42, wa) : lerp(0.6, 0.17, wa);
   }
 
   // instrumentos percutidos/pinçados: toca quando a nota muda
@@ -529,11 +833,12 @@ export class SonificationEngine {
     const cfg = L.cfg;
     const now = T().now();
     L.out.gain.cancelScheduledValues(now);
-    L.out.gain.rampTo(cfg.level, 0.05);
+    // entra com fade e um pouco abaixo da música, sem susto; notas longas se sobrepõem, então descem mais
+    L.out.gain.rampTo(cfg.level * (cfg.sustain ? 0.5 : 0.6), 0.25);
     const scale = this.scaleNotes(...cfg.range);
     const mid = Math.floor(scale.length / 2);
     let phrase;
-    if (layer === "arp") phrase = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((k, i) => [k + 1, i * 0.14, 1.2]);
+    if (layer === "arp") phrase = [0, 1, 2, 3, 4, 5, 6, 7].map((k, i) => [k + 1, i * 0.2, 1.2]);
     else if (cfg.sustain) phrase = [[mid - 3, 0, 1.6], [mid - 1, 1.2, 1.6], [mid + 1, 2.4, 2.2]];
     else phrase = [[mid - 3, 0, 0.8], [mid - 1, 0.35, 0.8], [mid, 0.7, 0.8], [mid + 1, 1.05, 0.8], [mid + 3, 1.4, 1.6]];
     this._previewLayer = layer;
@@ -542,7 +847,7 @@ export class SonificationEngine {
         if (this._previewLayer !== layer || this.paused) return;
         const note = midiToNote(scale[clamp(deg, 0, scale.length - 1)]);
         const mono = !this._sampling(layer) && L.mono;
-        this._voice(layer).triggerAttackRelease(note, mono ? dur * 0.85 : dur, T().now(), 0.85);
+        this._voice(layer).triggerAttackRelease(note, mono ? dur * 0.85 : dur, T().now(), layer === "arp" ? 0.55 : 0.7);
       }, t * 1000)
     );
     const total = phrase[phrase.length - 1][1] + phrase[phrase.length - 1][2] + 0.6;
@@ -557,7 +862,7 @@ export class SonificationEngine {
     this._previewLayer = null;
     if (!layer || !this.started) return;
     if (!soft) this._releaseLayer(layer);
-    if (!this.state.active) this.layers[layer].out.gain.rampTo(0, soft ? 0.6 : 0.25);
+    if (!this.state.active) this.layers[layer].out.gain.rampTo(0, soft ? 0.6 : 0.45);
   }
 
   // nível de saída em dBFS (após o limitador)

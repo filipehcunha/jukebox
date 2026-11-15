@@ -119,6 +119,15 @@ export function createTutorial(api) {
     setTimeout(() => btn?.classList.remove("is-playing"), secs * 1000);
   }
 
+  async function playPlace(id, btn) {
+    if (!(await ensureAudio())) return;
+    narrator.cancel();
+    btn?.classList.add("is-playing");
+    const secs = await api.engine.previewPlace(id, 5);
+    demoUntil = performance.now() + secs * 1000;
+    setTimeout(() => btn?.classList.remove("is-playing"), secs * 1000);
+  }
+
   // Sequência de estados enviados ao motor, como se o cursor andasse pelo mapa.
   async function runDemo(frames, stepMs) {
     if (!(await ensureAudio())) return;
@@ -203,6 +212,13 @@ export function createTutorial(api) {
       { id: "grave-agudo", actions: () => [button("Ouvir do frio ao quente", demoColdToHot, "button button--primary")] },
       { id: "esquerda-direita", actions: () => [button("Ouvir da esquerda para a direita", demoLeftRight, "button button--primary")] },
       { id: "harpa", actions: () => [button("Ouvir a harpa", demoHarp, "button button--primary")] },
+      {
+        id: "lugares",
+        actions: () => [["mar", "o mar"], ["gelo", "o gelo"], ["floresta", "a floresta"], ["deserto", "o deserto"], ["coracao", "o coração"]].map(([id, nome]) => {
+          const bt = button(`Ouvir ${nome}`, () => playPlace(id, bt));
+          return bt;
+        }),
+      },
       {
         id: "praticar",
         actions: () => [button("Abrir o mapa de temperatura", startPractice, "button button--primary")],

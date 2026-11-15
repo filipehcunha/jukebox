@@ -60,11 +60,12 @@ class Narrator {
     return !!c && (text === undefined || c.texto === text);
   }
 
-  /** Fala um texto com a voz do navegador. */
-  say(text, { queue = false, rate = 1, volume = 1, tag = null } = {}) {
+  /** Fala um texto com a voz do navegador. onstart/onend: avisos quando ESTE item começa e
+   *  quando termina por completo (não dispara se ele for cancelado). */
+  say(text, { queue = false, rate = 1, volume = 1, tag = null, onstart = null, onend = null } = {}) {
     if (!text) return;
     if (!queue) this._clear();
-    this.queue.push({ kind: "tts", text, rate, volume, tag });
+    this.queue.push({ kind: "tts", text, rate, volume, tag, onstart, onend });
     this._next();
     this._emit();
   }
@@ -104,9 +105,11 @@ class Narrator {
     const done = () => {
       if (this.current !== item) return; // item antigo (cancelado)
       this.current = null;
+      try { item.onend?.(); } catch (err) { console.error(err); }
       this._next();
       this._emit();
     };
+    try { item.onstart?.(); } catch (err) { console.error(err); }
     if (item.kind === "clip") this._playClip(item, done);
     else this._speak(item, done);
   }

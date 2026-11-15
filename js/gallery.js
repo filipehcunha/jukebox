@@ -40,9 +40,10 @@ export function presetGroups() {
       title: "Altura das Florestas · GEDI",
       description: "Altura do dossel florestal medida por laser a bordo da ISS.",
       scaleId: "gedi",
-      // globo inclinado: projeção ortográfica ajustada por mínimos quadrados a 6 pontos
-      // de controle (Madagascar, Cabo Agulhas, Chifre da África, Sri Lanka, Dacar, Suez)
-      projection: { type: "orthographic", cx: 0.5256, cy: 0.5716, r: 0.5691, aspect: 1024 / 576, lon0: 41.36, lat0: -8.24 },
+      // globo renderizado com câmera em perspectiva (a ~3,5 raios da Terra). Parâmetros
+      // ajustados comparando terra/oceano da imagem com o countries.geojson: erro de 4,4%
+      // dos pixels (a ortográfica antiga errava 36%, sobretudo perto da borda do globo).
+      projection: { type: "perspective", cx: 0.5022, cy: 0.4999, r: 0.4772, aspect: 1024 / 576, lon0: 37.76, lat0: 0.13, dist: 3.53 },
       source: "NASA SVS · GEDI",
       frames: [{ name: "gedi_forest.jpg", src: "assets/gedi_forest.jpg", thumb: "assets/gedi_forest.jpg" }],
     },

@@ -10,6 +10,7 @@
 // (referencias/escalas/*.jpeg) por tools/extrair_escalas.py -> js/colormaps.js.
 
 import { GMAO_COLORMAPS } from "./colormaps.js";
+import { SETTINGS } from "./config.js";
 
 // ---------------------------------------------------------------------------
 // Utilidades de cor
@@ -566,6 +567,31 @@ export class Scale {
   masks() {
     return this.family === "gmao" ? GMAO_MASKS : [];
   }
+
+  // Quão extremo é o valor (0 = normal; 0,15 a 1 = dentro da faixa de alerta). O motor de
+  // áudio transforma isso num batimento de coração, mais rápido quanto mais extremo.
+  alertLevel(value) {
+    const a = this.alert;
+    if (!a || !Number.isFinite(value) || value < a.from) return 0;
+    return clamp(0.15 + (0.85 * (value - a.from)) / Math.max(a.full - a.from, 1e-6));
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Alertas: valores extremos ganham um batimento de coração (a urgência dos dados).
+// Os limites podem ser trocados em config.json → alerta.limites.
+// ---------------------------------------------------------------------------
+const num = (v) => String(v).replace(".", ",");
+const ALERTS = {
+  temp: { from: 35, full: 40, label: (v) => `calor extremo, acima de ${num(v)} °C` },
+  sst: { from: 30, full: 32, label: (v) => `mar muito quente, acima de ${num(v)} °C` },
+  co: { from: 200, full: 500, label: (v) => `poluição muito alta, acima de ${num(v)} ppbv de monóxido de carbono` },
+  wind: { from: 25, full: 40, label: (v) => `ventos de tempestade, acima de ${num(v)} m/s` },
+};
+for (const [id, a] of Object.entries(ALERTS)) {
+  if (!SETTINGS.alert.enabled) break;
+  const from = SETTINGS.alert.limits[id] ?? a.from;
+  RAW[id].alert = { from, full: Math.max(a.full, from + 1e-6), label: a.label(from) };
 }
 
 export const SCALE_LIST = Object.entries(RAW).map(([id, def]) => new Scale(id, def));

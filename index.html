@@ -58,7 +58,7 @@
         <div class="hero__text">
           <p class="kicker">Galeria de escolha</p>
           <h1 id="galleryHeading" tabindex="-1">Ouça o planeta, pixel a pixel</h1>
-          <p class="lead">Escolha um mapa da NASA ou carregue uma pasta do seu computador. Cada cor é convertida no valor físico da legenda oficial e tocada por violoncelo, piano, flauta e harpa, com vibração no seu celular.</p>
+          <p class="lead">Escolha um mapa da NASA ou carregue uma pasta do seu computador. Explore com o mouse ou o teclado, ou deixe uma faixa varrer o mapa e compor uma sinfonia. Cada cor vira o valor físico da legenda oficial, tocado por violoncelo, piano, flauta e harpa, com os sons de cada lugar e vibração no seu celular.</p>
         </div>
         <div class="upload" id="dropzone">
           <div class="upload__icon" aria-hidden="true">
@@ -86,6 +86,45 @@
         <div class="preset-grid" id="presetGrid"></div>
       </section>
 
+      <section class="gallery-section" aria-labelledby="playlistHeading">
+        <div class="section-head">
+          <h2 id="playlistHeading">Playlist: seis sinfonias da Terra</h2>
+          <p>Para só ouvir. Cada faixa (46 s) foi gerada por este site: uma faixa varreu o mapa da esquerda para a direita e os dados viraram música, com abertura, clímax e final. Abra um mapa e use <strong>Ouvir a sinfonia do mapa</strong> para gerar e baixar a sua.</p>
+        </div>
+        <ul class="track-list">
+          <li class="track">
+            <h3 class="track__title" id="track-0">Temperatura dos Oceanos · ECCO2</h3>
+            <p class="track__text">Ondas quase o tempo todo. O coração bate nas águas acima de 30 °C do Índico e do Pacífico, e o gelo aparece nas bordas polares.</p>
+            <audio controls preload="none" aria-labelledby="track-0" src="assets/playlist/sinfonia-oceanos.mp3"></audio>
+          </li>
+          <li class="track">
+            <h3 class="track__title" id="track-1">Altura das Florestas · GEDI</h3>
+            <p class="track__text">A marimba sobe com o dossel da África Central; insetos e pássaros nas florestas, vento seco no Saara e na Arábia.</p>
+            <audio controls preload="none" aria-labelledby="track-1" src="assets/playlist/sinfonia-florestas.mp3"></audio>
+          </li>
+          <li class="track">
+            <h3 class="track__title" id="track-2">Temperatura do Ar · T2M</h3>
+            <p class="track__text">Do frio da Antártida, com vento e cristais, ao calor acima de 35 °C na África, onde o coração bate.</p>
+            <audio controls preload="none" aria-labelledby="track-2" src="assets/playlist/sinfonia-temperatura.mp3"></audio>
+          </li>
+          <li class="track">
+            <h3 class="track__title" id="track-3">Umidade do Ar · Q2M</h3>
+            <p class="track__text">O ar seco dos desertos e dos polos contra o ar carregado dos trópicos, onde a floresta canta.</p>
+            <audio controls preload="none" aria-labelledby="track-3" src="assets/playlist/sinfonia-umidade.mp3"></audio>
+          </li>
+          <li class="track">
+            <h3 class="track__title" id="track-4">Velocidade do Vento</h3>
+            <p class="track__text">As tempestades do Oceano Austral aceleram os arpejos da harpa; a calmaria dos trópicos deixa a música respirar.</p>
+            <audio controls preload="none" aria-labelledby="track-4" src="assets/playlist/sinfonia-vento.mp3"></audio>
+          </li>
+          <li class="track">
+            <h3 class="track__title" id="track-5">Monóxido de Carbono · CO</h3>
+            <p class="track__text">O ar limpo do hemisfério sul e as plumas de poluição da Ásia e da África, onde o coração dispara.</p>
+            <audio controls preload="none" aria-labelledby="track-5" src="assets/playlist/sinfonia-co.mp3"></audio>
+          </li>
+        </ul>
+      </section>
+
       <section class="gallery-section" id="localSection" aria-labelledby="localHeading" hidden>
         <div class="section-head">
           <h2 id="localHeading">Suas imagens</h2>
@@ -108,6 +147,12 @@
               <p class="kicker" id="exploreKicker">—</p>
               <h2 id="exploreHeading">—</h2>
             </div>
+            <button class="button button--primary button--symphony" id="playSymphony" type="button" aria-pressed="false" aria-keyshortcuts="V" aria-describedby="symphonyHint">
+              <svg class="icon icon--play" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l10-6.5-10-6.5Z" fill="currentColor"/></svg>
+              <svg class="icon icon--pause" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 6h10v12H7z" fill="currentColor"/></svg>
+              <span id="playSymphonyLabel">Ouvir a sinfonia do mapa</span>
+            </button>
+            <span class="sr-only" id="symphonyHint">Uma faixa varre o mapa da esquerda para a direita e transforma os dados em uma música com começo, meio e fim.</span>
             <label class="compact-field">
               <span>Escala de cores</span>
               <select id="scaleSelect"></select>
@@ -177,7 +222,7 @@
 
           <p class="canvas-help" id="canvasHelp">
             Mova o mouse, toque ou use as setas do teclado com o mapa em foco. <kbd>Shift</kbd> + setas move mais rápido,
-            <kbd>Enter</kbd> lê o lugar, <kbd>O</kbd> dá a visão geral do mapa, <kbd>C</kbd> diz a posição, <kbd>1</kbd> a <kbd>9</kbd> saltam entre nove regiões,
+            <kbd>Enter</kbd> lê o lugar, <kbd>O</kbd> dá a visão geral do mapa, <kbd>V</kbd> toca a sinfonia do mapa, <kbd>C</kbd> diz a posição, <kbd>1</kbd> a <kbd>9</kbd> saltam entre nove regiões,
             <kbd>Espaço</kbd> liga ou pausa o som, <kbd>N</kbd> liga ou desliga a narração, <kbd>[</kbd> e <kbd>]</kbd> trocam a hora,
             <kbd>P</kbd> reproduz a linha do tempo, <kbd>L</kbd> abre a legenda e <kbd>H</kbd> abre a ajuda com todos os atalhos.
           </p>
@@ -208,6 +253,37 @@
               <span class="switch__track" aria-hidden="true"><span class="switch__thumb"></span></span>
             </label>
             <button class="button button--ghost button--block" id="reviewLegend" type="button">Rever legenda sensorial</button>
+          </section>
+
+          <section class="panel" aria-labelledby="sweepTitle">
+            <h2 id="sweepTitle">Sinfonia e passeios</h2>
+            <p class="panel__status">Ouça o mapa sem mover nada. Na <strong>sinfonia</strong>, uma faixa varre a imagem e compõe uma música com abertura, clímax e final. Nos <strong>passeios</strong>, o cursor viaja por um caminho (a volta ao mundo segue a altura do cursor; o polo a polo, a posição dele na horizontal).</p>
+            <label class="field">
+              <span class="field__label">Caminho</span>
+              <select id="sweepRoute">
+                <option value="sinfonia" selected>Sinfonia do mapa (faixa que varre a imagem)</option>
+                <option value="volta">Volta ao mundo (oeste → leste)</option>
+                <option value="polos">De polo a polo (norte → sul)</option>
+                <option value="mapa">Mapa inteiro (zigue-zague)</option>
+              </select>
+            </label>
+            <label class="field">
+              <span class="field__label">Duração</span>
+              <select id="sweepDuration">
+                <option value="30">30 segundos</option>
+                <option value="45">45 segundos</option>
+                <option value="90">90 segundos</option>
+              </select>
+            </label>
+            <label class="switch">
+              <span class="switch__body"><strong>Gravar o áudio</strong><small>Ao terminar, a música vira um arquivo WAV para baixar e compartilhar (a voz não entra na gravação).</small></span>
+              <input type="checkbox" id="sweepRecord">
+              <span class="switch__track" aria-hidden="true"><span class="switch__thumb"></span></span>
+            </label>
+            <button class="button button--primary button--block" id="sweepButton" type="button" aria-pressed="false" aria-keyshortcuts="V">Tocar a sinfonia</button>
+            <progress class="sweep-progress" id="sweepProgress" max="1" value="0" hidden aria-hidden="true"></progress>
+            <p class="panel__status" id="sweepStatus" role="status"></p>
+            <a class="button button--ghost button--block" id="sweepDownload" href="#" hidden>Baixar áudio</a>
           </section>
 
           <section class="panel panel--phone" aria-labelledby="phoneTitle">
@@ -309,6 +385,7 @@
         <p class="kicker">Preparação sensorial</p>
         <h2 id="legendDialogTitle" tabindex="-1">Legenda auditiva</h2>
         <p id="legendDialogIntro" class="legend-dialog__intro">—</p>
+        <button class="button button--ghost legend-dialog__read" id="dlgReadAloud" type="button" aria-pressed="false" data-no-echo>Ouvir a legenda</button>
       </header>
 
       <div class="legend-dialog__scale">
@@ -322,6 +399,9 @@
       </div>
 
       <ul class="instrument-list" id="instrumentList"></ul>
+
+      <h3 class="place-list__title">Sons dos lugares</h3>
+      <ul class="instrument-list place-list" id="placeList" aria-label="Sons dos lugares"></ul>
 
       <div class="mapping-list">
         <div><strong>Eixo X</strong><span>Posição horizontal leva o som da esquerda para a direita (estéreo).</span></div>
@@ -402,6 +482,7 @@
           <li><kbd>Setas</kbd>: movem o cursor. Com <kbd>Shift</kbd>, o passo é maior. A voz avisa quando você chega à borda.</li>
           <li><kbd>Enter</kbd>: diz o lugar, os instrumentos e o valor.</li>
           <li><kbd>O</kbd>: visão geral do mapa, com os valores mais alto e mais baixo e onde ficam.</li>
+          <li><kbd>V</kbd>: toca ou para a sinfonia do mapa, em que uma faixa varre a imagem e transforma os dados em música com começo, meio e fim. No painel Sinfonia e passeios dá para trocar por um passeio do cursor, escolher a duração e gravar o áudio. As setas, um clique no mapa ou <kbd>Escape</kbd> também param.</li>
           <li><kbd>C</kbd>: diz a posição do cursor e as coordenadas.</li>
           <li><kbd>1</kbd> a <kbd>9</kbd>: saltam para nove regiões do mapa, como um teclado de telefone. 1 é o canto de cima à esquerda, 5 é o centro e 9 é o canto de baixo à direita.</li>
           <li><kbd>Home</kbd>: volta ao centro.</li>
