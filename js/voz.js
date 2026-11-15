@@ -120,10 +120,10 @@ class Narrator {
   }
 
   /** Toca a gravação `id` se ela corresponder ao texto; senão fala o texto. */
-  clip(id, text, { queue = false, rate = 1, volume = 1, tag = null, priority = false } = {}) {
-    if (!this.hasClip(id, text)) return this.say(text, { queue, rate, volume, tag, priority });
+  clip(id, text, { queue = false, rate = 1, volume = 1, tag = null, priority = false, onstart = null, onend = null } = {}) {
+    if (!this.hasClip(id, text)) return this.say(text, { queue, rate, volume, tag, priority, onstart, onend });
     if (!queue) this._clear();
-    this.queue.push({ kind: "clip", src: this.clips[id].src, text, rate, volume, tag, priority, lang: this.lang });
+    this.queue.push({ kind: "clip", src: this.clips[id].src, text, rate, volume, tag, priority, onstart, onend, lang: this.lang });
     this._next();
     this._emit();
   }
@@ -169,7 +169,11 @@ class Narrator {
   busy() { return !!this.current || this.queue.length > 0; }
 
   _next() {
-    if (this.current || !this.queue.length || this.blocked) return;
+    if (this.current || !this.queue.length) return;
+    // Antes do primeiro gesto, a voz do navegador é sempre bloqueada; uma gravação em MP3
+    // pode tocar se o navegador permitir autoplay neste site (Edge/Firefox: "Permitir
+    // reprodução automática"). Por isso o MP3 é tentado mesmo assim; se for barrado, espera.
+    if (this.blocked && this.queue[0].kind !== "clip") return;
     const item = this.queue.shift();
     this.current = item;
     const token = ++this._token;
@@ -192,7 +196,12 @@ class Narrator {
       this.queue.unshift(item);
     };
     this._stopOutput(); // nunca duas falas ao mesmo tempo
-    try { item.onstart?.(); } catch (err) { console.error(err); }
+    // onstart só quando o som realmente começa (uma fala barrada pelo navegador não conta)
+    item.started = () => {
+      if (item._began || token !== this._token) return;
+      item._began = true;
+      try { item.onstart?.(); } catch (err) { console.error(err); }
+    };
     if (item.kind === "clip") this._playClip(item, token, done, blocked);
     else this._speak(item, token, done, blocked);
   }
@@ -212,6 +221,7 @@ class Narrator {
     };
     audio.onended = done;
     audio.onerror = fallback;
+    audio.onplaying = () => item.started();
     audio.play().catch((err) => {
       if (token !== this._token) return;
       if (err?.name === "NotAllowedError") blocked();
@@ -249,6 +259,7 @@ class Narrator {
         return true;
       };
       const fin = () => { if (end()) speakNext(); };
+      u.onstart = () => item.started();
       u.onend = fin;
       u.onerror = (e) => {
         if (e.error === "not-allowed") { if (end()) blocked(); return; }

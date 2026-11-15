@@ -312,6 +312,12 @@ export class SonificationEngine {
     if (!this.started) return;
     this.paused = false;
     this.volume.volume.rampTo(this.userVolumeDb, 0.3);
+    // a pausa soltou as notas: esquece a última, para a próxima atualização tocar de novo na
+    // hora (sem isso, um instrumento percutido só voltava quando a nota mudasse)
+    this.lastNote = null;
+    this.lastStrike = 0;
+    this._inactiveSince = null;
+    if (this.live) this.live.sustaining = null;
   }
 
   // ---------------- atualização contínua ----------------

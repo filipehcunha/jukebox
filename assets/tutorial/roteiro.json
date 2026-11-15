@@ -239,7 +239,229 @@
     }
   },
   "audio": {
-    "en": {},
-    "pt": {}
+    "en": {
+      "inicio": {
+        "arquivo": "en-inicio.mp3",
+        "voz": "en-US-JennyNeural",
+        "texto": "Welcome to Earth Symphony. This site turns NASA maps of the planet into music, and you don't need to see the screen to use it. Press Enter to start the audio tutorial, or Escape to skip it and go to the map gallery. At any time, press H to hear all the keyboard shortcuts, and I to switch the language to Portuguese."
+      },
+      "atalhos": {
+        "arquivo": "en-atalhos.mp3",
+        "voz": "en-US-JennyNeural",
+        "texto": "Keyboard shortcuts. First, the shortcuts. None of them needs Control, Alt or Shift: just press the key. H: open this help with all the shortcuts. T: open the audio tutorial. I: switch the language between English and Portuguese. Space: say the country and the value under the cursor (clicking the map does the same). F: put the focus on the map. M: turn the sound on or pause it. G: go back to the map gallery. L: open the map legend. V: start or stop the tour: the cursor wanders around the map by itself. O: overview of the map, with the highest and lowest values. C: say where the cursor is, with the coordinates. Home: go back to the centre of the map. P: play or pause the timeline. open bracket: previous hour. close bracket: next hour. plus: volume up. minus: volume down. On the map, the arrows move the cursor, and holding an arrow down moves faster. The keys 1 to 9 jump between nine areas of the map, like a phone keypad."
+      },
+      "como-funciona": {
+        "arquivo": "en-como-funciona.mp3",
+        "voz": "en-US-JennyNeural",
+        "texto": "How it works. Each map shows one characteristic of the planet, like air temperature or humidity, and is played by one instrument. You don't need to see the map: you hear it. The tutorial takes about five minutes. First you will hear the sounds. Then you will practise on a real map, using only the keyboard. Use Tab to move between buttons and Enter to press them. Next moves on, Repeat reads the step again, and Escape closes the tutorial whenever you want. If you already use a screen reader, uncheck Site voice below, so you don't hear two voices at once. Headphones help you hear left and right."
+      },
+      "instrumentos": {
+        "arquivo": "en-instrumentos.mp3",
+        "voz": "en-US-JennyNeural",
+        "texto": "One instrument for each characteristic. Each characteristic of the planet always has its own instrument, in every map: temperature, piano; humidity, flute; wind speed, harp; and carbon monoxide, marimba. Use the buttons below to hear each instrument, from the lowest value to the highest."
+      },
+      "grave-agudo": {
+        "arquivo": "en-grave-agudo.mp3",
+        "voz": "en-US-JennyNeural",
+        "texto": "The higher the value, the higher the note. The value of each place chooses the note. The more intense the characteristic, the higher the note; the weaker it is, the lower the note. On the temperature map, the cold of the poles plays low notes on the piano, and the heat of the deserts plays high notes. On the humidity map, dry air is low on the flute and humid air is high. The same goes for wind and carbon monoxide. Press the button to hear the piano go from the coldest place to the hottest."
+      },
+      "esquerda-direita": {
+        "arquivo": "en-esquerda-direita.mp3",
+        "voz": "en-US-JennyNeural",
+        "texto": "Left and right. The position on the map also becomes a position in the sound. The left side of the map plays in your left ear, and the right side in your right ear. In the middle, the sound is centred. With headphones on, press the button and hear the piano cross from left to right."
+      },
+      "lugares": {
+        "arquivo": "en-lugares.mp3",
+        "voz": "en-US-JennyNeural",
+        "texto": "The sounds of places. Below the instrument, each kind of place has a sound of its own, so you know where you are. At sea, you hear waves. On ice, a cold wind with crystals. In the forest, insects and birds. In the desert, a dry wind. Use the buttons below to hear each sound. Later, in each map's legend, the button Review the sounds of places tutorial plays them again."
+      },
+      "praticar": {
+        "arquivo": "en-praticar.mp3",
+        "voz": "en-US-JennyNeural",
+        "texto": "Time to practise. Now you will explore the air temperature map of the whole planet. North is at the top, south at the bottom, west on the left and east on the right. The centre of the map is the Atlantic Ocean, on the equator. When the map opens, it will already have focus. The arrows move an invisible cursor and you hear the place where it is. Press Space at any time to hear the country and the temperature. During the challenges, press R to repeat the instruction. Press the button to open the map."
+      },
+      "desafio-mover": {
+        "arquivo": "en-desafio-mover.mp3",
+        "voz": "en-US-JennyNeural",
+        "texto": "Challenge: move the cursor. You are at the centre of the map, in the Atlantic Ocean near the equator. It is warm there, so the piano plays high notes. Press the left or right arrow a few times and hear the note change. Hold an arrow down to move faster."
+      },
+      "desafio-onde": {
+        "arquivo": "en-desafio-onde.mp3",
+        "voz": "en-US-JennyNeural",
+        "texto": "Challenge: where am I? Press Space to hear the name of the country and the temperature. Clicking on the map does the same."
+      },
+      "desafio-frio": {
+        "arquivo": "en-desafio-frio.mp3",
+        "voz": "en-US-JennyNeural",
+        "texto": "Challenge: find the cold. Now look for a very cold place, where the piano plays its lowest notes. A hint: Antarctica is at the bottom. Hold the down arrow."
+      },
+      "desafio-centro": {
+        "arquivo": "en-desafio-centro.mp3",
+        "voz": "en-US-JennyNeural",
+        "texto": "Challenge: back to the centre. Press Home to go back to the centre of the map, where it is warm."
+      },
+      "desafio-tempo": {
+        "arquivo": "en-desafio-tempo.mp3",
+        "voz": "en-US-JennyNeural",
+        "texto": "Challenge: move through time. This map has a timeline, with one image for each hour. Press close bracket to go forward one hour, and open bracket to go back. The P key plays the hours in sequence, and the sound changes over time, even without moving the cursor."
+      },
+      "fim": {
+        "arquivo": "en-fim.mp3",
+        "voz": "en-US-JennyNeural",
+        "texto": "Well done, you finished! Remember: Space tells you the country and the value, H opens the list of shortcuts, and L opens the map legend, which is read aloud. Try the V key too: the cursor wanders around the map by itself, in continuous random movements, while you listen. Press V again, an arrow or Escape to stop. The gallery has other maps to explore: humidity, wind and carbon monoxide. You can also connect a phone and feel the map as vibrations. To hear this tutorial again, press T."
+      },
+      "ok-mover": {
+        "arquivo": "en-ok-mover.mp3",
+        "voz": "en-US-JennyNeural",
+        "texto": "Very good! You are moving the cursor."
+      },
+      "ok-onde": {
+        "arquivo": "en-ok-onde.mp3",
+        "voz": "en-US-JennyNeural",
+        "texto": "That's it! Press Space whenever you want to know where you are."
+      },
+      "ok-frio": {
+        "arquivo": "en-ok-frio.mp3",
+        "voz": "en-US-JennyNeural",
+        "texto": "Found it! That low note is the cold, below zero."
+      },
+      "ok-centro": {
+        "arquivo": "en-ok-centro.mp3",
+        "voz": "en-US-JennyNeural",
+        "texto": "Great, you are back at the centre, and the notes are high again."
+      },
+      "ok-tempo": {
+        "arquivo": "en-ok-tempo.mp3",
+        "voz": "en-US-JennyNeural",
+        "texto": "Perfect! You heard the hour change."
+      },
+      "abrindo": {
+        "arquivo": "en-abrindo.mp3",
+        "voz": "en-US-JennyNeural",
+        "texto": "Opening the temperature map."
+      },
+      "voz-ligada": {
+        "arquivo": "en-voz-ligada.mp3",
+        "voz": "en-US-JennyNeural",
+        "texto": "Site voice on."
+      },
+      "sem-som": {
+        "arquivo": "en-sem-som.mp3",
+        "voz": "en-US-JennyNeural",
+        "texto": "I couldn't turn the sound on. Check your internet connection and try again."
+      }
+    },
+    "pt": {
+      "inicio": {
+        "arquivo": "pt-inicio.mp3",
+        "voz": "pt-BR-FranciscaNeural",
+        "texto": "Bem-vindo à Sinfonia da Terra. Este site transforma mapas do planeta feitos pela NASA em música, e você não precisa enxergar a tela para usá-lo. Aperte Enter para começar o tutorial em áudio, ou Escape para pular e ir para a galeria de mapas. A qualquer momento, aperte H para ouvir todos os atalhos de teclado, e I para mudar o idioma para inglês."
+      },
+      "atalhos": {
+        "arquivo": "pt-atalhos.mp3",
+        "voz": "pt-BR-FranciscaNeural",
+        "texto": "Atalhos de teclado. Primeiro, os atalhos. Nenhum deles precisa de Control, Alt ou Shift: basta apertar a tecla. H: abre esta ajuda com todos os atalhos. T: abre o tutorial em áudio. I: troca o idioma entre inglês e português. Espaço: diz o país e o valor sob o cursor (clicar no mapa faz o mesmo). F: leva o foco para o mapa. M: liga ou pausa o som. G: volta para a galeria de mapas. L: abre a legenda do mapa. V: começa ou para o passeio: o cursor passeia sozinho pelo mapa. O: visão geral do mapa, com os valores mais alto e mais baixo. C: diz onde está o cursor, com as coordenadas. Home: volta ao centro do mapa. P: toca ou pausa a linha do tempo. abre colchete: hora anterior. fecha colchete: próxima hora. mais: aumenta o volume. menos: diminui o volume. No mapa, as setas movem o cursor, e segurar a seta apertada anda mais rápido. As teclas de 1 a 9 saltam entre nove regiões do mapa, como um teclado de telefone."
+      },
+      "como-funciona": {
+        "arquivo": "pt-como-funciona.mp3",
+        "voz": "pt-BR-FranciscaNeural",
+        "texto": "Como funciona. Cada mapa mostra uma característica do planeta, como a temperatura ou a umidade do ar, e é tocado por um instrumento. Você não precisa enxergar o mapa: você o ouve. O tutorial leva uns cinco minutos. Primeiro, você vai conhecer os sons. Depois, vai praticar num mapa de verdade, usando só o teclado. Use Tab para passar pelos botões e Enter para apertar. O botão Próximo avança, o Repetir lê o passo de novo, e o Escape fecha o tutorial quando você quiser. Se você já usa um leitor de tela, desmarque a opção Voz do site, logo abaixo, para não ouvir duas vozes ao mesmo tempo. Fones de ouvido ajudam a perceber a esquerda e a direita."
+      },
+      "instrumentos": {
+        "arquivo": "pt-instrumentos.mp3",
+        "voz": "pt-BR-FranciscaNeural",
+        "texto": "Um instrumento para cada característica. Cada característica do planeta tem sempre o seu próprio instrumento, em todos os mapas: temperatura, piano; umidade, flauta; velocidade do vento, harpa; e monóxido de carbono, marimba. Use os botões abaixo para ouvir cada instrumento, do valor mais baixo ao mais alto."
+      },
+      "grave-agudo": {
+        "arquivo": "pt-grave-agudo.mp3",
+        "voz": "pt-BR-FranciscaNeural",
+        "texto": "Quanto maior o valor, mais aguda a nota. O valor de cada lugar escolhe a nota. Quanto mais intensa a característica, mais aguda é a nota; quanto mais fraca, mais grave. No mapa de temperatura, o frio dos polos toca notas graves no piano, e o calor dos desertos, notas agudas. No mapa de umidade, o ar seco é grave na flauta e o ar úmido é agudo. O mesmo vale para o vento e o monóxido de carbono. Aperte o botão para ouvir o piano ir do lugar mais frio ao mais quente."
+      },
+      "esquerda-direita": {
+        "arquivo": "pt-esquerda-direita.mp3",
+        "voz": "pt-BR-FranciscaNeural",
+        "texto": "Esquerda e direita. A posição no mapa também vira posição no som. O lado esquerdo do mapa toca no seu ouvido esquerdo, e o lado direito, no ouvido direito. No meio, o som fica no centro. Com os fones, aperte o botão e ouça o piano atravessar da esquerda para a direita."
+      },
+      "lugares": {
+        "arquivo": "pt-lugares.mp3",
+        "voz": "pt-BR-FranciscaNeural",
+        "texto": "Os sons dos lugares. Por baixo do instrumento, cada tipo de lugar tem um som próprio, para você saber onde está. No mar, você ouve ondas. No gelo, um vento gelado com cristais. Na floresta, insetos e pássaros. No deserto, um vento seco. Use os botões abaixo para ouvir cada som. Depois, na legenda de cada mapa, o botão Rever o tutorial dos sons dos lugares toca esses sons de novo."
+      },
+      "praticar": {
+        "arquivo": "pt-praticar.mp3",
+        "voz": "pt-BR-FranciscaNeural",
+        "texto": "Hora de praticar. Agora você vai explorar o mapa de temperatura do ar do planeta inteiro. O norte fica em cima, o sul embaixo, o oeste à esquerda e o leste à direita. O centro do mapa é o Oceano Atlântico, na linha do equador. Quando o mapa abrir, ele já vai estar em foco. As setas movem um cursor invisível, e você ouve o lugar onde ele está. Aperte Espaço a qualquer momento para ouvir o país e a temperatura. Durante os desafios, aperte R para repetir a instrução. Aperte o botão para abrir o mapa."
+      },
+      "desafio-mover": {
+        "arquivo": "pt-desafio-mover.mp3",
+        "voz": "pt-BR-FranciscaNeural",
+        "texto": "Desafio: mova o cursor. Você está no centro do mapa, no Oceano Atlântico, perto da linha do equador. Ali faz calor, por isso o piano toca notas agudas. Aperte as setas para a esquerda ou para a direita algumas vezes, e ouça a nota mudar. Segure a seta apertada para andar mais rápido."
+      },
+      "desafio-onde": {
+        "arquivo": "pt-desafio-onde.mp3",
+        "voz": "pt-BR-FranciscaNeural",
+        "texto": "Desafio: onde estou? Aperte Espaço para ouvir o nome do país e a temperatura. Clicar no mapa faz o mesmo."
+      },
+      "desafio-frio": {
+        "arquivo": "pt-desafio-frio.mp3",
+        "voz": "pt-BR-FranciscaNeural",
+        "texto": "Desafio: encontre o frio. Agora procure um lugar bem frio, onde o piano toca as notas mais graves. Uma dica: a Antártida fica lá embaixo. Segure a seta para baixo."
+      },
+      "desafio-centro": {
+        "arquivo": "pt-desafio-centro.mp3",
+        "voz": "pt-BR-FranciscaNeural",
+        "texto": "Desafio: volte ao centro. Aperte a tecla Home para voltar ao centro do mapa, onde faz calor."
+      },
+      "desafio-tempo": {
+        "arquivo": "pt-desafio-tempo.mp3",
+        "voz": "pt-BR-FranciscaNeural",
+        "texto": "Desafio: avance no tempo. Este mapa tem uma linha do tempo, com uma imagem para cada hora. Aperte fecha colchete para avançar uma hora, e abre colchete para voltar. A tecla P toca as horas em sequência, e o som muda com o tempo, mesmo sem mover o cursor."
+      },
+      "fim": {
+        "arquivo": "pt-fim.mp3",
+        "voz": "pt-BR-FranciscaNeural",
+        "texto": "Pronto, você terminou! Lembre-se: Espaço diz o país e o valor, H abre a lista de atalhos, e L abre a legenda do mapa, que é lida em voz alta. Experimente também a tecla V: o cursor passeia sozinho pelo mapa, em movimentos aleatórios e contínuos, enquanto você escuta. Aperte V de novo, uma seta ou Escape para parar. Na galeria há outros mapas para explorar: a umidade, o vento e o monóxido de carbono. Também dá para conectar um celular e sentir o mapa em vibrações. Para ouvir este tutorial de novo, aperte T."
+      },
+      "ok-mover": {
+        "arquivo": "pt-ok-mover.mp3",
+        "voz": "pt-BR-FranciscaNeural",
+        "texto": "Muito bem! Você está movendo o cursor."
+      },
+      "ok-onde": {
+        "arquivo": "pt-ok-onde.mp3",
+        "voz": "pt-BR-FranciscaNeural",
+        "texto": "Isso mesmo! Aperte Espaço sempre que quiser saber onde está."
+      },
+      "ok-frio": {
+        "arquivo": "pt-ok-frio.mp3",
+        "voz": "pt-BR-FranciscaNeural",
+        "texto": "Encontrou! Essa nota grave é o frio abaixo de zero."
+      },
+      "ok-centro": {
+        "arquivo": "pt-ok-centro.mp3",
+        "voz": "pt-BR-FranciscaNeural",
+        "texto": "Ótimo, você voltou ao centro, e as notas voltaram a ficar agudas."
+      },
+      "ok-tempo": {
+        "arquivo": "pt-ok-tempo.mp3",
+        "voz": "pt-BR-FranciscaNeural",
+        "texto": "Perfeito! Você ouviu a hora mudar."
+      },
+      "abrindo": {
+        "arquivo": "pt-abrindo.mp3",
+        "voz": "pt-BR-FranciscaNeural",
+        "texto": "Abrindo o mapa de temperatura."
+      },
+      "voz-ligada": {
+        "arquivo": "pt-voz-ligada.mp3",
+        "voz": "pt-BR-FranciscaNeural",
+        "texto": "Voz do site ligada."
+      },
+      "sem-som": {
+        "arquivo": "pt-sem-som.mp3",
+        "voz": "pt-BR-FranciscaNeural",
+        "texto": "Não consegui ligar o som. Verifique a conexão com a internet e tente de novo."
+      }
+    }
   }
 }

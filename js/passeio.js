@@ -14,10 +14,10 @@ const MV = 0.03; // margem vertical
  * Cria o passeio a partir da posição atual do cursor.
  * @param {{u: number, v: number}} origin  posição inicial (0 a 1)
  * @param {object} [opts]
- * @param {number} [opts.speed]   largura do mapa percorrida por segundo
+ * @param {number} [opts.speed]   largura do mapa percorrida por segundo (config.json → passeio.velocidade)
  * @param {number} [opts.aspect]  largura / altura do mapa (para a velocidade ser igual nos dois eixos)
  */
-export function createWander(origin, { speed = 0.1, aspect = 2 } = {}) {
+export function createWander(origin, { speed = 0.05, aspect = 2 } = {}) {
   return {
     u: clamp(origin.u, MU, 1 - MU),
     v: clamp(origin.v, MV, 1 - MV),

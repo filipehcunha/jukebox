@@ -55,6 +55,8 @@ export function createTutorial(api) {
   let missionDone = false;
   let lastFocus = null;
   let moveCount = 0;
+  let welcomeStarted = false; // a fala das boas-vindas já começou a tocar?
+  let welcomeKeyUsed = false; // a 1ª tecla já foi usada para destravar a leitura
 
   const ready = fetch(`${BASE}roteiro.json`, { cache: "no-cache" })
     .then((r) => r.json())
@@ -85,9 +87,9 @@ export function createTutorial(api) {
   const wantsVoice = () => active && api.voiceOn();
 
   // fala uma gravação do roteiro (ou o texto, com a voz do navegador)
-  function speakId(id, text, { queue = false, tag = null } = {}) {
+  function speakId(id, text, { queue = false, tag = null, onstart = null } = {}) {
     if (!wantsVoice()) return;
-    narrator.clip(`${getLang()}:${id}`, text, { queue, tag, priority: true, ...api.voiceOpts() });
+    narrator.clip(`${getLang()}:${id}`, text, { queue, tag, priority: true, onstart, ...api.voiceOpts() });
   }
 
   function setStatus(text) {
@@ -313,7 +315,7 @@ export function createTutorial(api) {
       // título e o texto inteiro (inclusive a janela de boas-vindas na primeira visita)
       titleEl.focus();
     }
-    if (speak) speakId(step.id, text, { queue, tag: "instrucao" });
+    if (speak) speakId(step.id, text, { queue, tag: "instrucao", onstart: step.gate ? () => { welcomeStarted = true; } : null });
   }
 
   function next() {
@@ -357,6 +359,8 @@ export function createTutorial(api) {
     if ($("helpDialog").open) $("helpDialog").close();
     lastFocus = document.activeElement;
     active = true;
+    welcomeStarted = false;
+    welcomeKeyUsed = false;
     voiceBox.checked = api.voiceOn();
     document.body.classList.add("tutorial-open");
     steps = buildSteps({ gate });
@@ -413,6 +417,15 @@ export function createTutorial(api) {
     }
     const step = steps[index];
     const onControl = e.target.closest?.("button, a, input, select, textarea");
+    // Primeira visita: o navegador só libera a voz depois de um gesto. Se a primeira tecla for
+    // Enter ou Espaço, ela serve para COMEÇAR A LEITURA das boas-vindas (que dizem o que fazer),
+    // e não para pular a tela sem que a pessoa tenha ouvido nada.
+    // (só a primeira vez: a segunda tecla Enter começa o tutorial normalmente)
+    if (step?.gate && !welcomeStarted && !welcomeKeyUsed && api.voiceOn() && (e.key === "Enter" || e.key === " ") && !onControl) {
+      welcomeKeyUsed = true;
+      e.preventDefault();
+      return;
+    }
     // boas-vindas: Enter começa o tutorial (o foco está no título, para a leitura completa)
     if (step?.gate && e.key === "Enter" && !onControl) {
       e.preventDefault();

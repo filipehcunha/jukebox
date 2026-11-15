@@ -33,8 +33,8 @@
   },
 
   "passeio": {
-    "_comentario": "Passeio sonoro (tecla V): o cursor passeia sozinho pelo mapa, em movimentos aleatórios e contínuos, e o som começa na hora. duracaoS = duração em segundos.",
-    "duracaoS": 30
+    "_comentario": "Passeio sonoro (tecla V): o cursor passeia sozinho pelo mapa, em movimentos aleatórios e contínuos, e o som começa na hora. Ele continua até a pessoa pedir para parar (V, uma seta, um clique no mapa ou Escape). velocidade = fração da largura do mapa percorrida por segundo (0.05 = o mapa inteiro em 20 segundos).",
+    "velocidade": 0.05
   },
 
   "paisagem": {

@@ -55,11 +55,11 @@ Tudo o que é ajustável fica em **`config.json`**, na raiz do projeto. O arquiv
 
 | Seção | O que controla |
 | --- | --- |
-| `mapeamento` | **Um instrumento por característica**: `TEMPERATURE` (piano), `HUMIDITY` (flauta), `WIND_SPEED` (harpa), `CARBON_MONOXIDE` (violoncelo), `VEGETATION_HEIGHT` (marimba). O app avisa se duas características usarem o mesmo instrumento. |
+| `mapeamento` | **Um instrumento por característica**: `TEMPERATURE` (piano), `HUMIDITY` (flauta), `WIND_SPEED` (harpa) e `CARBON_MONOXIDE` (marimba). O app avisa se duas características usarem o mesmo instrumento. |
 | `instrumentos` | Para cada um dos 10 instrumentos: **`volumeDb`** (volume na mixagem) e a faixa de notas MIDI (`notaMaisGrave`, `notaMaisAguda`). O valor mais baixo do mapa toca a nota mais grave e o mais alto, a mais aguda. |
 | `audio` | Volume geral inicial, tonalidade (`C` ou `G`), amostras gravadas (`usarAmostrasGravadas`), limitador e reverberação. |
 | `paisagem` | Sons dos lugares: `ativo` e o `volumeDb` de `mar` (mais `periodoOndaS`), `gelo`, `floresta` e `deserto`. |
-| `passeio` | Duração do passeio sonoro (`duracaoS`). |
+| `passeio` | Velocidade do passeio sonoro (`velocidade`, fração da largura do mapa por segundo; padrão 0,05). |
 | `narracao` | Voz do site ligada ao abrir, pausa da música durante a fala, rampas, velocidade e volume da voz, leitura dos controles e leitura da legenda ao abrir. |
 | `teclado` | Passo do cursor por toque de seta e passo com a seta segurada (sem Shift). |
 | `vibracao` | Duração, intervalo e força dos pulsos do celular nos extremos frio e quente. |
@@ -110,10 +110,10 @@ Os atalhos valem na página toda, menos dentro de campos de texto e listas. Com 
 
 ## Sonificação (Tone.js)
 
-**Um instrumento por característica.** Cada mapa representa uma característica do planeta e é tocado só pelo instrumento dela: temperatura no piano, umidade na flauta, velocidade do vento na harpa e monóxido de carbono no violoncelo. **Quanto mais intensa a característica, mais aguda a nota**, e vice-versa: a posição do valor na barra de cores escolhe a nota dentro da faixa do instrumento (`config.json` → `instrumentos`).
+**Um instrumento por característica.** Cada mapa representa uma característica do planeta e é tocado só pelo instrumento dela: temperatura no piano, umidade na flauta, velocidade do vento na harpa e monóxido de carbono na marimba. **Quanto mais intensa a característica, mais aguda a nota**, e vice-versa: a posição do valor na barra de cores escolhe a nota dentro da faixa do instrumento (`config.json` → `instrumentos`).
 
 - **Eixo X → panorama estéreo** (`Panner`, com rampa).
-- As notas são quantizadas na **pentatônica maior de Dó ou Sol**, com histerese para não oscilar na fronteira entre duas notas. Violoncelo e flauta fazem legato ou glide; piano e harpa tocam quando a nota muda e re-tocam suavemente com o cursor parado.
+- As notas são quantizadas na **pentatônica maior de Dó ou Sol**, com histerese para não oscilar na fronteira entre duas notas. A flauta faz legato ou glide; piano, harpa e marimba tocam quando a nota muda e re-tocam suavemente com o cursor parado. A marimba é sintetizada (não há gravação dela na biblioteca de amostras).
 - As amostras são gravações reais (piano Salamander; violoncelo, contrabaixo, violino, clarinete, flauta e harpa do *tonejs-instruments*), carregadas só para o instrumento em uso, com fallback sintetizado. Para usar só os sintetizadores, `audio.usarAmostrasGravadas: false`.
 - **Sons dos lugares** (por baixo do instrumento, para saber onde se está): ondas no mar, vento gelado e cristais no gelo, insetos e pássaros na floresta, e vento seco no deserto. O lugar vem de `landscapeAt` (`js/geo.js`).
 - **Barra de cores tocável:** passar o mouse (ou usar as setas, `Page Up`/`Page Down` para passos maiores) toca exatamente o que um pixel daquela cor tocaria no mapa.
@@ -121,7 +121,7 @@ Os atalhos valem na página toda, menos dentro de campos de texto e listas. Com 
 
 ### Passeio sonoro
 
-O botão **Fazer um passeio** (tecla `V`) faz o cursor passear sozinho pelo mapa por `passeio.duracaoS` segundos, em **movimentos aleatórios e contínuos**: velocidade constante, curvas suaves que mudam de tempos em tempos e um "quique" ao chegar à borda. O som começa na hora (não há fala antes, que pausaria a música, nem relatório no fim); o leitor de tela recebe um aviso curto pela região ARIA. As setas, um clique no mapa, `V` ou `Escape` param. Código: `js/passeio.js`.
+O botão **Fazer um passeio** (tecla `V`) faz o cursor passear sozinho pelo mapa, em **movimentos aleatórios e contínuos**, **até a pessoa pedir para parar**, na velocidade de `passeio.velocidade` (0,05 = o mapa inteiro em uns 20 segundos): velocidade constante, curvas suaves que mudam de tempos em tempos e um "quique" ao chegar à borda. O som começa na hora (não há fala antes, que pausaria a música, nem relatório no fim); o leitor de tela recebe um aviso curto pela região ARIA. As setas, um clique no mapa, `V` ou `Escape` param. Pausar o som (ou abrir a legenda ou a ajuda) só congela o passeio, que continua de onde parou. Código: `js/passeio.js`.
 
 ## Voz e narração
 
@@ -153,7 +153,7 @@ O painel **Vibração no celular** gera um peer PeerJS com ID aleatório e um QR
 
 ### Tutorial em áudio (pessoas cegas)
 
-Um guia de uns cinco minutos que funciona só com teclado e som. Na primeira visita ele abre sozinho com as boas-vindas: `Enter` começa e `Escape` pula. Depois de fechado, não abre mais sozinho (use o botão **Tutorial em áudio** ou a tecla `T`; para testar de novo, apague `sinfonia-tutorial-visto` do `localStorage`).
+Um guia de uns cinco minutos que funciona só com teclado e som. Na primeira visita ele abre sozinho com as boas-vindas, que começam a tocar na hora quando o navegador permite autoplay de áudio no site. Se o navegador bloquear o som até o primeiro gesto, a primeira tecla (inclusive `Enter`) começa a leitura das boas-vindas do início, em vez de pular a tela. Depois, `Enter` começa e `Escape` pula. Todas as falas fixas, inclusive a lista de atalhos e a de instrumentos, são MP3 gravados (`python tools/gerar_audio_tutorial.py`), o que garante a leitura completa; sem gravação, a fala usa a voz do navegador. Depois de fechado, não abre mais sozinho (use o botão **Tutorial em áudio** ou a tecla `T`; para testar de novo, apague `sinfonia-tutorial-visto` do `localStorage`).
 
 1. **Atalhos de teclado — a primeira informação do tutorial**, montada a partir de `js/shortcuts.js`.
 2. **Ouvir:** como funciona; um botão para ouvir o instrumento de cada característica (do valor mais baixo ao mais alto); "quanto maior o valor, mais aguda a nota" (o piano sobe do mais frio ao mais quente); esquerda e direita (com fones); os sons dos lugares.
@@ -193,7 +193,7 @@ js/gallery.js    mapas pré-carregados
 js/tutorial.js   tutorial guiado em áudio e teclado (atalhos + demonstrações + desafios no mapa)
 js/passeio.js    passeio sonoro: caminho aleatório e contínuo do cursor
 js/voz.js        narrador: uma fala por vez, MP3 neural ou a melhor voz do navegador no idioma escolhido
-assets/tutorial/ roteiro.json (textos do tutorial em en e pt) + MP3 gravados (opcionais)
+assets/tutorial/ roteiro.json (textos do tutorial em en e pt) + MP3 gravados de todas as falas
 assets/countries.geojson  fronteiras dos países (Natural Earth, 1:50m) usadas para dizer o país sob o cursor
 tools/gerar_audio_tutorial.py  roteiro → MP3 com voz neural (edge-tts)
 tools/extrair_escalas.py     legendas → js/colormaps.js (+ --validar)

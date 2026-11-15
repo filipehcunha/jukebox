@@ -132,7 +132,7 @@ const state = {
 };
 
 // passeio sonoro (tecla V): ver a seção "Passeio sonoro" mais abaixo
-const tour = { on: false, t0: 0, last: 0, dur: 0, wander: null };
+const tour = { on: false, t0: 0, last: 0, wander: null };
 
 const title = () => (state.group ? groupTitle(state.group) : "");
 
@@ -824,8 +824,11 @@ function stepFrame(delta) {
 // ---------------------------------------------------------------------------
 // Leitura e sonificação
 // ---------------------------------------------------------------------------
+// O mapa toca quando o mouse está sobre ele, quando ele tem o foco, durante o passeio ou
+// logo depois de ligar/retomar o som (state.listening): quem clica em "Retomar o som" está
+// com o foco no botão, e a música precisa voltar mesmo assim, no ponto onde o cursor estava.
 function isActive() {
-  return !$("exploreView").hidden && (state.pointerInside || state.keyboardActive || tour.on) && !$("legendDialog").open && !$("helpDialog").open;
+  return !$("exploreView").hidden && (state.pointerInside || state.keyboardActive || tour.on || state.listening) && !$("legendDialog").open && !$("helpDialog").open;
 }
 
 // leitura completa (valor, lugar, paisagem) em qualquer ponto do mapa
@@ -998,8 +1001,8 @@ function startTour() {
     updateAudioUI();
   }
   const aspect = state.sampler.width / state.sampler.height;
-  tour.wander = createWander({ u: state.u, v: state.v }, { aspect });
-  tour.dur = SETTINGS.sweep.durationS * 1000;
+  // sem duração: o passeio segue até a pessoa pedir para parar
+  tour.wander = createWander({ u: state.u, v: state.v }, { aspect, speed: SETTINGS.sweep.speed });
   tour.t0 = tour.last = performance.now();
   tour.on = true;
   state.readingDirty = true;
@@ -1008,12 +1011,9 @@ function startTour() {
 }
 
 function tickTour(now) {
+  // som pausado ou janela aberta: o passeio só espera (não termina) e continua de onde parou
   if (engine.paused || $("legendDialog").open || $("helpDialog").open) {
-    stopTour({ silent: true });
-    return;
-  }
-  if (now - tour.t0 >= tour.dur) {
-    stopTour({ completed: true });
+    tour.last = now;
     return;
   }
   const { u, v } = stepWander(tour.wander, (now - tour.last) / 1000);
@@ -1026,13 +1026,13 @@ function tickTour(now) {
   if (state.trail.length > 28) state.trail.shift();
 }
 
-function stopTour({ completed = false, silent = false } = {}) {
+function stopTour({ silent = false } = {}) {
   if (!tour.on) return;
   tour.on = false;
   tour.wander = null;
   state.readingDirty = true;
   setTourUI(false);
-  if (!silent) announce(t(completed ? "tour.done" : "tour.stopped"));
+  if (!silent) announce(t("tour.stopped"));
 }
 
 // ---------------------------------------------------------------------------
@@ -1188,6 +1188,8 @@ async function toggleAudio() {
   } catch {
     toast(t("audio.noTone"));
   }
+  // ligou ou retomou: a música do mapa volta a tocar (até o mouse sair do mapa)
+  state.listening = engine.started && !engine.paused;
   updateAudioUI();
   state.readingDirty = true;
   if (engine.started) announce(t(engine.paused ? "audio.paused" : "audio.playing"));
@@ -1624,7 +1626,7 @@ function setupEvents() {
     setFromPointer(e);
     readHere();
   });
-  canvas.addEventListener("pointerleave", () => { state.pointerInside = false; state.readingDirty = true; });
+  canvas.addEventListener("pointerleave", () => { state.pointerInside = false; state.listening = false; state.readingDirty = true; });
   canvas.addEventListener("pointerup", (e) => { if (e.pointerType !== "mouse") { state.pointerInside = false; state.readingDirty = true; } });
   canvas.addEventListener("focus", () => { state.keyboardActive = true; state.readingDirty = true; });
   canvas.addEventListener("blur", () => { state.keyboardActive = false; state.readingDirty = true; });

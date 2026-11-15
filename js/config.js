@@ -192,7 +192,7 @@ const DEFAULT_MAPPING = {
   TEMPERATURE: "GRAND_PIANO",
   HUMIDITY: "FLUTE",
   WIND_SPEED: "HARP",
-  CARBON_MONOXIDE: "CELLO",
+  CARBON_MONOXIDE: "MARIMBA",
 };
 export const CHARACTERISTICS = Object.keys(DEFAULT_MAPPING);
 
@@ -231,7 +231,8 @@ export const SETTINGS = {
     reverb: num("audio", "reverberacao", 0.3, 0, 1),
   },
   sweep: {
-    durationS: num("passeio", "duracaoS", 30, 10, 600),
+    // largura do mapa percorrida por segundo (0.05 = metade da velocidade antiga, 0.1)
+    speed: num("passeio", "velocidade", 0.05, 0.005, 1),
   },
   ambience: {
     enabled: bool("paisagem", "ativo", true),
