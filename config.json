@@ -6,7 +6,7 @@
     "TEMPERATURE": "GRAND_PIANO",
     "HUMIDITY": "FLUTE",
     "WIND_SPEED": "HARP",
-    "CARBON_MONOXIDE": "CELLO"
+    "CARBON_MONOXIDE": "MARIMBA"
   },
 
   "instrumentos": {
@@ -61,8 +61,8 @@
 
   "teclado": {
     "_comentario": "Tamanho do passo do cursor no mapa, como fração da largura (0.0125 = 1,25% do mapa por toque de seta). passoAoSegurar = passo enquanto a seta fica apertada (sem precisar de Shift).",
-    "passo": 0.0125,
-    "passoAoSegurar": 0.03
+    "passo": 0.0025,
+    "passoAoSegurar": 0.005
   },
 
   "vibracao": {
