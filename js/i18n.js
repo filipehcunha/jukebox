@@ -22,6 +22,8 @@ export const STRINGS = {
     "skip.main": "Skip to main content",
     "btn.tutorial": "Audio tutorial",
     "btn.help": "Help & shortcuts",
+    "btn.about": "About the project",
+    "btn.aboutAria": "About the project (opens the project page)",
     "btn.gallery": "Gallery",
 
     "lang.other": "Português",
@@ -392,6 +394,8 @@ export const STRINGS = {
     "skip.main": "Pular para o conteúdo principal",
     "btn.tutorial": "Tutorial em áudio",
     "btn.help": "Ajuda e atalhos",
+    "btn.about": "Sobre o projeto",
+    "btn.aboutAria": "Sobre o projeto (abre a página do projeto, em inglês)",
     "btn.gallery": "Galeria",
 
     "lang.other": "English",

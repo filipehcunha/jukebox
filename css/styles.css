@@ -148,6 +148,14 @@ main { padding: clamp(16px, 3vw, 36px); max-width: 1560px; margin: 0 auto; outli
 /* ---------------- galeria ---------------- */
 .hero { display: grid; gap: 4px; margin-bottom: 30px; max-width: 70ch; }
 .hero h1 { font: 600 clamp(2rem, 4.2vw, 3.4rem)/1.05 var(--font-display); margin: 6px 0 12px; letter-spacing: -0.01em; outline: none; }
+/* link para a landing page do projeto (landing/) */
+.hero__about { margin: 4px 0 0; }
+.link-about {
+  display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 4px 2px;
+  color: var(--accent); font-weight: 650; text-decoration: underline; text-underline-offset: 4px; border-radius: 8px;
+}
+.link-about:hover { color: var(--text); }
+html.hc .link-about { color: #ffff00; }
 .lead { color: var(--text-soft); font-size: 1.05rem; max-width: 60ch; }
 
 .gallery-section { margin-bottom: 40px; }

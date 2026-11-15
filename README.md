@@ -8,7 +8,7 @@ Experiência web que transforma mapas de dados terrestres da NASA em **música i
 python3 servidor.py          # serve em http://localhost:8000 e na rede local
 ```
 
-Abra `http://localhost:8000`. O `servidor.py` escuta em todas as interfaces e, se a porta 8000 estiver ocupada, usa a próxima livre. O QR Code do celular é montado **sozinho em qualquer computador**:
+Abra `http://localhost:8000`: a página inicial é a **landing page** do projeto (`index.html`, em inglês, para a banca). Os botões *Launch the Jukebox* levam ao **app**, em `app.html` (`http://localhost:8000/app.html`), e o link **About the project**, logo abaixo do título da galeria do app, volta para a landing. O `servidor.py` escuta em todas as interfaces e, se a porta 8000 estiver ocupada, usa a próxima livre. O QR Code do celular é montado **sozinho em qualquer computador**:
 
 1. Se a página foi aberta por um endereço de rede ou HTTPS (ex.: `http://192.168.0.7:8000`), o QR usa esse mesmo endereço.
 2. Em `localhost`, o app pergunta ao `servidor.py` (`/__lan`). Ele lista os IPs da máquina (Linux, macOS, Windows e WSL), ignora Docker, VPN e loopback e coloca a rede Wi-Fi/cabo primeiro. A detecção é refeita a cada QR gerado, então trocar de rede não exige reiniciar. Se houver mais de uma rede, o painel deixa escolher.
@@ -174,7 +174,9 @@ O roteiro guarda o texto de cada gravação. Se uma fala foi editada e não regr
 ## Estrutura
 
 ```text
-index.html, receiver.html, servidor.py
+index.html       landing page do projeto (HTML + CSS inline, sem JS): a página inicial
+app.html, receiver.html, servidor.py
+landing/assets/  imagens da landing, inclusive o favicon usado também pelo app
 css/styles.css
 config.json      TODA a configuração: instrumento de cada característica, volumes (dB), voz etc.
 js/config.js     lê e valida o config.json; parte técnica dos 10 instrumentos
