@@ -1,344 +1,358 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#03080f">
-  <meta name="description" content="Earth Symphony: a multisensory Earth jukebox. NASA data maps become music, phone vibration and accessible narration.">
-  <title>Earth Symphony</title>
-  <link rel="stylesheet" href="css/styles.css">
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='29' fill='%23060d18' stroke='%2367e8f9' stroke-width='2'/%3E%3Cpath d='M8 36c8-9 16-3 24-10s16-3 24 6' fill='none' stroke='%2367e8f9' stroke-width='2.5' stroke-linecap='round'/%3E%3Ccircle cx='32' cy='32' r='4' fill='%23fb7185'/%3E%3C/svg%3E">
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js" defer></script>
-  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js" defer></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" defer></script>
-  <script type="module" src="js/app.js"></script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Earth Symphony — Hear NASA's climate maps</title>
+<meta name="description" content="Earth Symphony turns NASA climate maps into music, speech and touch, so anyone, including people who are blind or have low vision, can explore Earth's data without seeing the map.">
+<meta property="og:title" content="Earth Symphony — Close your eyes. Now explore the planet.">
+<meta property="og:description" content="NASA climate maps turned into music, speech and phone vibration. Free, in the browser, accessible by design.">
+<meta property="og:type" content="website">
+<meta property="og:image" content="https://filipehcunha.github.io/jukebox/landing/assets/hero-map-temp.jpg">
+<meta property="og:url" content="https://filipehcunha.github.io/jukebox/">
+<meta name="theme-color" content="#03070d">
+<link rel="icon" type="image/svg+xml" href="landing/assets/favicon.svg">
+<link rel="apple-touch-icon" href="landing/assets/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&amp;family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#03070d}
+.skip{position:absolute;left:-9999px;top:8px;background:#67e8f9;color:#03141f;padding:10px 16px;border-radius:10px;font-weight:600;z-index:100}
+.skip:focus{left:8px}
+a:focus-visible,summary:focus-visible{outline:3px solid #67e8f9;outline-offset:3px;border-radius:6px}
+@media (prefers-reduced-motion: reduce){html{scroll-behavior:auto}}
+a{color:#67e8f9}a:hover{color:#a5f3fc}
+html{scroll-behavior:smooth}
+summary{cursor:pointer}
+</style>
 </head>
-<!--
-  Textos: os elementos com data-i18n="chave" recebem o texto de js/i18n.js no idioma escolhido;
-  data-i18n-attr="aria-label:chave; title:chave" faz o mesmo com atributos.
-  Atalhos: js/shortcuts.js liga cada tecla ao id de um botão desta página.
--->
 <body>
-  <a class="skip-link" href="#main" data-i18n="skip.main">Skip to main content</a>
+<!-- APP_URL: os links "Launch the Jukebox" apontam para "app.html" (o app, na mesma pasta). Se mudar o app de lugar, troque todos. -->
+<a class="skip" href="#top">Skip to main content</a>
+<div style="background: #03070d; color: #eef8ff; font-family: Inter, 'Segoe UI', system-ui, sans-serif; font-size: 17px; line-height: 1.6">
 
-  <header class="topbar">
-    <a class="brand" href="#" id="brandLink" data-i18n-attr="aria-label:brand.aria">
-      <span class="brand__mark" aria-hidden="true">
-        <svg viewBox="0 0 64 64"><circle cx="32" cy="32" r="27" fill="none" stroke="currentColor" stroke-width="1.5" opacity=".55"/><ellipse cx="32" cy="32" rx="31" ry="12" fill="none" stroke="currentColor" stroke-width="1.2" opacity=".42" transform="rotate(-22 32 32)"/><path d="M10 38c8-11 16-2 23-9s13-2 21 7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><circle cx="32" cy="32" r="4.5" fill="#fb7185"/></svg>
-      </span>
-      <span class="brand__text">
-        <span class="brand__title" data-i18n="brand.title">Earth Symphony</span>
-        <span class="brand__subtitle" data-i18n="brand.subtitle">Multisensory Earth Jukebox</span>
-      </span>
-    </a>
-    <div class="topbar__actions">
-      <button class="button button--ghost" id="tutorialOpen" type="button" aria-haspopup="dialog" aria-controls="tutorialPanel">
-        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 13a8 8 0 0 1 16 0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><rect x="3" y="13" width="4.5" height="7" rx="1.6" fill="currentColor"/><rect x="16.5" y="13" width="4.5" height="7" rx="1.6" fill="currentColor"/></svg>
-        <span data-i18n="btn.tutorial">Audio tutorial</span>
-      </button>
-      <button class="button button--ghost" id="helpOpen" type="button" aria-haspopup="dialog" aria-controls="helpDialog">
-        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.6 2.2c-.7.4-1.1.9-1.1 1.8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="17" r="1.2" fill="currentColor"/></svg>
-        <span data-i18n="btn.help">Help &amp; shortcuts</span>
-      </button>
-      <button class="button button--ghost" id="langToggle" type="button" data-i18n-attr="aria-label:lang.aria">
-        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path d="M3 12h18M12 3c2.5 2.6 3.8 5.6 3.8 9s-1.3 6.4-3.8 9c-2.5-2.6-3.8-5.6-3.8-9S9.5 5.6 12 3Z" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>
-        <span id="langToggleLabel" data-i18n="lang.other">Português</span>
-      </button>
-      <button class="button button--play" id="audioToggle" type="button" aria-pressed="false">
-        <svg class="icon icon--play" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l10-6.5-10-6.5Z" fill="currentColor"/></svg>
-        <svg class="icon icon--pause" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5h3.5v14H7V5Zm6.5 0H17v14h-3.5V5Z" fill="currentColor"/></svg>
-        <span id="audioToggleLabel">Turn sound on</span>
-      </button>
-    </div>
-  </header>
+<header style="position: sticky; top: 0; z-index: 10; background: rgba(3, 7, 13, 0.92); border-bottom: 1px solid rgba(143, 209, 255, 0.14)">
+<nav aria-label="Main" style="max-width: 1200px; margin: 0 auto; padding: 14px 24px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px">
+<a href="#top" style="display: flex; align-items: center; gap: 10px; text-decoration: none; color: #eef8ff">
+<svg width="48" height="36" viewBox="-20 0 160 120" aria-hidden="true">
+<defs><clipPath id="navGlobe"><circle cx="60" cy="60" r="49"></circle></clipPath></defs>
+<path d="M2 46 Q-6 60 2 74" fill="none" stroke="#67e8f9" stroke-width="5" stroke-linecap="round" opacity="0.75"></path>
+<path d="M118 46 Q126 60 118 74" fill="none" stroke="#67e8f9" stroke-width="5" stroke-linecap="round" opacity="0.75"></path>
+<circle cx="60" cy="60" r="52" fill="#08121f" stroke="#67e8f9" stroke-width="6"></circle>
+<g clip-path="url(#navGlobe)" fill="none" stroke-linecap="round" stroke="#67e8f9">
+<path d="M4 60 C20 60 24 43 37 43 S52 77 64 77 S78 43 90 43 S106 60 116 60" stroke-width="8"></path>
+</g>
+<circle cx="90" cy="43" r="10" fill="#fb7185" stroke="#03070d" stroke-width="3"></circle>
+</svg>
+<span style="font-family: Fraunces, Georgia, serif; font-weight: 600; font-size: 22px">Earth Symphony</span>
+</a>
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 22px; font-size: 15px">
+<a href="#why" style="color: #c7d8e6; text-decoration: none">Why it matters</a>
+<a href="#how" style="color: #c7d8e6; text-decoration: none">How it works</a>
+<a href="#proof" style="color: #c7d8e6; text-decoration: none">Validation</a>
+<a href="#who" style="color: #c7d8e6; text-decoration: none">Who it's for</a>
+<a href="#faq" style="color: #c7d8e6; text-decoration: none">FAQ</a>
+<a href="app.html" style="background: #67e8f9; color: #03141f; font-weight: 600; text-decoration: none; padding: 10px 18px; border-radius: 12px; min-height: 44px; box-sizing: border-box; display: inline-flex; align-items: center">Launch the Jukebox</a>
+</div>
+</nav>
+</header>
 
-  <main id="main" tabindex="-1">
-    <!-- ===================== GALERIA ===================== -->
-    <section class="view view--gallery" id="galleryView" aria-labelledby="galleryHeading">
-      <div class="hero">
-        <h1 id="galleryHeading" tabindex="-1" data-i18n="gallery.title">Listen to the planet</h1>
-        <p class="lead" data-i18n="gallery.lead">Pick a NASA map. Each map has one instrument: the higher the value, the higher the note.</p>
-      </div>
-      <section class="gallery-section" aria-labelledby="presetsHeading">
-        <div class="section-head">
-          <h2 id="presetsHeading" data-i18n="gallery.maps">NASA maps</h2>
-          <p id="presetsNote"></p>
-        </div>
-        <div class="preset-grid" id="presetGrid"></div>
-      </section>
-    </section>
+<main id="top">
 
-    <!-- ===================== EXPLORADOR ===================== -->
-    <section class="view view--explore" id="exploreView" aria-labelledby="exploreHeading" hidden>
-      <div class="explore">
-        <div class="stage">
-          <div class="stage__head">
-            <button class="button button--ghost" id="backButton" type="button">
-              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 6 8.5 12l6 6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-              <span data-i18n="btn.gallery">Gallery</span>
-            </button>
-            <div class="stage__title">
-              <p class="kicker" id="exploreKicker">—</p>
-              <h2 id="exploreHeading">—</h2>
-            </div>
-            <button class="button button--primary button--tour" id="tourButton" type="button" aria-pressed="false" aria-describedby="tourHint">
-              <svg class="icon icon--play" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l10-6.5-10-6.5Z" fill="currentColor"/></svg>
-              <svg class="icon icon--pause" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 6h10v12H7z" fill="currentColor"/></svg>
-              <span id="tourLabel" data-i18n="tour.play">Play a tour</span>
-            </button>
-            <span class="sr-only" id="tourHint" data-i18n="tour.hint">The cursor wanders around the map by itself while you listen.</span>
-          </div>
+<section aria-labelledby="hero-title" style="max-width: 1200px; margin: 0 auto; padding: 72px 24px 56px; display: flex; flex-wrap: wrap; align-items: center; gap: 56px">
+<div style="flex: 1 1 440px; min-width: 0; display: flex; flex-direction: column; gap: 24px">
+<div style="display: flex; flex-wrap: wrap; gap: 10px; font-size: 13px; font-weight: 600; letter-spacing: 0.5px">
+<span style="padding: 6px 12px; border-radius: 999px; border: 1px solid rgba(103, 232, 249, 0.4); color: #a5f3fc">NASA Space Apps Challenge 2026</span>
+<span style="padding: 6px 12px; border-radius: 999px; border: 1px solid rgba(251, 113, 133, 0.45); color: #fda4af">Data: NASA GMAO · GEOS</span>
+</div>
+<h1 id="hero-title" style="margin: 0; font-family: Fraunces, Georgia, serif; font-weight: 600; font-size: clamp(42px, 6vw, 72px); line-height: 1.02; letter-spacing: -1px">Close your eyes.<br><span style="color: #67e8f9">Now explore the planet.</span></h1>
+<p style="margin: 0; font-size: 20px; color: #c7d8e6; max-width: 560px">Earth Symphony turns NASA climate maps into music, speech and touch, so anyone, including people who are blind or have low vision, can explore Earth's data without seeing the map.</p>
+<div style="display: flex; flex-wrap: wrap; gap: 14px">
+<a href="app.html" style="background: #67e8f9; color: #03141f; font-weight: 700; text-decoration: none; padding: 16px 26px; border-radius: 14px; font-size: 18px; display: inline-flex; align-items: center; gap: 10px">
+<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="16" r="3"></circle></svg>
+Launch the Jukebox</a>
+<a href="#demo" style="border: 1px solid rgba(143, 209, 255, 0.35); color: #eef8ff; font-weight: 600; text-decoration: none; padding: 16px 24px; border-radius: 14px; font-size: 18px">Watch the demo</a>
+</div>
+<p style="margin: 0; font-size: 15px; color: #95adc1">Free · runs in the browser · nothing to install · English and Portuguese · works with NVDA, JAWS, VoiceOver and TalkBack</p>
+</div>
 
-          <div class="canvas-shell" id="canvasShell">
-            <canvas id="mapCanvas" width="1200" height="600" tabindex="0" role="application"
-              data-i18n-attr="aria-roledescription:map.roledesc"></canvas>
-            <div class="loading-veil" id="loadingVeil" hidden><span class="spinner" aria-hidden="true"></span><span data-i18n="map.loading">Loading image…</span></div>
-          </div>
+<div style="flex: 1 1 520px; min-width: 0; position: relative">
+<div style="position: relative; border-radius: 22px; overflow: hidden; border: 1px solid rgba(143, 209, 255, 0.3); box-shadow: 0 24px 70px rgba(0, 0, 0, 0.45)">
+<img src="landing/assets/hero-map-temp.jpg" alt="NASA GEOS map of air temperature 2 m above the surface, from cold blue poles to hot red tropics" style="display: block; width: 100%; height: auto">
+<div aria-hidden="true" style="position: absolute; left: 36%; top: 56%; width: 34px; height: 34px; border-radius: 50%; border: 3px solid #ffffff; box-shadow: 0 0 0 3px #03070d, 0 0 0 9px rgba(103, 232, 249, 0.45); transform: translate(-50%, -50%)"></div>
+</div>
+<div style="position: relative; margin: -46px 18px 0; background: #08121f; border: 1px solid rgba(143, 209, 255, 0.3); border-radius: 16px; padding: 16px 18px; display: flex; flex-wrap: wrap; align-items: center; gap: 16px">
+<span style="display: inline-flex; align-items: center; justify-content: center; min-width: 64px; height: 36px; padding: 0 10px; box-sizing: border-box; border-radius: 8px; border: 1px solid rgba(143, 209, 255, 0.4); border-bottom-width: 3px; font-size: 14px; font-weight: 600; color: #eef8ff">Space</span>
+<div style="flex: 1 1 220px; min-width: 0">
+<div style="font-size: 18px; font-weight: 600">“Brazil. Temperature 27.3 °C.”</div>
+<div style="font-size: 14px; color: #95adc1">Playing on piano · higher value, higher note · panned slightly left</div>
+</div>
+<svg width="96" height="32" viewBox="0 0 96 32" aria-hidden="true"><g fill="#67e8f9"><rect x="0" y="12" width="6" height="8" rx="3"></rect><rect x="10" y="6" width="6" height="20" rx="3"></rect><rect x="20" y="2" width="6" height="28" rx="3"></rect><rect x="30" y="9" width="6" height="14" rx="3"></rect><rect x="40" y="4" width="6" height="24" rx="3"></rect><rect x="50" y="11" width="6" height="10" rx="3"></rect><rect x="60" y="7" width="6" height="18" rx="3"></rect><rect x="70" y="0" width="6" height="32" rx="3" fill="#fb7185"></rect><rect x="80" y="10" width="6" height="12" rx="3"></rect><rect x="90" y="13" width="6" height="6" rx="3"></rect></g></svg>
+</div>
+</div>
+</section>
 
-          <div class="timeline" id="timeline" hidden>
-            <button class="button button--round" id="playTimeline" type="button" aria-pressed="false" data-i18n-attr="aria-label:time.play">
-              <svg class="icon icon--play" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l10-6.5-10-6.5Z" fill="currentColor"/></svg>
-              <svg class="icon icon--pause" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5h3.5v14H7V5Zm6.5 0H17v14h-3.5V5Z" fill="currentColor"/></svg>
-            </button>
-            <div class="timeline__track">
-              <label class="sr-only" for="frameSlider" data-i18n="time.slider">Hour of the sequence</label>
-              <input type="range" id="frameSlider" min="0" max="0" value="0" step="1" data-no-echo>
-              <div class="timeline__labels"><span id="frameLabel">—</span><span id="frameTime">—</span></div>
-              <div class="timeline__load" id="framesLoad" hidden>
-                <progress id="framesProgress" max="1" value="0" aria-labelledby="framesText"></progress>
-                <span id="framesText"></span>
-              </div>
-            </div>
-            <label class="compact-field compact-field--small">
-              <span data-i18n="time.speed">Speed</span>
-              <select id="speedSelect">
-                <option value="1">1 h/s</option>
-                <option value="3" selected>3 h/s</option>
-                <option value="6">6 h/s</option>
-                <option value="12">12 h/s</option>
-              </select>
-            </label>
-          </div>
+<section aria-label="The problem in numbers" style="border-top: 1px solid rgba(143, 209, 255, 0.14); border-bottom: 1px solid rgba(143, 209, 255, 0.14); background: #020409">
+<div style="max-width: 1200px; margin: 0 auto; padding: 40px 24px; display: flex; flex-wrap: wrap; gap: 32px">
+<div style="flex: 1 1 220px; min-width: 0">
+<div style="font-family: Fraunces, Georgia, serif; font-size: 48px; font-weight: 600; color: #67e8f9; line-height: 1.1">2.2 billion</div>
+<div style="color: #c7d8e6">people live with vision impairment</div>
+<div style="font-size: 13px; color: #95adc1">WHO, World report on vision</div>
+</div>
+<div style="flex: 1 1 220px; min-width: 0">
+<div style="font-family: Fraunces, Georgia, serif; font-size: 48px; font-weight: 600; color: #67e8f9; line-height: 1.1">43 million</div>
+<div style="color: #c7d8e6">people are blind worldwide</div>
+<div style="font-size: 13px; color: #95adc1">IAPB Vision Atlas, 2020</div>
+</div>
+<div style="flex: 1 1 220px; min-width: 0">
+<div style="font-family: Fraunces, Georgia, serif; font-size: 48px; font-weight: 600; color: #67e8f9; line-height: 1.1">7.9 million</div>
+<div style="color: #c7d8e6">Brazilians have permanent difficulty seeing</div>
+<div style="font-size: 13px; color: #95adc1">IBGE, Census 2022</div>
+</div>
+<div style="flex: 1 1 220px; min-width: 0">
+<div style="font-family: Fraunces, Georgia, serif; font-size: 48px; font-weight: 600; color: #fb7185; line-height: 1.1">2–4×</div>
+<div style="color: #c7d8e6">higher disaster death rate for people with disabilities, in some cases</div>
+<div style="font-size: 13px; color: #95adc1">UNDRR, 2023</div>
+</div>
+</div>
+</section>
 
-          <div class="legend-bar">
-            <div class="legend-bar__head"><span id="legendTitle">—</span><span id="legendUnit">—</span></div>
-            <div class="legend-bar__track legend-bar__track--play" id="legendTrack">
-              <div class="legend-bar__gradient" id="legendGradient"></div>
-              <div class="legend-bar__marker" id="legendMarker" aria-hidden="true"></div>
-              <div class="legend-bar__tip" id="legendTip" aria-hidden="true" hidden></div>
-            </div>
-            <div class="legend-bar__ticks" id="legendTicks" aria-hidden="true"></div>
-            <div class="legend-bar__ends" id="legendEnds" aria-hidden="true"></div>
-          </div>
+<section id="why" aria-labelledby="why-title" style="max-width: 1200px; margin: 0 auto; padding: 96px 24px 48px">
+<div style="max-width: 760px; margin-bottom: 40px">
+<div style="font-size: 14px; font-weight: 700; letter-spacing: 3px; text-transform: uppercase; color: #fb7185; margin-bottom: 12px">Why it matters</div>
+<h2 id="why-title" style="margin: 0 0 16px; font-family: Fraunces, Georgia, serif; font-weight: 600; font-size: clamp(32px, 4vw, 48px); line-height: 1.1">Climate science speaks almost only in color.</h2>
+<p style="margin: 0; color: #c7d8e6; font-size: 19px">Heat waves, pollution and storms reach the public as colored maps. For people who cannot see them, or cannot tell their colors apart, the data simply is not there, even though they are among the people most exposed to climate disasters.</p>
+</div>
+<div style="display: flex; flex-wrap: wrap; gap: 20px">
+<div style="flex: 1 1 300px; min-width: 0; background: #08121f; border: 1px solid rgba(143, 209, 255, 0.14); border-radius: 18px; padding: 28px">
+<h3 style="margin: 0 0 10px; font-size: 21px">Maps are closed doors</h3>
+<p style="margin: 0; color: #c7d8e6">A colored map has no text a screen reader can read. A blind student or scientist has to wait for someone to describe it.</p>
+</div>
+<div style="flex: 1 1 300px; min-width: 0; background: #08121f; border: 1px solid rgba(143, 209, 255, 0.14); border-radius: 18px; padding: 28px">
+<h3 style="margin: 0 0 10px; font-size: 21px">Rainbow scales mislead</h3>
+<p style="margin: 0; color: #c7d8e6">Rainbow color maps distort data and are unreadable for many people with color-vision deficiency, about 1 in 12 men (Crameri et al., <em>Nature Communications</em>, 2020).</p>
+</div>
+<div style="flex: 1 1 300px; min-width: 0; background: #08121f; border: 1px solid rgba(143, 209, 255, 0.14); border-radius: 18px; padding: 28px">
+<h3 style="margin: 0 0 10px; font-size: 21px">Those most at risk are left out</h3>
+<p style="margin: 0; color: #c7d8e6">84% of people with disabilities have no personal disaster plan, and 86% feel excluded from local planning (UNDRR global survey, 2023).</p>
+</div>
+</div>
+</section>
 
-          <div class="reading-grid">
-            <article class="reading-card">
-              <span class="reading-card__label" data-i18n="read.place">Place</span>
-              <strong class="reading-card__value" id="readRegion">—</strong>
-              <span class="reading-card__sub" id="readCoord">—</span>
-            </article>
-            <article class="reading-card reading-card--value">
-              <span class="reading-card__label" id="readValueLabel">—</span>
-              <strong class="reading-card__value" id="readValue">—</strong>
-              <span class="reading-card__sub" id="readZone">—</span>
-            </article>
-          </div>
+<section aria-labelledby="orch-title" style="max-width: 1200px; margin: 0 auto; padding: 48px 24px">
+<div style="max-width: 760px; margin-bottom: 36px">
+<div style="font-size: 14px; font-weight: 700; letter-spacing: 3px; text-transform: uppercase; color: #67e8f9; margin-bottom: 12px">One planet, four instruments</div>
+<h2 id="orch-title" style="margin: 0 0 16px; font-family: Fraunces, Georgia, serif; font-weight: 600; font-size: clamp(32px, 4vw, 48px); line-height: 1.1">Every variable has its own voice.</h2>
+<p style="margin: 0; color: #c7d8e6; font-size: 19px">Four global NASA GEOS maps, 372 hourly frames each (30 Oct – 14 Nov 2026). The higher the value, the higher the note, always on a pentatonic scale, so it always sounds good.</p>
+</div>
+<div style="display: flex; flex-wrap: wrap; gap: 20px">
+<div style="flex: 1 1 240px; min-width: 0; background: #08121f; border: 1px solid rgba(143, 209, 255, 0.14); border-radius: 18px; padding: 24px; display: flex; flex-direction: column; gap: 12px">
+<div style="font-size: 13px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: #95adc1">Air temperature</div>
+<div style="font-family: Fraunces, Georgia, serif; font-size: 30px; font-weight: 600">Piano</div>
+<div aria-hidden="true" style="height: 12px; border-radius: 6px; background: linear-gradient(90deg, #2b1055, #1d4ed8, #22d3ee, #fde047, #f97316, #b91c1c, #450a0a)"></div>
+<div style="font-size: 15px; color: #c7d8e6">−40 to 40 °C · real Salamander piano recordings</div>
+</div>
+<div style="flex: 1 1 240px; min-width: 0; background: #08121f; border: 1px solid rgba(143, 209, 255, 0.14); border-radius: 18px; padding: 24px; display: flex; flex-direction: column; gap: 12px">
+<div style="font-size: 13px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: #95adc1">Humidity</div>
+<div style="font-family: Fraunces, Georgia, serif; font-size: 30px; font-weight: 600">Flute</div>
+<div aria-hidden="true" style="height: 12px; border-radius: 6px; background: linear-gradient(90deg, #7c2d12, #ca8a04, #d9f99d, #34d399, #0e7490, #1e3a8a)"></div>
+<div style="font-size: 15px; color: #c7d8e6">0 to 22 g/kg · recorded flute</div>
+</div>
+<div style="flex: 1 1 240px; min-width: 0; background: #08121f; border: 1px solid rgba(143, 209, 255, 0.14); border-radius: 18px; padding: 24px; display: flex; flex-direction: column; gap: 12px">
+<div style="font-size: 13px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: #95adc1">Wind speed</div>
+<div style="font-family: Fraunces, Georgia, serif; font-size: 30px; font-weight: 600">Harp</div>
+<div aria-hidden="true" style="height: 12px; border-radius: 6px; background: linear-gradient(90deg, #1e293b, #6d28d9, #2563eb, #22d3ee, #a3e635, #facc15, #ef4444)"></div>
+<div style="font-size: 15px; color: #c7d8e6">0 to 40 m/s · recorded harp</div>
+</div>
+<div style="flex: 1 1 240px; min-width: 0; background: #08121f; border: 1px solid rgba(143, 209, 255, 0.14); border-radius: 18px; padding: 24px; display: flex; flex-direction: column; gap: 12px">
+<div style="font-size: 13px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: #95adc1">Carbon monoxide</div>
+<div style="font-family: Fraunces, Georgia, serif; font-size: 30px; font-weight: 600">Marimba</div>
+<div aria-hidden="true" style="height: 12px; border-radius: 6px; background: linear-gradient(90deg, #0f172a, #334155, #a16207, #ea580c, #dc2626, #fdf4ff)"></div>
+<div style="font-size: 15px; color: #c7d8e6">40 to 500 ppbv · fires, industry and traffic</div>
+</div>
+</div>
+</section>
 
-          <p class="canvas-help" id="canvasHelp"></p>
-        </div>
+<section id="how" aria-labelledby="how-title" style="max-width: 1200px; margin: 0 auto; padding: 96px 24px 48px">
+<div style="max-width: 760px; margin-bottom: 40px">
+<div style="font-size: 14px; font-weight: 700; letter-spacing: 3px; text-transform: uppercase; color: #67e8f9; margin-bottom: 12px">How it works</div>
+<h2 id="how-title" style="margin: 0; font-family: Fraunces, Georgia, serif; font-weight: 600; font-size: clamp(32px, 4vw, 48px); line-height: 1.1">From NASA's pixels to your ears and hands, in four steps.</h2>
+</div>
+<ol style="list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 20px">
+<li style="flex: 1 1 250px; min-width: 0; border-top: 3px solid #67e8f9; padding-top: 20px">
+<div style="font-family: Fraunces, Georgia, serif; font-size: 40px; font-weight: 600; color: #67e8f9; line-height: 1">01</div>
+<h3 style="margin: 12px 0 8px; font-size: 21px">Read NASA's map</h3>
+<p style="margin: 0; color: #c7d8e6">Each pixel is matched to the map's official color bar in the CIELAB color space and turned back into a physical value.</p>
+</li>
+<li style="flex: 1 1 250px; min-width: 0; border-top: 3px solid #67e8f9; padding-top: 20px">
+<div style="font-family: Fraunces, Georgia, serif; font-size: 40px; font-weight: 600; color: #67e8f9; line-height: 1">02</div>
+<h3 style="margin: 12px 0 8px; font-size: 21px">Turn it into music</h3>
+<p style="margin: 0; color: #c7d8e6">The value picks the note; the cursor's position picks left or right ear. Ocean waves, polar wind and forest birds say where you are.</p>
+</li>
+<li style="flex: 1 1 250px; min-width: 0; border-top: 3px solid #67e8f9; padding-top: 20px">
+<div style="font-family: Fraunces, Georgia, serif; font-size: 40px; font-weight: 600; color: #67e8f9; line-height: 1">03</div>
+<h3 style="margin: 12px 0 8px; font-size: 21px">Ask, and a voice answers</h3>
+<p style="margin: 0; color: #c7d8e6">Press Space to hear the country and the exact value. The music pauses while the voice speaks, so sounds never compete.</p>
+</li>
+<li style="flex: 1 1 250px; min-width: 0; border-top: 3px solid #fb7185; padding-top: 20px">
+<div style="font-family: Fraunces, Georgia, serif; font-size: 40px; font-weight: 600; color: #fb7185; line-height: 1">04</div>
+<h3 style="margin: 12px 0 8px; font-size: 21px">Feel it on your phone</h3>
+<p style="margin: 0; color: #c7d8e6">Scan a QR code and your phone vibrates with the data over WebRTC: slow, weak pulses for low values; fast, strong ones for high.</p>
+</li>
+</ol>
+</section>
 
-        <aside class="sidebar" data-i18n-attr="aria-label:panels.aria">
-          <section class="panel" aria-labelledby="audioPanelTitle">
-            <h2 id="audioPanelTitle" data-i18n="sound.title">Sound</h2>
-            <p class="panel__status" id="audioStatus" role="status"></p>
-            <label class="field">
-              <span class="field__label"><span data-i18n="sound.volume">Volume</span> <output id="volumeOut">0 dB</output></span>
-              <input type="range" id="volumeSlider" min="-30" max="6" step="1" value="0">
-            </label>
-            <button class="button button--ghost button--block" id="reviewLegend" type="button" data-i18n="sound.legend">Map legend</button>
-          </section>
+<section aria-labelledby="keys-title" style="max-width: 1200px; margin: 0 auto; padding: 48px 24px">
+<div style="background: #08121f; border: 1px solid rgba(143, 209, 255, 0.2); border-radius: 26px; padding: 40px; display: flex; flex-wrap: wrap; gap: 40px; align-items: center">
+<div style="flex: 1 1 360px; min-width: 0">
+<h2 id="keys-title" style="margin: 0 0 14px; font-family: Fraunces, Georgia, serif; font-weight: 600; font-size: clamp(28px, 3.5vw, 40px); line-height: 1.15">Designed for keyboards and screen readers from day one.</h2>
+<p style="margin: 0 0 16px; color: #c7d8e6">Every action is one key, with no Ctrl, Alt or Shift. A five-minute audio tutorial teaches it all with hands-on challenges on a real map.</p>
+<p style="margin: 0; color: #c7d8e6">Low vision and color blindness: large text, high contrast, Cividis and Viridis palettes and a color-blindness simulator.</p>
+</div>
+<div style="flex: 1 1 420px; min-width: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; font-size: 15px">
+<div style="display: flex; align-items: center; gap: 12px"><span style="min-width: 74px; text-align: center; padding: 6px 8px; border-radius: 8px; border: 1px solid rgba(143, 209, 255, 0.4); border-bottom-width: 3px; font-weight: 600">← ↑ → ↓</span><span style="color: #c7d8e6">move the cursor</span></div>
+<div style="display: flex; align-items: center; gap: 12px"><span style="min-width: 74px; text-align: center; padding: 6px 8px; border-radius: 8px; border: 1px solid rgba(143, 209, 255, 0.4); border-bottom-width: 3px; font-weight: 600">1 – 9</span><span style="color: #c7d8e6">jump to a region</span></div>
+<div style="display: flex; align-items: center; gap: 12px"><span style="min-width: 74px; text-align: center; padding: 6px 8px; border-radius: 8px; border: 1px solid rgba(143, 209, 255, 0.4); border-bottom-width: 3px; font-weight: 600">Space</span><span style="color: #c7d8e6">where am I, what value</span></div>
+<div style="display: flex; align-items: center; gap: 12px"><span style="min-width: 74px; text-align: center; padding: 6px 8px; border-radius: 8px; border: 1px solid rgba(143, 209, 255, 0.4); border-bottom-width: 3px; font-weight: 600">O</span><span style="color: #c7d8e6">overview: max, min, mean</span></div>
+<div style="display: flex; align-items: center; gap: 12px"><span style="min-width: 74px; text-align: center; padding: 6px 8px; border-radius: 8px; border: 1px solid rgba(143, 209, 255, 0.4); border-bottom-width: 3px; font-weight: 600">V</span><span style="color: #c7d8e6">sound tour of the globe</span></div>
+<div style="display: flex; align-items: center; gap: 12px"><span style="min-width: 74px; text-align: center; padding: 6px 8px; border-radius: 8px; border: 1px solid rgba(143, 209, 255, 0.4); border-bottom-width: 3px; font-weight: 600">P [ ]</span><span style="color: #c7d8e6">play time, hour by hour</span></div>
+<div style="display: flex; align-items: center; gap: 12px"><span style="min-width: 74px; text-align: center; padding: 6px 8px; border-radius: 8px; border: 1px solid rgba(143, 209, 255, 0.4); border-bottom-width: 3px; font-weight: 600">T</span><span style="color: #c7d8e6">audio tutorial</span></div>
+<div style="display: flex; align-items: center; gap: 12px"><span style="min-width: 74px; text-align: center; padding: 6px 8px; border-radius: 8px; border: 1px solid rgba(143, 209, 255, 0.4); border-bottom-width: 3px; font-weight: 600">I</span><span style="color: #c7d8e6">English ↔ Português</span></div>
+</div>
+</div>
+</section>
 
-          <section class="panel panel--phone" aria-labelledby="phoneTitle">
-            <div class="panel__head">
-              <h2 id="phoneTitle" data-i18n="phone.title">Phone vibration</h2>
-              <span class="status-dot" id="phoneDot" aria-hidden="true"></span>
-            </div>
-            <p class="help" data-i18n="phone.help">Scan the QR code with your phone camera. The phone vibrates as you explore the map.</p>
-            <button class="button button--primary button--block" id="phoneConnect" type="button">
-              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="2.5" width="10" height="19" rx="2.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M3 9v6M21 9v6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-              <span id="phoneConnectLabel" data-i18n="phone.connect">Generate QR code</span>
-            </button>
-            <div class="phone-box" id="phoneBox" hidden>
-              <label class="field">
-                <span class="field__label" data-i18n="phone.via">The phone opens the receiver through</span>
-                <select id="receiverMode">
-                  <option value="lan" data-i18n="phone.lan">Local Wi-Fi network (this computer)</option>
-                  <option value="public" data-i18n="phone.public">Internet: GitHub Pages (HTTPS)</option>
-                </select>
-              </label>
-              <div class="field" id="lanField" hidden>
-                <label class="field__label" for="lanSelect" data-i18n="phone.address">This computer's address on the network</label>
-                <select id="lanSelect"></select>
-                <label class="sr-only" for="lanInput" data-i18n="phone.typeAddress">Type the address</label>
-                <input type="text" id="lanInput" placeholder="192.168.0.10:8000" inputmode="url" autocomplete="off" spellcheck="false" hidden>
-                <small class="help" id="lanHelp"></small>
-              </div>
-              <p class="qr-warn" id="qrWarn" role="alert" hidden></p>
-              <div class="qr" id="qrBox"></div>
-              <code class="qr-url" id="qrUrl"></code>
-              <button class="button button--ghost button--block" id="copyReceiver" type="button" aria-describedby="copyReceiverHelp" data-i18n="phone.copy">Copy the receiver link</button>
-              <small class="help" id="copyReceiverHelp" data-i18n="phone.copyHelp">Can't see the QR code? Copy the link and send it to your phone.</small>
-              <p class="panel__status" id="phoneStatus" role="status">—</p>
-              <details class="help-details phone-help">
-                <summary data-i18n="phone.trouble">Phone won't connect?</summary>
-                <ol>
-                  <li data-i18n="phone.trouble1">The page doesn't open on the phone: use the same Wi-Fi network (not a guest network), allow the port in the firewall, or choose Internet: GitHub Pages above.</li>
-                  <li data-i18n="phone.trouble2">It opens but keeps “Looking for the computer”: generate a new QR code, or try another network or mobile data.</li>
-                  <li data-i18n="phone.trouble3">It connects but doesn't vibrate: tap “Turn on vibration” on the phone. iPhone/Safari can't vibrate on the web, so the receiver only pulses on screen.</li>
-                </ol>
-              </details>
-              <a class="link-small" id="receiverLink" href="#" target="_blank" rel="noopener" data-i18n="phone.openHere">Open the receiver on this device</a>
-              <button class="button button--ghost button--block" id="phoneDisconnect" type="button" data-i18n="phone.disconnect">Disconnect</button>
-            </div>
-          </section>
+<section id="proof" aria-labelledby="proof-title" style="max-width: 1200px; margin: 0 auto; padding: 96px 24px 48px">
+<div style="border: 1px solid rgba(103, 232, 249, 0.35); border-radius: 26px; padding: 40px; background: #050c16">
+<div style="display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 16px; font-size: 13px; font-weight: 600">
+<span style="padding: 5px 12px; border-radius: 999px; background: rgba(134, 239, 172, 0.12); border: 1px solid rgba(134, 239, 172, 0.4); color: #bbf7d0">Validated</span>
+<span style="padding: 5px 12px; border-radius: 999px; border: 1px solid rgba(143, 209, 255, 0.3); color: #c7d8e6">12,000 pixels per variable</span>
+</div>
+<h2 id="proof-title" style="margin: 0 0 12px; font-family: Fraunces, Georgia, serif; font-weight: 600; font-size: clamp(28px, 3.5vw, 40px); line-height: 1.15">What you hear matches what NASA published.</h2>
+<p style="margin: 0 0 28px; color: #c7d8e6; max-width: 760px">We decode the colors back into numbers and check them against NASA's own color bars. The median color error is ΔE 1.0 to 2.3, around the smallest difference the human eye can notice. And the readings match known geography:</p>
+<div style="display: flex; flex-wrap: wrap; gap: 16px">
+<div style="flex: 1 1 200px; min-width: 0; background: #08121f; border-radius: 16px; padding: 20px">
+<div style="font-size: 14px; color: #95adc1">Equatorial Pacific</div>
+<div style="font-family: Fraunces, Georgia, serif; font-size: 34px; font-weight: 600">28.8 °C</div>
+</div>
+<div style="flex: 1 1 200px; min-width: 0; background: #08121f; border-radius: 16px; padding: 20px">
+<div style="font-size: 14px; color: #95adc1">Antarctica</div>
+<div style="font-family: Fraunces, Georgia, serif; font-size: 34px; font-weight: 600">−39.7 °C</div>
+</div>
+<div style="flex: 1 1 200px; min-width: 0; background: #08121f; border-radius: 16px; padding: 20px">
+<div style="font-size: 14px; color: #95adc1">Amazon humidity</div>
+<div style="font-family: Fraunces, Georgia, serif; font-size: 34px; font-weight: 600">19 g/kg</div>
+</div>
+<div style="flex: 1 1 200px; min-width: 0; background: #08121f; border-radius: 16px; padding: 20px">
+<div style="font-size: 14px; color: #95adc1">Eastern China CO</div>
+<div style="font-family: Fraunces, Georgia, serif; font-size: 34px; font-weight: 600">311 ppbv</div>
+</div>
+</div>
+</div>
+</section>
 
-          <section class="panel" aria-labelledby="a11yTitle">
-            <h2 id="a11yTitle" data-i18n="a11y.title">Accessibility</h2>
-            <label class="switch">
-              <span class="switch__body"><strong data-i18n="voice.name">Site voice</strong><small data-i18n="voice.desc">Says the country and the value when you click the map or press Space. Turn it off if you use a screen reader.</small></span>
-              <input type="checkbox" id="voiceToggle" data-no-echo>
-              <span class="switch__track" aria-hidden="true"><span class="switch__thumb"></span></span>
-            </label>
-            <label class="switch">
-              <span class="switch__body"><strong data-i18n="hc.name">High contrast</strong><small data-i18n="hc.desc">Stronger borders, text and focus.</small></span>
-              <input type="checkbox" id="highContrast">
-              <span class="switch__track" aria-hidden="true"><span class="switch__thumb"></span></span>
-            </label>
-            <label class="field">
-              <span class="field__label" data-i18n="text.size">Text size</span>
-              <select id="textSize">
-                <option value="normal" data-i18n="text.normal">Normal</option>
-                <option value="grande" data-i18n="text.large">Large</option>
-                <option value="enorme" data-i18n="text.huge">Huge</option>
-              </select>
-            </label>
-            <label class="field">
-              <span class="field__label" data-i18n="color.label">Colour filter</span>
-              <select id="colorMode">
-                <option value="none" data-i18n="color.none">Original colours</option>
-                <optgroup data-i18n-attr="label:color.safe">
-                  <option value="cividis" data-i18n="color.cividis">Cividis: safe for all types</option>
-                  <option value="viridis">Viridis</option>
-                  <option value="gray" data-i18n="color.gray">Greyscale</option>
-                </optgroup>
-                <optgroup data-i18n-attr="label:color.sim">
-                  <option value="deuteranopia" data-i18n="color.deut">Deuteranopia</option>
-                  <option value="protanopia" data-i18n="color.prot">Protanopia</option>
-                  <option value="tritanopia" data-i18n="color.trit">Tritanopia</option>
-                </optgroup>
-              </select>
-            </label>
-          </section>
-        </aside>
-      </div>
-    </section>
-  </main>
+<section id="demo" aria-labelledby="demo-title" style="max-width: 1200px; margin: 0 auto; padding: 48px 24px">
+<h2 id="demo-title" style="margin: 0 0 20px; font-family: Fraunces, Georgia, serif; font-weight: 600; font-size: clamp(28px, 3.5vw, 40px)">See and hear it in 2 minutes</h2>
+<div style="aspect-ratio: 16 / 9; width: 100%; border-radius: 22px; border: 1px dashed rgba(143, 209, 255, 0.4); background: #08121f; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; color: #95adc1">
+<svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="#67e8f9" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><path d="M10 8l6 4-6 4z"></path></svg>
+<span style="font-size: 18px">[DEMO VIDEO WITH CAPTIONS]</span>
+</div>
+</section>
 
-  <!-- ===================== LEGENDA DO MAPA ===================== -->
-  <!-- Fecha com Escape ou com um clique fora da janela -->
-  <dialog class="legend-dialog" id="legendDialog" aria-labelledby="legendDialogTitle" aria-describedby="legendDialogIntro">
-    <form method="dialog" class="legend-dialog__inner">
-      <header class="legend-dialog__head">
-        <p class="kicker" data-i18n="legend.kicker">Before you start</p>
-        <h2 id="legendDialogTitle" tabindex="-1">—</h2>
-        <p id="legendDialogIntro" class="legend-dialog__intro">—</p>
-        <button class="button button--ghost legend-dialog__read" id="dlgReadAloud" type="button" aria-pressed="false" data-no-echo>—</button>
-      </header>
+<section id="who" aria-labelledby="who-title" style="max-width: 1200px; margin: 0 auto; padding: 96px 24px 48px">
+<div style="font-size: 14px; font-weight: 700; letter-spacing: 3px; text-transform: uppercase; color: #67e8f9; margin-bottom: 12px">Who it's for</div>
+<h2 id="who-title" style="margin: 0 0 36px; font-family: Fraunces, Georgia, serif; font-weight: 600; font-size: clamp(32px, 4vw, 48px); line-height: 1.1">One map, open to everyone.</h2>
+<div style="display: flex; flex-wrap: wrap; gap: 20px">
+<div style="flex: 1 1 250px; min-width: 0; background: #08121f; border: 1px solid rgba(143, 209, 255, 0.14); border-radius: 18px; padding: 26px">
+<h3 style="margin: 0 0 8px; font-size: 20px">Blind and low-vision people</h3>
+<p style="margin: 0; color: #c7d8e6">Explore the planet alone, at your own pace, instead of waiting for a description.</p>
+</div>
+<div style="flex: 1 1 250px; min-width: 0; background: #08121f; border: 1px solid rgba(143, 209, 255, 0.14); border-radius: 18px; padding: 26px">
+<h3 style="margin: 0 0 8px; font-size: 20px">Color-blind people</h3>
+<p style="margin: 0; color: #c7d8e6">Safe palettes replace rainbow scales, and every value can be heard or spoken.</p>
+</div>
+<div style="flex: 1 1 250px; min-width: 0; background: #08121f; border: 1px solid rgba(143, 209, 255, 0.14); border-radius: 18px; padding: 26px">
+<h3 style="margin: 0 0 8px; font-size: 20px">Teachers and schools</h3>
+<p style="margin: 0; color: #c7d8e6">One inclusive climate activity for the whole class, free, with nothing to install.</p>
+</div>
+<div style="flex: 1 1 250px; min-width: 0; background: #08121f; border: 1px solid rgba(143, 209, 255, 0.14); border-radius: 18px; padding: 26px">
+<h3 style="margin: 0 0 8px; font-size: 20px">Museums and science centers</h3>
+<p style="margin: 0; color: #c7d8e6">A ready multisensory station: hear the Earth, feel it in your hand.</p>
+</div>
+</div>
+</section>
 
-      <div class="legend-dialog__scale">
-        <div class="legend-dialog__scale-head"><strong id="dlgScaleLabel">—</strong><span id="dlgScaleUnit">—</span></div>
-        <div class="legend-bar__track legend-bar__track--play" id="dlgTrack">
-          <div class="legend-bar__gradient legend-bar__gradient--big" id="dlgGradient"></div>
-          <div class="legend-bar__marker" id="dlgMarker" aria-hidden="true" hidden></div>
-          <div class="legend-bar__tip" id="dlgTip" aria-hidden="true" hidden></div>
-        </div>
-        <div class="legend-bar__ticks" id="dlgTicks" aria-hidden="true"></div>
-      </div>
+<section aria-labelledby="next-title" style="max-width: 1200px; margin: 0 auto; padding: 48px 24px">
+<div style="display: flex; flex-wrap: wrap; gap: 32px">
+<div style="flex: 1 1 360px; min-width: 0">
+<h2 id="next-title" style="margin: 0 0 14px; font-family: Fraunces, Georgia, serif; font-weight: 600; font-size: clamp(28px, 3.5vw, 40px); line-height: 1.15">Honest about today, clear about next.</h2>
+<p style="margin: 0; color: #c7d8e6">Values are decoded from images, so they are approximate. The prototype covers four variables over about 15 days, not real time.</p>
+</div>
+<ul style="flex: 1 1 420px; min-width: 0; margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 14px">
+<li style="display: flex; gap: 14px"><span style="color: #fb7185; font-weight: 700">Next</span><span style="color: #c7d8e6">Usability tests with blind participants, measuring task accuracy and time.</span></li>
+<li style="display: flex; gap: 14px"><span style="color: #67e8f9; font-weight: 700">Then</span><span style="color: #c7d8e6">Live data and more variables, such as rainfall and alerts.</span></li>
+<li style="display: flex; gap: 14px"><span style="color: #67e8f9; font-weight: 700">Later</span><span style="color: #c7d8e6">The same color-decoding method applied to many more NASA maps.</span></li>
+</ul>
+</div>
+</section>
 
-      <ul class="instrument-list instrument-list--single" id="instrumentList"></ul>
+<section id="faq" aria-labelledby="faq-title" style="max-width: 900px; margin: 0 auto; padding: 96px 24px 48px">
+<h2 id="faq-title" style="margin: 0 0 28px; font-family: Fraunces, Georgia, serif; font-weight: 600; font-size: clamp(32px, 4vw, 48px); text-align: center">Questions</h2>
+<div style="display: flex; flex-direction: column; gap: 12px">
+<details style="background: #08121f; border: 1px solid rgba(143, 209, 255, 0.14); border-radius: 14px; padding: 18px 22px">
+<summary style="font-weight: 600; font-size: 18px">Do I need to install anything?</summary>
+<p style="margin: 12px 0 0; color: #c7d8e6">No. It runs in any modern browser. Headphones help you hear left and right.</p>
+</details>
+<details style="background: #08121f; border: 1px solid rgba(143, 209, 255, 0.14); border-radius: 14px; padding: 18px 22px">
+<summary style="font-weight: 600; font-size: 18px">Is the data real?</summary>
+<p style="margin: 12px 0 0; color: #c7d8e6">Yes. Every value comes from maps published by NASA's Global Modeling and Assimilation Office (GEOS model), decoded through their official color bars.</p>
+</details>
+<details style="background: #08121f; border: 1px solid rgba(143, 209, 255, 0.14); border-radius: 14px; padding: 18px 22px">
+<summary style="font-weight: 600; font-size: 18px">Does it work with my screen reader?</summary>
+<p style="margin: 12px 0 0; color: #c7d8e6">It is built with ARIA for NVDA, JAWS, VoiceOver and TalkBack. If you use one, turn off the site's own voice in the Accessibility panel.</p>
+</details>
+<details style="background: #08121f; border: 1px solid rgba(143, 209, 255, 0.14); border-radius: 14px; padding: 18px 22px">
+<summary style="font-weight: 600; font-size: 18px">Does the vibration work on iPhone?</summary>
+<p style="margin: 12px 0 0; color: #c7d8e6">iPhone browsers block web vibration, so the phone shows visual pulses instead. On Android it vibrates.</p>
+</details>
+</div>
+</section>
 
-      <!-- Os sons dos lugares só aparecem quando a pessoa pede para rever essa parte do tutorial -->
-      <button class="button button--ghost place-list__toggle" id="placesToggle" type="button" aria-expanded="false" aria-controls="placesSection" data-i18n="legend.reviewPlaces">Review the sounds of places tutorial</button>
-      <div class="place-list__section" id="placesSection" hidden>
-        <h3 class="place-list__title" data-i18n="legend.places">Sounds of places</h3>
-        <ul class="instrument-list place-list" id="placeList" data-i18n-attr="aria-label:legend.places"></ul>
-      </div>
+<section aria-labelledby="cta-title" style="padding: 96px 24px">
+<div style="max-width: 900px; margin: 0 auto; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 22px">
+<svg width="160" height="120" viewBox="-20 0 160 120" aria-hidden="true">
+<defs><clipPath id="ctaGlobe"><circle cx="60" cy="60" r="49"></circle></clipPath></defs>
+<path d="M2 46 Q-6 60 2 74" fill="none" stroke="#67e8f9" stroke-width="3.5" stroke-linecap="round" opacity="0.75"></path>
+<path d="M-7 39 Q-19 60 -7 81" fill="none" stroke="#67e8f9" stroke-width="3.5" stroke-linecap="round" opacity="0.4"></path>
+<path d="M118 46 Q126 60 118 74" fill="none" stroke="#67e8f9" stroke-width="3.5" stroke-linecap="round" opacity="0.75"></path>
+<path d="M127 39 Q139 60 127 81" fill="none" stroke="#67e8f9" stroke-width="3.5" stroke-linecap="round" opacity="0.4"></path>
+<circle cx="60" cy="60" r="52" fill="#08121f" stroke="#67e8f9" stroke-width="4"></circle>
+<g clip-path="url(#ctaGlobe)" fill="none" stroke-linecap="round" stroke="#67e8f9">
+<path d="M4 34 Q32 28 60 34 T116 34" stroke-width="3" opacity="0.55"></path>
+<path d="M4 86 Q32 92 60 86 T116 86" stroke-width="3" opacity="0.55"></path>
+<path d="M4 60 C20 60 24 43 37 43 S52 77 64 77 S78 43 90 43 S106 60 116 60" stroke-width="5.5"></path>
+</g>
+<circle cx="90" cy="43" r="7.5" fill="#fb7185" stroke="#03070d" stroke-width="3"></circle>
+</svg>
+<h2 id="cta-title" style="margin: 0; font-family: Fraunces, Georgia, serif; font-weight: 600; font-size: clamp(36px, 5vw, 56px); line-height: 1.05">Ready to hear the planet?</h2>
+<p style="margin: 0; color: #c7d8e6; font-size: 19px">Put on headphones, press Enter, and let the audio tutorial guide you.</p>
+<a href="app.html" style="background: #67e8f9; color: #03141f; font-weight: 700; text-decoration: none; padding: 18px 32px; border-radius: 14px; font-size: 20px">Launch the Jukebox</a>
+<p style="margin: 0; font-size: 15px; color: #95adc1">Prefer Portuguese? Press I inside the app.</p>
+</div>
+</section>
 
-      <footer class="legend-dialog__foot">
-        <button class="button button--ghost" value="back" id="dlgBack" type="submit" data-i18n="legend.back">Back to the gallery</button>
-        <button class="button button--start" value="start" id="dlgStart" type="submit">
-          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l10-6.5-10-6.5Z" fill="currentColor"/></svg>
-          <span data-i18n="legend.start">Start exploring</span>
-        </button>
-      </footer>
-    </form>
-  </dialog>
+</main>
 
-  <!-- ===================== TUTORIAL EM ÁUDIO ===================== -->
-  <!-- Guia modal no centro da tela; nos desafios vira um painel não modal na base e o foco fica no mapa. -->
-  <dialog class="tutorial" id="tutorialPanel" aria-labelledby="tutorialTitle" aria-describedby="tutorialBody">
-    <header class="tutorial__head">
-      <div>
-        <p class="kicker" id="tutorialStep">—</p>
-        <h2 id="tutorialTitle" tabindex="-1">—</h2>
-      </div>
-      <button class="button button--ghost tutorial__close" id="tutorialClose" type="button" data-i18n-attr="aria-label:tut.close">
-        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>
-      </button>
-    </header>
-    <div class="tutorial__body" id="tutorialBody"></div>
-    <div class="tutorial__actions" id="tutorialActions" hidden></div>
-    <p class="tutorial__status" id="tutorialStatus" role="status" aria-live="polite" aria-atomic="true"></p>
-    <label class="switch tutorial__voice">
-      <span class="switch__body"><strong data-i18n="voice.name">Site voice</strong><small data-i18n="voice.tutDesc">Uncheck if you already use a screen reader.</small></span>
-      <input type="checkbox" id="tutorialVoice" data-no-echo>
-      <span class="switch__track" aria-hidden="true"><span class="switch__thumb"></span></span>
-    </label>
-    <footer class="tutorial__foot" id="tutorialNav">
-      <button class="button button--ghost" id="tutorialPrev" type="button" data-i18n="tut.prev">Previous</button>
-      <button class="button button--ghost" id="tutorialRepeat" type="button" data-i18n="tut.repeat">Repeat</button>
-      <button class="button button--primary" id="tutorialNext" type="button" data-i18n="tut.next">Next</button>
-    </footer>
-  </dialog>
+<footer style="border-top: 1px solid rgba(143, 209, 255, 0.14)">
+<div style="max-width: 1200px; margin: 0 auto; padding: 32px 24px; display: flex; flex-wrap: wrap; justify-content: space-between; gap: 16px; font-size: 14px; color: #95adc1">
+<div>
+<div style="font-family: Fraunces, Georgia, serif; font-size: 18px; font-weight: 600; color: #eef8ff">Earth Symphony · A Sinfonia da Terra</div>
+<div>NASA Space Apps Challenge 2026 · Built by <span lang="pt-BR">Time de Ouro</span></div>
+</div>
+<div style="max-width: 520px">Data: NASA GMAO GEOS. Country borders: Natural Earth. Sounds: Salamander Grand Piano (CC-BY 3.0) and tonejs-instruments. Statistics: WHO, IAPB, IBGE, UNDRR, Crameri et al. 2020.</div>
+</div>
+</footer>
 
-  <!-- ===================== AJUDA E ATALHOS ===================== -->
-  <!-- A lista de atalhos é montada a partir de js/shortcuts.js. Fecha com Escape ou clique fora. -->
-  <dialog class="help-dialog" id="helpDialog" aria-labelledby="helpTitle" aria-describedby="helpIntro">
-    <header class="help-dialog__head">
-      <div>
-        <p class="kicker" data-i18n="a11y.title">Accessibility</p>
-        <h2 id="helpTitle" tabindex="-1" data-i18n="help.title">Help &amp; keyboard shortcuts</h2>
-      </div>
-      <button class="button button--ghost tutorial__close" id="helpClose" type="button" data-i18n-attr="aria-label:help.close">
-        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>
-      </button>
-    </header>
-    <p id="helpIntro" data-i18n="help.intro">Everything works with the keyboard and sound alone. No shortcut needs Ctrl, Alt or Shift: just press the key.</p>
-    <button class="button button--primary" id="helpSpeak" type="button" data-i18n="help.speak">Read the help aloud</button>
-    <div class="help-dialog__body" id="helpBody"></div>
-  </dialog>
-
-  <div class="sr-only" id="ariaLive" role="status" aria-live="polite" aria-atomic="true"></div>
-  <div class="toast" id="toast" role="alert" aria-live="assertive"></div>
-
-  <svg class="svg-defs" aria-hidden="true" focusable="false">
-    <defs>
-      <filter id="deuteranopia" color-interpolation-filters="sRGB"><feColorMatrix type="matrix" values="0.625 0.375 0 0 0  0.7 0.3 0 0 0  0 0.3 0.7 0 0  0 0 0 1 0"/></filter>
-      <filter id="protanopia" color-interpolation-filters="sRGB"><feColorMatrix type="matrix" values="0.567 0.433 0 0 0  0.558 0.442 0 0 0  0 0.242 0.758 0 0  0 0 0 1 0"/></filter>
-      <filter id="tritanopia" color-interpolation-filters="sRGB"><feColorMatrix type="matrix" values="0.95 0.05 0 0 0  0 0.433 0.567 0 0  0 0.475 0.525 0 0  0 0 0 1 0"/></filter>
-    </defs>
-  </svg>
-
-  <noscript><div class="noscript">This project needs JavaScript. · Este projeto precisa de JavaScript.</div></noscript>
+</div>
 </body>
 </html>

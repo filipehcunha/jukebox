@@ -1,0 +1,352 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#03080f">
+  <meta name="description" content="Earth Symphony: a multisensory Earth jukebox. NASA data maps become music, phone vibration and accessible narration.">
+  <title>Earth Symphony</title>
+  <link rel="stylesheet" href="css/styles.css">
+  <link rel="icon" type="image/svg+xml" href="landing/assets/favicon.svg">
+  <link rel="apple-touch-icon" href="landing/assets/apple-touch-icon.png">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js" defer></script>
+  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js" defer></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" defer></script>
+  <script type="module" src="js/app.js"></script>
+</head>
+<!--
+  Textos: os elementos com data-i18n="chave" recebem o texto de js/i18n.js no idioma escolhido;
+  data-i18n-attr="aria-label:chave; title:chave" faz o mesmo com atributos.
+  Atalhos: js/shortcuts.js liga cada tecla ao id de um botão desta página.
+-->
+<body>
+  <a class="skip-link" href="#main" data-i18n="skip.main">Skip to main content</a>
+
+  <header class="topbar">
+    <a class="brand" href="#" id="brandLink" data-i18n-attr="aria-label:brand.aria">
+      <span class="brand__mark" aria-hidden="true">
+        <svg viewBox="0 0 64 64"><circle cx="32" cy="32" r="27" fill="none" stroke="currentColor" stroke-width="1.5" opacity=".55"/><ellipse cx="32" cy="32" rx="31" ry="12" fill="none" stroke="currentColor" stroke-width="1.2" opacity=".42" transform="rotate(-22 32 32)"/><path d="M10 38c8-11 16-2 23-9s13-2 21 7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><circle cx="32" cy="32" r="4.5" fill="#fb7185"/></svg>
+      </span>
+      <span class="brand__text">
+        <span class="brand__title" data-i18n="brand.title">Earth Symphony</span>
+        <span class="brand__subtitle" data-i18n="brand.subtitle">Multisensory Earth Jukebox</span>
+      </span>
+    </a>
+    <div class="topbar__actions">
+      <button class="button button--ghost" id="tutorialOpen" type="button" aria-haspopup="dialog" aria-controls="tutorialPanel">
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 13a8 8 0 0 1 16 0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><rect x="3" y="13" width="4.5" height="7" rx="1.6" fill="currentColor"/><rect x="16.5" y="13" width="4.5" height="7" rx="1.6" fill="currentColor"/></svg>
+        <span data-i18n="btn.tutorial">Audio tutorial</span>
+      </button>
+      <button class="button button--ghost" id="helpOpen" type="button" aria-haspopup="dialog" aria-controls="helpDialog">
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.6 2.2c-.7.4-1.1.9-1.1 1.8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="17" r="1.2" fill="currentColor"/></svg>
+        <span data-i18n="btn.help">Help &amp; shortcuts</span>
+      </button>
+      <button class="button button--ghost" id="langToggle" type="button" data-i18n-attr="aria-label:lang.aria">
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path d="M3 12h18M12 3c2.5 2.6 3.8 5.6 3.8 9s-1.3 6.4-3.8 9c-2.5-2.6-3.8-5.6-3.8-9S9.5 5.6 12 3Z" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>
+        <span id="langToggleLabel" data-i18n="lang.other">Português</span>
+      </button>
+      <button class="button button--play" id="audioToggle" type="button" aria-pressed="false">
+        <svg class="icon icon--play" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l10-6.5-10-6.5Z" fill="currentColor"/></svg>
+        <svg class="icon icon--pause" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5h3.5v14H7V5Zm6.5 0H17v14h-3.5V5Z" fill="currentColor"/></svg>
+        <span id="audioToggleLabel">Turn sound on</span>
+      </button>
+    </div>
+  </header>
+
+  <main id="main" tabindex="-1">
+    <!-- ===================== GALERIA ===================== -->
+    <section class="view view--gallery" id="galleryView" aria-labelledby="galleryHeading">
+      <div class="hero">
+        <h1 id="galleryHeading" tabindex="-1" data-i18n="gallery.title">Listen to the planet</h1>
+        <p class="lead" data-i18n="gallery.lead">Pick a NASA map. Each map has one instrument: the higher the value, the higher the note.</p>
+        <p class="hero__about">
+          <a class="link-about" id="aboutLink" href="./" hreflang="en" data-i18n-attr="aria-label:btn.aboutAria">
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 11v6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="7.6" r="1.3" fill="currentColor"/></svg>
+            <span data-i18n="btn.about">About the project</span>
+          </a>
+        </p>
+      </div>
+      <section class="gallery-section" aria-labelledby="presetsHeading">
+        <div class="section-head">
+          <h2 id="presetsHeading" data-i18n="gallery.maps">NASA maps</h2>
+          <p id="presetsNote"></p>
+        </div>
+        <div class="preset-grid" id="presetGrid"></div>
+      </section>
+    </section>
+
+    <!-- ===================== EXPLORADOR ===================== -->
+    <section class="view view--explore" id="exploreView" aria-labelledby="exploreHeading" hidden>
+      <div class="explore">
+        <div class="stage">
+          <div class="stage__head">
+            <button class="button button--ghost" id="backButton" type="button">
+              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 6 8.5 12l6 6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              <span data-i18n="btn.gallery">Gallery</span>
+            </button>
+            <div class="stage__title">
+              <p class="kicker" id="exploreKicker">—</p>
+              <h2 id="exploreHeading">—</h2>
+            </div>
+            <button class="button button--primary button--tour" id="tourButton" type="button" aria-pressed="false" aria-describedby="tourHint">
+              <svg class="icon icon--play" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l10-6.5-10-6.5Z" fill="currentColor"/></svg>
+              <svg class="icon icon--pause" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 6h10v12H7z" fill="currentColor"/></svg>
+              <span id="tourLabel" data-i18n="tour.play">Play a tour</span>
+            </button>
+            <span class="sr-only" id="tourHint" data-i18n="tour.hint">The cursor wanders around the map by itself while you listen.</span>
+          </div>
+
+          <div class="canvas-shell" id="canvasShell">
+            <canvas id="mapCanvas" width="1200" height="600" tabindex="0" role="application"
+              data-i18n-attr="aria-roledescription:map.roledesc"></canvas>
+            <div class="loading-veil" id="loadingVeil" hidden><span class="spinner" aria-hidden="true"></span><span data-i18n="map.loading">Loading image…</span></div>
+          </div>
+
+          <div class="timeline" id="timeline" hidden>
+            <button class="button button--round" id="playTimeline" type="button" aria-pressed="false" data-i18n-attr="aria-label:time.play">
+              <svg class="icon icon--play" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l10-6.5-10-6.5Z" fill="currentColor"/></svg>
+              <svg class="icon icon--pause" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5h3.5v14H7V5Zm6.5 0H17v14h-3.5V5Z" fill="currentColor"/></svg>
+            </button>
+            <div class="timeline__track">
+              <label class="sr-only" for="frameSlider" data-i18n="time.slider">Hour of the sequence</label>
+              <input type="range" id="frameSlider" min="0" max="0" value="0" step="1" data-no-echo>
+              <div class="timeline__labels"><span id="frameLabel">—</span><span id="frameTime">—</span></div>
+              <div class="timeline__load" id="framesLoad" hidden>
+                <progress id="framesProgress" max="1" value="0" aria-labelledby="framesText"></progress>
+                <span id="framesText"></span>
+              </div>
+            </div>
+            <label class="compact-field compact-field--small">
+              <span data-i18n="time.speed">Speed</span>
+              <select id="speedSelect">
+                <option value="1">1 h/s</option>
+                <option value="3" selected>3 h/s</option>
+                <option value="6">6 h/s</option>
+                <option value="12">12 h/s</option>
+              </select>
+            </label>
+          </div>
+
+          <div class="legend-bar">
+            <div class="legend-bar__head"><span id="legendTitle">—</span><span id="legendUnit">—</span></div>
+            <div class="legend-bar__track legend-bar__track--play" id="legendTrack">
+              <div class="legend-bar__gradient" id="legendGradient"></div>
+              <div class="legend-bar__marker" id="legendMarker" aria-hidden="true"></div>
+              <div class="legend-bar__tip" id="legendTip" aria-hidden="true" hidden></div>
+            </div>
+            <div class="legend-bar__ticks" id="legendTicks" aria-hidden="true"></div>
+            <div class="legend-bar__ends" id="legendEnds" aria-hidden="true"></div>
+          </div>
+
+          <div class="reading-grid">
+            <article class="reading-card">
+              <span class="reading-card__label" data-i18n="read.place">Place</span>
+              <strong class="reading-card__value" id="readRegion">—</strong>
+              <span class="reading-card__sub" id="readCoord">—</span>
+            </article>
+            <article class="reading-card reading-card--value">
+              <span class="reading-card__label" id="readValueLabel">—</span>
+              <strong class="reading-card__value" id="readValue">—</strong>
+              <span class="reading-card__sub" id="readZone">—</span>
+            </article>
+          </div>
+
+          <p class="canvas-help" id="canvasHelp"></p>
+        </div>
+
+        <aside class="sidebar" data-i18n-attr="aria-label:panels.aria">
+          <section class="panel" aria-labelledby="audioPanelTitle">
+            <h2 id="audioPanelTitle" data-i18n="sound.title">Sound</h2>
+            <p class="panel__status" id="audioStatus" role="status"></p>
+            <label class="field">
+              <span class="field__label"><span data-i18n="sound.volume">Volume</span> <output id="volumeOut">0 dB</output></span>
+              <input type="range" id="volumeSlider" min="-30" max="6" step="1" value="0">
+            </label>
+            <button class="button button--ghost button--block" id="reviewLegend" type="button" data-i18n="sound.legend">Map legend</button>
+          </section>
+
+          <section class="panel panel--phone" aria-labelledby="phoneTitle">
+            <div class="panel__head">
+              <h2 id="phoneTitle" data-i18n="phone.title">Phone vibration</h2>
+              <span class="status-dot" id="phoneDot" aria-hidden="true"></span>
+            </div>
+            <p class="help" data-i18n="phone.help">Scan the QR code with your phone camera. The phone vibrates as you explore the map.</p>
+            <button class="button button--primary button--block" id="phoneConnect" type="button">
+              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="2.5" width="10" height="19" rx="2.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M3 9v6M21 9v6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+              <span id="phoneConnectLabel" data-i18n="phone.connect">Generate QR code</span>
+            </button>
+            <div class="phone-box" id="phoneBox" hidden>
+              <p class="help" id="publishedHelp" data-i18n="phone.published" hidden>The phone opens this site over the internet: it doesn't need to be on the same Wi-Fi network.</p>
+              <label class="field" id="receiverModeField">
+                <span class="field__label" data-i18n="phone.via">The phone opens the receiver through</span>
+                <select id="receiverMode">
+                  <option value="lan" data-i18n="phone.lan">Local Wi-Fi network (this computer)</option>
+                  <option value="public" data-i18n="phone.public">Internet: GitHub Pages (HTTPS)</option>
+                </select>
+              </label>
+              <div class="field" id="lanField" hidden>
+                <label class="field__label" for="lanSelect" data-i18n="phone.address">This computer's address on the network</label>
+                <select id="lanSelect"></select>
+                <label class="sr-only" for="lanInput" data-i18n="phone.typeAddress">Type the address</label>
+                <input type="text" id="lanInput" placeholder="192.168.0.10:8000" inputmode="url" autocomplete="off" spellcheck="false" hidden>
+                <small class="help" id="lanHelp"></small>
+              </div>
+              <p class="qr-warn" id="qrWarn" role="alert" hidden></p>
+              <div class="qr" id="qrBox"></div>
+              <code class="qr-url" id="qrUrl"></code>
+              <button class="button button--ghost button--block" id="copyReceiver" type="button" aria-describedby="copyReceiverHelp" data-i18n="phone.copy">Copy the receiver link</button>
+              <small class="help" id="copyReceiverHelp" data-i18n="phone.copyHelp">Can't see the QR code? Copy the link and send it to your phone.</small>
+              <p class="panel__status" id="phoneStatus" role="status">—</p>
+              <details class="help-details phone-help">
+                <summary data-i18n="phone.trouble">Phone won't connect?</summary>
+                <ol>
+                  <li data-i18n="phone.trouble1">The page doesn't open on the phone: use the same Wi-Fi network (not a guest network), allow the port in the firewall, or choose Internet: GitHub Pages above.</li>
+                  <li data-i18n="phone.trouble2">It opens but keeps “Looking for the computer”: generate a new QR code, or try another network or mobile data.</li>
+                  <li data-i18n="phone.trouble3">It connects but doesn't vibrate: tap “Turn on vibration” on the phone. iPhone/Safari can't vibrate on the web, so the receiver only pulses on screen.</li>
+                </ol>
+              </details>
+              <a class="link-small" id="receiverLink" href="#" target="_blank" rel="noopener" data-i18n="phone.openHere">Open the receiver on this device</a>
+              <button class="button button--ghost button--block" id="phoneDisconnect" type="button" data-i18n="phone.disconnect">Disconnect</button>
+            </div>
+          </section>
+
+          <section class="panel" aria-labelledby="a11yTitle">
+            <h2 id="a11yTitle" data-i18n="a11y.title">Accessibility</h2>
+            <label class="switch">
+              <span class="switch__body"><strong data-i18n="voice.name">Site voice</strong><small data-i18n="voice.desc">Says the country and the value when you click the map or press Space. Turn it off if you use a screen reader.</small></span>
+              <input type="checkbox" id="voiceToggle" data-no-echo>
+              <span class="switch__track" aria-hidden="true"><span class="switch__thumb"></span></span>
+            </label>
+            <label class="switch">
+              <span class="switch__body"><strong data-i18n="hc.name">High contrast</strong><small data-i18n="hc.desc">Stronger borders, text and focus.</small></span>
+              <input type="checkbox" id="highContrast">
+              <span class="switch__track" aria-hidden="true"><span class="switch__thumb"></span></span>
+            </label>
+            <label class="field">
+              <span class="field__label" data-i18n="text.size">Text size</span>
+              <select id="textSize">
+                <option value="normal" data-i18n="text.normal">Normal</option>
+                <option value="grande" data-i18n="text.large">Large</option>
+                <option value="enorme" data-i18n="text.huge">Huge</option>
+              </select>
+            </label>
+            <label class="field">
+              <span class="field__label" data-i18n="color.label">Colour filter</span>
+              <select id="colorMode">
+                <option value="none" data-i18n="color.none">Original colours</option>
+                <optgroup data-i18n-attr="label:color.safe">
+                  <option value="cividis" data-i18n="color.cividis">Cividis: safe for all types</option>
+                  <option value="viridis">Viridis</option>
+                  <option value="gray" data-i18n="color.gray">Greyscale</option>
+                </optgroup>
+                <optgroup data-i18n-attr="label:color.sim">
+                  <option value="deuteranopia" data-i18n="color.deut">Deuteranopia</option>
+                  <option value="protanopia" data-i18n="color.prot">Protanopia</option>
+                  <option value="tritanopia" data-i18n="color.trit">Tritanopia</option>
+                </optgroup>
+              </select>
+            </label>
+          </section>
+        </aside>
+      </div>
+    </section>
+  </main>
+
+  <!-- ===================== LEGENDA DO MAPA ===================== -->
+  <!-- Fecha com Escape ou com um clique fora da janela -->
+  <dialog class="legend-dialog" id="legendDialog" aria-labelledby="legendDialogTitle" aria-describedby="legendDialogIntro">
+    <form method="dialog" class="legend-dialog__inner">
+      <header class="legend-dialog__head">
+        <p class="kicker" data-i18n="legend.kicker">Before you start</p>
+        <h2 id="legendDialogTitle" tabindex="-1">—</h2>
+        <p id="legendDialogIntro" class="legend-dialog__intro">—</p>
+        <button class="button button--ghost legend-dialog__read" id="dlgReadAloud" type="button" aria-pressed="false" data-no-echo>—</button>
+      </header>
+
+      <div class="legend-dialog__scale">
+        <div class="legend-dialog__scale-head"><strong id="dlgScaleLabel">—</strong><span id="dlgScaleUnit">—</span></div>
+        <div class="legend-bar__track legend-bar__track--play" id="dlgTrack">
+          <div class="legend-bar__gradient legend-bar__gradient--big" id="dlgGradient"></div>
+          <div class="legend-bar__marker" id="dlgMarker" aria-hidden="true" hidden></div>
+          <div class="legend-bar__tip" id="dlgTip" aria-hidden="true" hidden></div>
+        </div>
+        <div class="legend-bar__ticks" id="dlgTicks" aria-hidden="true"></div>
+      </div>
+
+      <ul class="instrument-list instrument-list--single" id="instrumentList"></ul>
+
+      <!-- Os sons dos lugares só aparecem quando a pessoa pede para rever essa parte do tutorial -->
+      <button class="button button--ghost place-list__toggle" id="placesToggle" type="button" aria-expanded="false" aria-controls="placesSection" data-i18n="legend.reviewPlaces">Review the sounds of places tutorial</button>
+      <div class="place-list__section" id="placesSection" hidden>
+        <h3 class="place-list__title" data-i18n="legend.places">Sounds of places</h3>
+        <ul class="instrument-list place-list" id="placeList" data-i18n-attr="aria-label:legend.places"></ul>
+      </div>
+
+      <footer class="legend-dialog__foot">
+        <button class="button button--ghost" value="back" id="dlgBack" type="submit" data-i18n="legend.back">Back to the gallery</button>
+        <button class="button button--start" value="start" id="dlgStart" type="submit">
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l10-6.5-10-6.5Z" fill="currentColor"/></svg>
+          <span data-i18n="legend.start">Start exploring</span>
+        </button>
+      </footer>
+    </form>
+  </dialog>
+
+  <!-- ===================== TUTORIAL EM ÁUDIO ===================== -->
+  <!-- Guia modal no centro da tela; nos desafios vira um painel não modal na base e o foco fica no mapa. -->
+  <dialog class="tutorial" id="tutorialPanel" aria-labelledby="tutorialTitle" aria-describedby="tutorialBody">
+    <header class="tutorial__head">
+      <div>
+        <p class="kicker" id="tutorialStep">—</p>
+        <h2 id="tutorialTitle" tabindex="-1">—</h2>
+      </div>
+      <button class="button button--ghost tutorial__close" id="tutorialClose" type="button" data-i18n-attr="aria-label:tut.close">
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>
+      </button>
+    </header>
+    <div class="tutorial__body" id="tutorialBody"></div>
+    <div class="tutorial__actions" id="tutorialActions" hidden></div>
+    <p class="tutorial__status" id="tutorialStatus" role="status" aria-live="polite" aria-atomic="true"></p>
+    <label class="switch tutorial__voice">
+      <span class="switch__body"><strong data-i18n="voice.name">Site voice</strong><small data-i18n="voice.tutDesc">Uncheck if you already use a screen reader.</small></span>
+      <input type="checkbox" id="tutorialVoice" data-no-echo>
+      <span class="switch__track" aria-hidden="true"><span class="switch__thumb"></span></span>
+    </label>
+    <footer class="tutorial__foot" id="tutorialNav">
+      <button class="button button--ghost" id="tutorialPrev" type="button" data-i18n="tut.prev">Previous</button>
+      <button class="button button--ghost" id="tutorialRepeat" type="button" data-i18n="tut.repeat">Repeat</button>
+      <button class="button button--primary" id="tutorialNext" type="button" data-i18n="tut.next">Next</button>
+    </footer>
+  </dialog>
+
+  <!-- ===================== AJUDA E ATALHOS ===================== -->
+  <!-- A lista de atalhos é montada a partir de js/shortcuts.js. Fecha com Escape ou clique fora. -->
+  <dialog class="help-dialog" id="helpDialog" aria-labelledby="helpTitle" aria-describedby="helpIntro">
+    <header class="help-dialog__head">
+      <div>
+        <p class="kicker" data-i18n="a11y.title">Accessibility</p>
+        <h2 id="helpTitle" tabindex="-1" data-i18n="help.title">Help &amp; keyboard shortcuts</h2>
+      </div>
+      <button class="button button--ghost tutorial__close" id="helpClose" type="button" data-i18n-attr="aria-label:help.close">
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>
+      </button>
+    </header>
+    <p id="helpIntro" data-i18n="help.intro">Everything works with the keyboard and sound alone. No shortcut needs Ctrl, Alt or Shift: just press the key.</p>
+    <button class="button button--primary" id="helpSpeak" type="button" data-i18n="help.speak">Read the help aloud</button>
+    <div class="help-dialog__body" id="helpBody"></div>
+  </dialog>
+
+  <div class="sr-only" id="ariaLive" role="status" aria-live="polite" aria-atomic="true"></div>
+  <div class="toast" id="toast" role="alert" aria-live="assertive"></div>
+
+  <svg class="svg-defs" aria-hidden="true" focusable="false">
+    <defs>
+      <filter id="deuteranopia" color-interpolation-filters="sRGB"><feColorMatrix type="matrix" values="0.625 0.375 0 0 0  0.7 0.3 0 0 0  0 0.3 0.7 0 0  0 0 0 1 0"/></filter>
+      <filter id="protanopia" color-interpolation-filters="sRGB"><feColorMatrix type="matrix" values="0.567 0.433 0 0 0  0.558 0.442 0 0 0  0 0.242 0.758 0 0  0 0 0 1 0"/></filter>
+      <filter id="tritanopia" color-interpolation-filters="sRGB"><feColorMatrix type="matrix" values="0.95 0.05 0 0 0  0 0.433 0.567 0 0  0 0.475 0.525 0 0  0 0 0 1 0"/></filter>
+    </defs>
+  </svg>
+
+  <noscript><div class="noscript">This project needs JavaScript. · Este projeto precisa de JavaScript.</div></noscript>
+</body>
+</html>

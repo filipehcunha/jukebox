@@ -148,6 +148,14 @@ main { padding: clamp(16px, 3vw, 36px); max-width: 1560px; margin: 0 auto; outli
 /* ---------------- galeria ---------------- */
 .hero { display: grid; gap: 4px; margin-bottom: 30px; max-width: 70ch; }
 .hero h1 { font: 600 clamp(2rem, 4.2vw, 3.4rem)/1.05 var(--font-display); margin: 6px 0 12px; letter-spacing: -0.01em; outline: none; }
+/* link para a landing page do projeto (landing/) */
+.hero__about { margin: 4px 0 0; }
+.link-about {
+  display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 4px 2px;
+  color: var(--accent); font-weight: 650; text-decoration: underline; text-underline-offset: 4px; border-radius: 8px;
+}
+.link-about:hover { color: var(--text); }
+html.hc .link-about { color: #ffff00; }
 .lead { color: var(--text-soft); font-size: 1.05rem; max-width: 60ch; }
 
 .gallery-section { margin-bottom: 40px; }
@@ -177,6 +185,8 @@ select, input[type="text"] {
   background: var(--panel-solid); color: var(--text); max-width: 100%;
 }
 input[type="text"] { padding-right: 12px; width: 100%; }
+/* um endereço longo numa opção não pode alargar o painel */
+select { max-width: 100%; min-width: 0; text-overflow: ellipsis; }
 select { appearance: none; background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%), linear-gradient(135deg, var(--muted) 50%, transparent 50%); background-position: calc(100% - 17px) 55%, calc(100% - 12px) 55%; background-size: 5px 5px; background-repeat: no-repeat; }
 
 /* ---------------- explorador ---------------- */
@@ -273,7 +283,8 @@ html.hc .legend-bar__tip { background: #000; border-color: #ffff00; color: #ffff
 .status-dot.is-on { background: var(--green); box-shadow: 0 0 0 4px rgba(134, 239, 172, 0.18); }
 .status-dot.is-wait { background: var(--amber); }
 .status-dot.is-err { background: var(--coral); }
-.field { display: grid; gap: 6px; }
+.field { display: grid; gap: 6px; min-width: 0; }
+.field[hidden] { display: none; }
 .field__label { display: flex; justify-content: space-between; font-size: 0.84rem; font-weight: 600; color: var(--text-soft); }
 .field__label output { color: var(--muted); font-family: var(--font-mono); font-weight: 400; }
 
@@ -288,12 +299,12 @@ html.hc .legend-bar__tip { background: #000; border-color: #ffff00; color: #ffff
 .switch input:checked + .switch__track .switch__thumb { transform: translateX(18px); background: var(--accent-ink); }
 .switch input:focus-visible + .switch__track { box-shadow: var(--focus); }
 
-.phone-box { display: grid; gap: 10px; justify-items: center; text-align: center; }
+.phone-box { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; justify-items: center; text-align: center; }
 .phone-box[hidden] { display: none; }
 .qr { padding: 10px; background: #fff; border-radius: 12px; min-width: 216px; min-height: 216px; display: grid; place-items: center; color: #000; }
 .qr img, .qr canvas { width: 196px; height: 196px; }
 .link-small { font-size: 0.8rem; }
-.qr-url { font-size: 0.7rem; color: var(--muted); word-break: break-all; user-select: all; }
+.qr-url { max-width: 100%; font-size: 0.7rem; color: var(--muted); overflow-wrap: anywhere; word-break: break-all; user-select: all; }
 .qr-warn { color: var(--amber); font-size: 0.82rem; text-align: left; }
 .qr-warn[hidden], .qr:empty { display: none; }
 .phone-help { text-align: left; width: 100%; }
