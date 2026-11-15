@@ -6,6 +6,9 @@
   <meta name="theme-color" content="#03080f">
   <meta name="description" content="Earth Symphony: a multisensory Earth jukebox. NASA data maps become music, phone vibration and accessible narration.">
   <title>Earth Symphony</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&amp;display=swap">
   <link rel="stylesheet" href="css/styles.css">
   <link rel="icon" type="image/svg+xml" href="landing/assets/favicon.svg">
   <link rel="apple-touch-icon" href="landing/assets/apple-touch-icon.png">
@@ -25,7 +28,19 @@
   <header class="topbar">
     <a class="brand" href="#" id="brandLink" data-i18n-attr="aria-label:brand.aria">
       <span class="brand__mark" aria-hidden="true">
-        <svg viewBox="0 0 64 64"><circle cx="32" cy="32" r="27" fill="none" stroke="currentColor" stroke-width="1.5" opacity=".55"/><ellipse cx="32" cy="32" rx="31" ry="12" fill="none" stroke="currentColor" stroke-width="1.2" opacity=".42" transform="rotate(-22 32 32)"/><path d="M10 38c8-11 16-2 23-9s13-2 21 7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><circle cx="32" cy="32" r="4.5" fill="#fb7185"/></svg>
+        <!-- marca da Earth Symphony (landing/assets, brand.md): globo com a onda da melodia, cursor coral e arcos do estéreo -->
+        <svg viewBox="-20 0 160 120">
+          <defs><clipPath id="brandGlobe"><circle cx="60" cy="60" r="49"/></clipPath></defs>
+          <path d="M2 46 Q-6 60 2 74" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round" opacity="0.75"/>
+          <path d="M118 46 Q126 60 118 74" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round" opacity="0.75"/>
+          <circle cx="60" cy="60" r="52" fill="#08121f" stroke="currentColor" stroke-width="6"/>
+          <g clip-path="url(#brandGlobe)" fill="none" stroke-linecap="round" stroke="currentColor">
+            <path d="M4 34 Q32 28 60 34 T116 34" stroke-width="4" opacity="0.55"/>
+            <path d="M4 86 Q32 92 60 86 T116 86" stroke-width="4" opacity="0.55"/>
+            <path d="M4 60 C20 60 24 43 37 43 S52 77 64 77 S78 43 90 43 S106 60 116 60" stroke-width="8"/>
+          </g>
+          <circle cx="90" cy="43" r="10" fill="#fb7185" stroke="#03070d" stroke-width="3"/>
+        </svg>
       </span>
       <span class="brand__text">
         <span class="brand__title" data-i18n="brand.title">Earth Symphony</span>

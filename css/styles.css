@@ -137,9 +137,11 @@ html.hc .button--tour.is-on { background: #000; color: #ffff00; border-color: #f
 }
 html.hc .topbar { background: #000; }
 .brand { display: flex; align-items: center; gap: 12px; color: var(--text); text-decoration: none; min-width: 0; }
-.brand__mark { width: 44px; height: 44px; color: var(--accent); flex: none; }
+.brand__mark { width: 58px; height: 44px; color: var(--accent); flex: none; }
+.brand__mark svg { display: block; width: 100%; height: 100%; }
+/* nome na fonte da marca (Fraunces, a mesma da landing); sem internet, cai na fonte de títulos do app */
+.brand__title { font: 600 1.25rem "Fraunces", var(--font-display); }
 .brand__text { display: grid; line-height: 1.15; min-width: 0; }
-.brand__title { font: 600 1.25rem var(--font-display); }
 .brand__subtitle { color: var(--muted); font-size: 0.8rem; }
 .topbar__actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
 
