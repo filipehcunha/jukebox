@@ -185,6 +185,8 @@ select, input[type="text"] {
   background: var(--panel-solid); color: var(--text); max-width: 100%;
 }
 input[type="text"] { padding-right: 12px; width: 100%; }
+/* um endereço longo numa opção não pode alargar o painel */
+select { max-width: 100%; min-width: 0; text-overflow: ellipsis; }
 select { appearance: none; background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%), linear-gradient(135deg, var(--muted) 50%, transparent 50%); background-position: calc(100% - 17px) 55%, calc(100% - 12px) 55%; background-size: 5px 5px; background-repeat: no-repeat; }
 
 /* ---------------- explorador ---------------- */
@@ -281,7 +283,8 @@ html.hc .legend-bar__tip { background: #000; border-color: #ffff00; color: #ffff
 .status-dot.is-on { background: var(--green); box-shadow: 0 0 0 4px rgba(134, 239, 172, 0.18); }
 .status-dot.is-wait { background: var(--amber); }
 .status-dot.is-err { background: var(--coral); }
-.field { display: grid; gap: 6px; }
+.field { display: grid; gap: 6px; min-width: 0; }
+.field[hidden] { display: none; }
 .field__label { display: flex; justify-content: space-between; font-size: 0.84rem; font-weight: 600; color: var(--text-soft); }
 .field__label output { color: var(--muted); font-family: var(--font-mono); font-weight: 400; }
 
@@ -296,12 +299,12 @@ html.hc .legend-bar__tip { background: #000; border-color: #ffff00; color: #ffff
 .switch input:checked + .switch__track .switch__thumb { transform: translateX(18px); background: var(--accent-ink); }
 .switch input:focus-visible + .switch__track { box-shadow: var(--focus); }
 
-.phone-box { display: grid; gap: 10px; justify-items: center; text-align: center; }
+.phone-box { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; justify-items: center; text-align: center; }
 .phone-box[hidden] { display: none; }
 .qr { padding: 10px; background: #fff; border-radius: 12px; min-width: 216px; min-height: 216px; display: grid; place-items: center; color: #000; }
 .qr img, .qr canvas { width: 196px; height: 196px; }
 .link-small { font-size: 0.8rem; }
-.qr-url { font-size: 0.7rem; color: var(--muted); word-break: break-all; user-select: all; }
+.qr-url { max-width: 100%; font-size: 0.7rem; color: var(--muted); overflow-wrap: anywhere; word-break: break-all; user-select: all; }
 .qr-warn { color: var(--amber); font-size: 0.82rem; text-align: left; }
 .qr-warn[hidden], .qr:empty { display: none; }
 .phone-help { text-align: left; width: 100%; }

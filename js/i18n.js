@@ -134,6 +134,7 @@ export const STRINGS = {
     "phone.qrMissing": "QRCode.js did not load.",
     "phone.qrAria": "QR code to open the vibration receiver: {url}",
     "phone.thisPage": "this page's address",
+    "phone.published": "The phone opens this site over the internet: it doesn't need to be on the same Wi-Fi network.",
     "phone.byBrowser": "detected by the browser",
 
     "a11y.title": "Accessibility",
@@ -506,6 +507,7 @@ export const STRINGS = {
     "phone.qrMissing": "QRCode.js não carregou.",
     "phone.qrAria": "QR Code para abrir o receptor de vibração: {url}",
     "phone.thisPage": "endereço desta página",
+    "phone.published": "O celular abre este site pela internet: não precisa estar na mesma rede Wi-Fi.",
     "phone.byBrowser": "detectado pelo navegador",
 
     "a11y.title": "Acessibilidade",

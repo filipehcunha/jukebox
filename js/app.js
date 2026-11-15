@@ -1350,10 +1350,22 @@ function receiverUrl() {
 }
 
 let lanWarning = null;
+// Site publicado (HTTPS, fora deste computador): o próprio endereço da página serve para o
+// celular, então a escolha de rede e de endereço some e o QR usa esta página.
+let lastAddressInfo = null;
+const isPublishedSite = () => location.protocol === "https:" && !!lastAddressInfo && !lastAddressInfo.info.local && !lastAddressInfo.info.fromServer;
+
 function refreshQr() {
+  const published = isPublishedSite();
+  if (published) {
+    $("receiverMode").value = "lan";
+    $("lanSelect").value = lastAddressInfo.info.candidates[0].url;
+  }
+  $("receiverModeField").hidden = published;
+  $("publishedHelp").hidden = !published;
   const mode = $("receiverMode").value;
   const manual = $("lanSelect").value === "__manual";
-  $("lanField").hidden = mode !== "lan";
+  $("lanField").hidden = published || mode !== "lan";
   $("lanInput").hidden = !manual;
   const url = receiverUrl();
   const warn = $("qrWarn");
@@ -1373,7 +1385,6 @@ function refreshQr() {
   $("receiverLink").href = url;
 }
 
-let lastAddressInfo = null;
 // Detecta (de novo) os endereços: chamado ao gerar o QR e quando a rede muda
 async function detectAddresses() {
   const [info, pub] = await Promise.all([guessReceiverBase(), checkPublicReceiver()]);

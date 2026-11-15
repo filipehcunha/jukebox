@@ -176,7 +176,8 @@
               <span id="phoneConnectLabel" data-i18n="phone.connect">Generate QR code</span>
             </button>
             <div class="phone-box" id="phoneBox" hidden>
-              <label class="field">
+              <p class="help" id="publishedHelp" data-i18n="phone.published" hidden>The phone opens this site over the internet: it doesn't need to be on the same Wi-Fi network.</p>
+              <label class="field" id="receiverModeField">
                 <span class="field__label" data-i18n="phone.via">The phone opens the receiver through</span>
                 <select id="receiverMode">
                   <option value="lan" data-i18n="phone.lan">Local Wi-Fi network (this computer)</option>
