@@ -177,7 +177,7 @@ js/app.js        orquestração: galeria → legenda → exploração, teclado, 
 js/scales.js     escalas, cor → valor, papéis dos instrumentos, paletas acessíveis
 js/colormaps.js  barras GMAO amostradas (gerado)
 js/sampler.js    leitura robusta de pixels, gradiente, recoloração
-js/geo.js        projeções, máscara terra/oceano, nomes de regiões
+js/geo.js        projeções, máscara terra/oceano, nomes de regiões e países
 js/audio.js      motor Tone.js em 4 camadas, pré-escuta e pausa da música durante a voz
 js/haptics.js    PeerJS + QR Code
 js/receiver.js   página do celular
@@ -185,6 +185,7 @@ js/gallery.js    pastas locais, presets, miniaturas
 js/tutorial.js   tutorial guiado em áudio e teclado (demonstrações + desafios no mapa)
 js/voz.js        narrador com fila: MP3 neural do tutorial ou a melhor voz pt-BR do navegador
 assets/tutorial/ roteiro.json (textos do tutorial) + MP3 gravados
+assets/countries.geojson  fronteiras dos países (Natural Earth, 1:50m) usadas para dizer o país sob o cursor
 tools/gerar_audio_tutorial.py  roteiro → MP3 com voz neural (edge-tts)
 tools/extrair_escalas.py     legendas → js/colormaps.js (+ --validar)
 tools/gerar_mascara_terra.py frames de vento → assets/landmask.png
@@ -193,4 +194,4 @@ referencias/escalas/         legendas oficiais usadas como referência
 
 ## Créditos
 
-NASA GMAO (GEOS), NASA Scientific Visualization Studio (ECCO2 <https://svs.gsfc.nasa.gov/3912>, GEDI <https://svs.gsfc.nasa.gov/4950>). Amostras: Salamander Grand Piano (Alexander Holm, CC-BY 3.0) e *tonejs-instruments* (Nicholaus Brosowsky).
+NASA GMAO (GEOS), NASA Scientific Visualization Studio (ECCO2 <https://svs.gsfc.nasa.gov/3912>, GEDI <https://svs.gsfc.nasa.gov/4950>). Fronteiras dos países (`assets/countries.geojson`, camada *Admin 0 – Countries* 1:50m): Natural Earth <https://www.naturalearthdata.com/>, domínio público. Amostras: Salamander Grand Piano (Alexander Holm, CC-BY 3.0) e *tonejs-instruments* (Nicholaus Brosowsky).
