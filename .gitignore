@@ -11,3 +11,6 @@ referencias/
 
 # Python
 __pycache__/
+
+# Cloudflare (wrangler)
+.wrangler/
