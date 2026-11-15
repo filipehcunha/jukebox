@@ -1,44 +1,32 @@
 {
-  "_sobre": "Configuração da Sinfonia da Terra. Edite este arquivo à mão, salve e recarregue a página: nada aqui é alterado pela interface. Chaves que começam com _ são só comentários. Volumes em decibéis (dB): 0 = volume cheio, -6 = metade, valores positivos amplificam.",
+  "_sobre": "Configuração da Sinfonia da Terra. Edite este arquivo à mão, salve e recarregue a página: nada aqui é alterado pela interface. Chaves que começam com _ são só comentários. Volumes em decibéis (dB): 0 = volume cheio, -6 = metade, valores positivos amplificam. Os atalhos de teclado ficam em js/atalhos.js e os textos em lang/en.json e lang/pt.json.",
 
-  "mapeamento": {
-    "_comentario": "Qual instrumento toca cada característica do planeta. Use um nome da seção 'instrumentos': CELLO, DOUBLE_BASS, GRAND_PIANO, MARIMBA, FLUTE, HARP, VIOLIN, CLARINET, SYNTH_PAD, STEEL_DRUM.",
-    "TEMPERATURE": "CELLO",
-    "HUMIDITY": "FLUTE",
-    "VEGETATION_DENSITY": "MARIMBA",
-    "OCEAN_CURRENTS": "HARP",
-    "ALTITUDE_ELEVATION": "GRAND_PIANO"
-  },
-
-  "camadasPorEscala": {
-    "_comentario": "A música tem 4 camadas: low (grave), mid (médio), high (agudo) e arp (arpejos). Aqui se escolhe qual característica alimenta cada camada. 'default' vale para todos os mapas; as outras chaves (temp, humidity, wind, co, sst, gedi, generic) trocam só as camadas indicadas naquele mapa.",
-    "default": {
-      "low": "TEMPERATURE",
-      "mid": "ALTITUDE_ELEVATION",
-      "high": "HUMIDITY",
-      "arp": "OCEAN_CURRENTS"
-    },
-    "gedi": {
-      "mid": "VEGETATION_DENSITY"
-    }
+  "instrumentoPorMapa": {
+    "_comentario": "Cada mapa tem UM instrumento, responsável pela característica que o mapa mostra. Quanto maior o valor (mais quente, mais úmido, mais vento, mais CO...), mais aguda a nota. Use um nome da seção 'instrumentos'. Mapas: temp (temperatura do ar), humidity (umidade), wind (vento), co (monóxido de carbono), sst (temperatura dos oceanos), gedi (altura das florestas).",
+    "temp": "GRAND_PIANO",
+    "humidity": "FLUTE",
+    "wind": "VIOLIN",
+    "co": "CELLO",
+    "sst": "MARIMBA",
+    "gedi": "HARP"
   },
 
   "instrumentos": {
-    "_comentario": "volumeDb = volume do instrumento na mixagem, em decibéis. Os valores padrão foram medidos para todos soarem com a mesma força (flauta e violino um pouco abaixo, porque o ouvido percebe mais os agudos). notaMaisGrave e notaMaisAguda = faixa tocada, em número MIDI (60 = Dó central; 12 a mais = uma oitava acima). nome = como o instrumento aparece na tela e na narração.",
-    "CELLO":       { "nome": "Violoncelo",          "volumeDb": -9,   "notaMaisGrave": 36, "notaMaisAguda": 57 },
-    "DOUBLE_BASS": { "nome": "Contrabaixo",         "volumeDb": -4,   "notaMaisGrave": 28, "notaMaisAguda": 50 },
-    "GRAND_PIANO": { "nome": "Piano de cauda",      "volumeDb": -1.5, "notaMaisGrave": 55, "notaMaisAguda": 84 },
-    "MARIMBA":     { "nome": "Marimba",             "volumeDb": 1,    "notaMaisGrave": 48, "notaMaisAguda": 84 },
-    "FLUTE":       { "nome": "Flauta",              "volumeDb": -12,  "notaMaisGrave": 72, "notaMaisAguda": 93 },
-    "HARP":        { "nome": "Harpa",               "volumeDb": -12,  "notaMaisGrave": 55, "notaMaisAguda": 88 },
-    "VIOLIN":      { "nome": "Violino",             "volumeDb": -8,   "notaMaisGrave": 62, "notaMaisAguda": 88 },
-    "CLARINET":    { "nome": "Clarinete",           "volumeDb": -10,  "notaMaisGrave": 52, "notaMaisAguda": 81 },
-    "SYNTH_PAD":   { "nome": "Sintetizador (pad)",  "volumeDb": 4,    "notaMaisGrave": 48, "notaMaisAguda": 72 },
-    "STEEL_DRUM":  { "nome": "Steel drum",          "volumeDb": 6,    "notaMaisGrave": 57, "notaMaisAguda": 81 }
+    "_comentario": "volumeDb = volume do instrumento na mixagem, em decibéis. notaMaisGrave e notaMaisAguda = faixa tocada, em número MIDI (60 = Dó central; 12 a mais = uma oitava acima): o valor mais baixo do mapa toca a nota mais grave e o mais alto, a mais aguda. Os nomes que aparecem na tela e na narração ficam em lang/*.json → instruments.",
+    "CELLO":       { "volumeDb": -9,   "notaMaisGrave": 36, "notaMaisAguda": 64 },
+    "DOUBLE_BASS": { "volumeDb": -4,   "notaMaisGrave": 28, "notaMaisAguda": 52 },
+    "GRAND_PIANO": { "volumeDb": -1.5, "notaMaisGrave": 48, "notaMaisAguda": 84 },
+    "MARIMBA":     { "volumeDb": 1,    "notaMaisGrave": 48, "notaMaisAguda": 84 },
+    "FLUTE":       { "volumeDb": -12,  "notaMaisGrave": 60, "notaMaisAguda": 93 },
+    "HARP":        { "volumeDb": -10,  "notaMaisGrave": 48, "notaMaisAguda": 86 },
+    "VIOLIN":      { "volumeDb": -8,   "notaMaisGrave": 55, "notaMaisAguda": 91 },
+    "CLARINET":    { "volumeDb": -10,  "notaMaisGrave": 50, "notaMaisAguda": 86 },
+    "SYNTH_PAD":   { "volumeDb": 4,    "notaMaisGrave": 48, "notaMaisAguda": 84 },
+    "STEEL_DRUM":  { "volumeDb": 6,    "notaMaisGrave": 57, "notaMaisAguda": 86 }
   },
 
   "audio": {
-    "_comentario": "volumeGeralDb = posição inicial do controle de volume (-30 a 6). tonalidade = C (pentatônica de Dó) ou G (de Sol). limitadorDb = teto de segurança da saída. reverberacao = 0 (seco) a 1 (muito eco).",
+    "_comentario": "volumeGeralDb = posição inicial do controle de volume (-30 a 6). tonalidade = C (pentatônica de Dó) ou G (de Sol). usarAmostrasGravadas = true usa gravações reais dos instrumentos (precisa de internet); false usa só sintetizadores. limitadorDb = teto de segurança da saída. reverberacao = 0 (seco) a 1 (muito eco).",
     "volumeGeralDb": 0,
     "tonalidade": "C",
     "usarAmostrasGravadas": true,
@@ -47,20 +35,20 @@
   },
 
   "alerta": {
-    "_comentario": "Batimento de coração que soa nos valores extremos, para os dados terem urgência. ativo = false desliga. volumeDb = volume do batimento. limites = a partir de que valor bate, por escala: temp (temperatura do ar, °C), sst (temperatura do mar, °C), co (monóxido de carbono, ppbv), wind (vento, m/s). Quanto mais além do limite, mais rápido o coração.",
+    "_comentario": "Batimento de coração que soa nos valores extremos, para os dados terem urgência. ativo = false desliga. volumeDb = volume do batimento. limites = a partir de que valor bate, por mapa: temp (°C), sst (°C), co (ppbv), wind (m/s). Quanto mais além do limite, mais rápido o coração.",
     "ativo": true,
     "volumeDb": -19,
     "limites": { "temp": 35, "sst": 30, "co": 200, "wind": 25 }
   },
 
   "passeio": {
-    "_comentario": "Passeio sonoro: o cursor percorre o mapa sozinho (tecla V ou painel Passeio sonoro). duracaoS = duração padrão, em segundos. linhasMapaInteiro = quantas faixas o caminho 'Mapa inteiro' percorre, de cima para baixo.",
+    "_comentario": "Sinfonia e passeios: o cursor percorre o mapa sozinho. duracaoS = duração padrão, em segundos. linhasMapaInteiro = quantas faixas o caminho 'Mapa inteiro' percorre, de cima para baixo.",
     "duracaoS": 45,
     "linhasMapaInteiro": 5
   },
 
   "paisagem": {
-    "_comentario": "Sons dos lugares, para saber pelo som onde o cursor está: mar (ondas), gelo (vento gelado e cristais), floresta (insetos e pássaros), deserto (vento seco e bordão grave) e fronteira (sino suave ao passar de um país para outro). Todos sintetizados na hora e na tonalidade da música. ativo = false desliga tudo. volumeDb = volume de cada som. periodoOndaS = segundos entre uma onda e outra.",
+    "_comentario": "Sons dos lugares, para saber pelo som onde o cursor está: mar (ondas), gelo (vento gelado e cristais), floresta (insetos e pássaros), deserto (vento seco e bordão grave) e fronteira (sino suave ao passar de um país para outro). ativo = false desliga tudo. volumeDb = volume de cada som. periodoOndaS = segundos entre uma onda e outra.",
     "ativo": true,
     "mar":       { "volumeDb": -5, "periodoOndaS": 7 },
     "gelo":      { "volumeDb": 5 },
@@ -70,34 +58,21 @@
   },
 
   "narracao": {
-    "_comentario": "pausarMusica = true: a música para por completo enquanto a voz fala e volta quando ela termina. Com false, a música só abaixa 'reducaoDb' decibéis. tempoParaSilenciarS e tempoParaVoltarS = duração das rampas, em segundos. esperaParadoMs = tempo com o cursor parado antes de a voz ler o lugar. lerControlesAoFocar = a voz também lê botões e controles ao navegar com Tab. lerLegendaAoAbrir = ao abrir a legenda, a voz a lê inteira (mesmo com a narração desligada); passar o mouse num cartão pausa a voz e toca o som, e ao sair ela continua de onde parou. Quem usa leitor de tela pode pôr false.",
-    "ligadaAoAbrir": false,
+    "_comentario": "vozLigadaAoAbrir = a voz do site (lugar clicado, avisos, legenda e tutorial) começa ligada. lerControlesAoNavegar = o leitor embutido lê cada botão ao navegar com Tab (também pode ser ligado no painel de acessibilidade). pausarMusica = true: a música para por completo enquanto a voz fala; false: só abaixa 'reducaoDb' decibéis. tempoParaSilenciarS e tempoParaVoltarS = duração das rampas, em segundos. lerLegendaAoAbrir = ao abrir a legenda de um mapa, a voz a lê inteira.",
+    "vozLigadaAoAbrir": true,
+    "lerControlesAoNavegar": false,
     "pausarMusica": true,
     "reducaoDb": -15,
     "tempoParaSilenciarS": 0.12,
     "tempoParaVoltarS": 0.5,
     "velocidade": 1.05,
     "volume": 1,
-    "esperaParadoMs": 700,
-    "lerControlesAoFocar": true,
     "lerLegendaAoAbrir": true
   },
 
-  "baixaSensibilidade": {
-    "_comentario": "Valores usados quando o Modo de baixa sensibilidade está ligado. reducaoDb = quanto o volume geral cai. filtroMinHz e filtroMaxHz = faixa do filtro que corta os agudos. forcaVibracao = fração da vibração normal no celular (0 a 1).",
-    "reducaoDb": -10,
-    "limitadorDb": -16,
-    "filtroMinHz": 700,
-    "filtroMaxHz": 1700,
-    "velocidadeVoz": 0.94,
-    "volumeVoz": 0.7,
-    "forcaVibracao": 0.45
-  },
-
   "teclado": {
-    "_comentario": "Tamanho do passo do cursor no mapa, como fração da largura (0.0125 = 1,25% do mapa por toque de seta).",
-    "passo": 0.0125,
-    "passoComShift": 0.05
+    "_comentario": "Tamanho do passo do cursor no mapa a cada toque de seta, como fração da largura (0.025 = 2,5% do mapa). Na vertical o passo é o dobro, porque o mapa tem metade da altura.",
+    "passo": 0.025
   },
 
   "vibracao": {

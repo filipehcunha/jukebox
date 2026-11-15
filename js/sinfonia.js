@@ -87,11 +87,12 @@ const PATTERNS = [
 ];
 
 // Seções da peça em função da posição p (0 a 1)
+// (ids; o nome no idioma do site está em lang/*.json → symphony.sections)
 export function sectionAt(p) {
-  if (p < 0.1) return "abertura";
-  if (p < 0.6) return "desenvolvimento";
-  if (p < 0.82) return "clímax";
-  return "final";
+  if (p < 0.1) return "opening";
+  if (p < 0.6) return "development";
+  if (p < 0.82) return "climax";
+  return "ending";
 }
 function dynamics(p) {
   if (p < 0.1) return 0.45 + 3.5 * p;
@@ -101,7 +102,7 @@ function dynamics(p) {
 }
 
 // ctx = { root (0..11), notes(lo, hi) → pentatônica MIDI, ranges: {low, mid, high, arp} → [lo, hi],
-//         poly: {low: bool, ...}, low: modo de baixa sensibilidade }
+//         poly: {low: bool, ...} }
 // Retorna { steps: [[evento]], final: [evento], chords: [nome por compasso] }
 // evento = { layer, midi, dur, vel, off (s dentro do passo), v? (altura no mapa, p/ o desenho) }
 export function compose(cols, ctx) {
@@ -135,7 +136,7 @@ export function compose(cols, ctx) {
 
   const melody = ctx.notes(...ctx.ranges.mid);
   const counter = ctx.notes(...ctx.ranges.high);
-  const soft = ctx.low ? 0.7 : 1;
+  const soft = 1;
   const steps = [];
   let lastMel = null;
   for (let k = 0; k < total; k += 1) {
@@ -158,16 +159,15 @@ export function compose(cols, ctx) {
 
     if (c.n) {
       // melodia: ritmo conforme a seção e a energia; altura = onde estão os valores mais altos
-      let d = sec === "abertura" ? 0 : sec === "desenvolvimento" ? (p < 0.3 ? 1 : 2) : sec === "clímax" ? 3 : p < 0.9 ? 2 : 1;
-      if (sec === "desenvolvimento" && c.eRank > 0.7) d += 1;
-      if (ctx.low) d = Math.max(0, d - 1);
+      let d = sec === "opening" ? 0 : sec === "development" ? (p < 0.3 ? 1 : 2) : sec === "climax" ? 3 : p < 0.9 ? 2 : 1;
+      if (sec === "development" && c.eRank > 0.7) d += 1;
       if (PATTERNS[Math.min(3, d)][s]) {
         let m = melody[Math.round((1 - c.hotV) * (melody.length - 1))];
         if (s === 0) m = nearest(inRange("mid", chord.tones), m); // tempo forte: nota do acorde
         if (m !== lastMel || s === 0) {
           const vel = clamp(0.12 + (0.38 + 0.45 * c.peak) * dyn, 0.08, 0.98);
           ev.push({ layer: "mid", midi: m, dur: 1.4, vel, off: 0, v: c.hotV });
-          if (sec === "clímax" && s % 4 === 0 && m + 12 <= ctx.ranges.mid[1]) ev.push({ layer: "mid", midi: m + 12, dur: 1.2, vel: vel * 0.6, off: 0.01 });
+          if (sec === "climax" && s % 4 === 0 && m + 12 <= ctx.ranges.mid[1]) ev.push({ layer: "mid", midi: m + 12, dur: 1.2, vel: vel * 0.6, off: 0.01 });
           lastMel = m;
         }
       }
@@ -177,8 +177,8 @@ export function compose(cols, ctx) {
         ev.push({ layer: "high", midi: m, dur: 3.2, vel: 0.5 * dyn, off: 0, v: c.coldV });
       }
       // arpejos: nas frentes e contrastes fortes, e sempre no clímax
-      const arpOn = sec === "clímax" || (sec === "desenvolvimento" && p > 0.2 && c.eRank > 0.65);
-      if (arpOn && s % 2 === 1 && !(ctx.low && s % 4 === 3)) {
+      const arpOn = sec === "climax" || (sec === "development" && p > 0.2 && c.eRank > 0.65);
+      if (arpOn && s % 2 === 1) {
         const tones = inRange("arp", chord.tones);
         const base = Math.round(clamp(c.mean) * Math.max(0, tones.length - 5));
         const m = tones[Math.min(tones.length - 1, base + (s - 1) / 2)];

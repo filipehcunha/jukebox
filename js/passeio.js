@@ -3,14 +3,13 @@
 // estatísticas da travessia, o resumo falado no fim e a conversão da gravação para WAV.
 // O controle (início, parada, gravação, botões) fica em app.js.
 
+import { t } from "./i18n.js";
+
 const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
 
-export const ROUTES = {
-  sinfonia: { label: "Sinfonia do mapa", hint: "uma faixa varre o mapa e compõe uma peça" },
-  volta: { label: "Volta ao mundo", hint: "de oeste para leste, numa mesma latitude" },
-  polos: { label: "De polo a polo", hint: "de norte a sul, numa mesma longitude" },
-  mapa: { label: "Mapa inteiro", hint: "faixas de cima para baixo, em zigue-zague" },
-};
+// Caminhos (os nomes estão em lang/*.json → sweep.routes)
+export const ROUTES = ["sinfonia", "volta", "polos", "mapa"];
+export const routeLabel = (id) => t(`sweep.routes.${id}`);
 
 const M = 0.004; // margem: não encosta na borda da imagem
 const span = (q) => M + clamp(q) * (1 - 2 * M);
@@ -39,8 +38,8 @@ export function addReading(st, r, scale) {
     st.geoN += 1;
     if (r.region.land === false) st.oceanN += 1;
     if (r.region.country) st.countries.add(r.region.country);
-    const lab = r.env?.label;
-    if (lab && lab !== "mar") st.places[lab] = (st.places[lab] || 0) + 1;
+    const kind = r.env?.kind;
+    if (kind && kind !== "sea") st.places[kind] = (st.places[kind] || 0) + 1;
   }
   if (!r.valid) return;
   st.validN += 1;
@@ -51,32 +50,32 @@ export function addReading(st, r, scale) {
 }
 
 const pct = (a, b) => Math.round((100 * a) / Math.max(b, 1));
-const lowerFirst = (t) => t.charAt(0).toLowerCase() + t.slice(1);
+const lowerFirst = (x) => x.charAt(0).toLocaleLowerCase() + x.slice(1);
 
 // Frase final: o que a travessia encontrou, inclusive quanto dela estava em alerta.
+// Textos em lang/*.json → summary.
 export function summarize(st, scale, { secs, completed, whole = false }) {
-  const parts = [whole
-    ? (completed ? `Fim da sinfonia, ${secs} segundos de música.` : `Sinfonia interrompida depois de ${secs} segundos.`)
-    : completed ? `Passeio terminado em ${secs} segundos.` : `Passeio interrompido depois de ${secs} segundos.`];
+  const S = (key, vars) => t(`summary.${key}`, vars);
+  const parts = [S(`${whole ? "symphony" : "walk"}${completed ? "Done" : "Stopped"}`, { secs })];
   if (st.geoN) {
     const c = st.countries.size;
-    const lands = c === 0 ? "nenhum país" : c === 1 ? "1 país" : `${c} países`;
-    parts.push(whole
-      ? `O mapa mostra ${lands}, e ${pct(st.oceanN, st.geoN)}% dele é oceano.`
-      : `Você atravessou ${lands}, e ${pct(st.oceanN, st.geoN)}% do caminho foi sobre o oceano.`);
+    const lands = c === 0 ? S("noCountry") : c === 1 ? S("oneCountry") : S("countries", { n: c });
+    parts.push(S(whole ? "mapShows" : "youCrossed", { lands, ocean: pct(st.oceanN, st.geoN) }));
     const places = Object.entries(st.places).filter(([, n]) => pct(n, st.geoN) >= 2).sort((a, b) => b[1] - a[1]);
-    if (places.length) parts.push(`${whole ? "Também há" : "Também passou por"} ${places.map(([lab, n]) => `${lab} (${pct(n, st.geoN)}%)`).join(", ")}.`);
+    if (places.length) {
+      const list = places.map(([kind, n]) => `${t(`places.${kind}`)} (${pct(n, st.geoN)}%)`).join(", ");
+      parts.push(S(whole ? "alsoThere" : "alsoPassed", { list }));
+    }
   }
   const where = (x) => `${x.place ? `${x.place}, ` : ""}${lowerFirst(scale.sentence(scale.format(x.value)))}`;
-  if (st.hi && st.lo) {
-    parts.push(`Mais alto: ${where(st.hi)}. Mais baixo: ${where(st.lo)}.`);
-  } else if (!st.validN) {
-    parts.push("O caminho não passou por pontos com dados legíveis.");
-  }
+  if (st.hi && st.lo) parts.push(S("hiLo", { hi: where(st.hi), lo: where(st.lo) }));
+  else if (!st.validN) parts.push(S("noData"));
   if (scale.alert && st.validN) {
+    const p = pct(st.alertN, st.validN);
+    const area = whole ? S("ofMap") : S("ofPath");
     parts.push(st.alertN
-      ? `${pct(st.alertN, st.validN) < 1 ? "Um trecho curto" : `${pct(st.alertN, st.validN)}% ${whole ? "do mapa" : "do caminho"}`} com ${scale.alert.label}: foi o coração que você ouviu.`
-      : `Nenhum trecho com ${scale.alert.label} ${whole ? "neste mapa" : "neste caminho"}.`);
+      ? S("alertYes", { part: p < 1 ? S("shortStretch") : `${p}% ${area}`, label: scale.alertLabel })
+      : S("alertNo", { label: scale.alertLabel, where: whole ? S("onMap") : S("onPath") }));
   }
   return parts.join(" ");
 }

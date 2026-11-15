@@ -9,6 +9,8 @@
 // Valor ausente ou inválido no JSON não quebra o app: usa-se o padrão indicado aqui e o
 // problema aparece em CONFIG_PROBLEMS (mostrado na tela e no console).
 
+import { t } from "./i18n.js";
+
 export const CONFIG_PROBLEMS = [];
 const problem = (msg) => { CONFIG_PROBLEMS.push(msg); console.warn(`[config.json] ${msg}`); };
 
@@ -140,21 +142,22 @@ const INSTRUMENT_TECH = {
 };
 
 // padrões usados só quando o config.json não traz o instrumento ou o campo
+// padrões usados só quando o config.json não traz o instrumento ou o campo: [volumeDb, grave, aguda]
 const INSTRUMENT_DEFAULTS = {
-  CELLO: ["Violoncelo", -9, 36, 57],
-  DOUBLE_BASS: ["Contrabaixo", -4, 28, 50],
-  GRAND_PIANO: ["Piano de cauda", -1.5, 55, 84],
-  MARIMBA: ["Marimba", 1, 48, 84],
-  FLUTE: ["Flauta", -12, 72, 93],
-  HARP: ["Harpa", -12, 55, 88],
-  VIOLIN: ["Violino", -8, 62, 88],
-  CLARINET: ["Clarinete", -10, 52, 81],
-  SYNTH_PAD: ["Sintetizador (pad)", 4, 48, 72],
-  STEEL_DRUM: ["Steel drum", 6, 57, 81],
+  CELLO: [-9, 36, 64],
+  DOUBLE_BASS: [-4, 28, 52],
+  GRAND_PIANO: [-1.5, 48, 84],
+  MARIMBA: [1, 48, 84],
+  FLUTE: [-12, 60, 93],
+  HARP: [-10, 48, 86],
+  VIOLIN: [-8, 55, 91],
+  CLARINET: [-10, 50, 86],
+  SYNTH_PAD: [4, 48, 84],
+  STEEL_DRUM: [6, 57, 86],
 };
 
 function buildInstrument(id) {
-  const [dName, dDb, dLo, dHi] = INSTRUMENT_DEFAULTS[id];
+  const [dDb, dLo, dHi] = INSTRUMENT_DEFAULTS[id];
   const user = clean(section("instrumentos")[id]);
   const field = (key, fallback, min, max) => {
     const v = user[key];
@@ -175,21 +178,23 @@ function buildInstrument(id) {
   }
   return {
     ...INSTRUMENT_TECH[id],
-    label: typeof user.nome === "string" && user.nome.trim() ? user.nome.trim() : dName,
+    id,
+    // nome no idioma atual (lang/*.json → instruments)
+    get label() { return t(`instruments.${id}`); },
     volumeDb,
     level: dbToGain(volumeDb), // ganho linear usado pelo motor de áudio
     range: [lo, hi],
   };
 }
 
-/** Todos os instrumentos disponíveis, já com nome, volume (dB) e faixa do config.json. */
+/** Todos os instrumentos disponíveis, já com volume (dB) e faixa do config.json. */
 export const SAMPLE_SET = Object.fromEntries(Object.keys(INSTRUMENT_TECH).map((id) => [id, buildInstrument(id)]));
 export const SAMPLE_SET_NAMES = Object.keys(SAMPLE_SET);
 for (const id of Object.keys(clean(section("instrumentos")))) {
   if (!SAMPLE_SET[id]) problem(`instrumentos.${id} não existe. Instrumentos disponíveis: ${SAMPLE_SET_NAMES.join(", ")}.`);
 }
 
-// Apelidos aceitos no mapeamento
+// Apelidos aceitos
 export const INSTRUMENT_ALIASES = { PIANO: "GRAND_PIANO", BASS: "DOUBLE_BASS", CONTRABASS: "DOUBLE_BASS", PAD: "SYNTH_PAD" };
 
 export function resolveInstrument(name) {
@@ -199,66 +204,31 @@ export function resolveInstrument(name) {
 }
 
 // ---------------------------------------------------------------------------
-// Mapeamento: característica do planeta → instrumento (config.json → "mapeamento")
+// Um instrumento por mapa (config.json → "instrumentoPorMapa")
 // ---------------------------------------------------------------------------
-// Nomes em português das características
-export const VARIABLE_LABELS = {
-  TEMPERATURE: "Temperatura",
-  HUMIDITY: "Umidade",
-  VEGETATION_DENSITY: "Densidade da vegetação",
-  OCEAN_CURRENTS: "Correntes oceânicas",
-  ALTITUDE_ELEVATION: "Altitude e relevo",
-};
-const DEFAULT_MAPPING = {
-  TEMPERATURE: "CELLO",
-  HUMIDITY: "FLUTE",
-  VEGETATION_DENSITY: "MARIMBA",
-  OCEAN_CURRENTS: "HARP",
-  ALTITUDE_ELEVATION: "GRAND_PIANO",
-};
+// Cada mapa mostra uma característica (temperatura, umidade, vento...) e ela é tocada por um
+// único instrumento: quanto maior o valor, mais aguda a nota.
+const DEFAULT_BY_MAP = { temp: "GRAND_PIANO", humidity: "FLUTE", wind: "VIOLIN", co: "CELLO", sst: "MARIMBA", gedi: "HARP" };
 
-export const MAPPING_CONFIG = { ...DEFAULT_MAPPING };
-for (const [variable, inst] of Object.entries(clean(section("mapeamento")))) {
-  if (!(variable in DEFAULT_MAPPING)) {
-    problem(`mapeamento.${variable} não é uma característica conhecida (${Object.keys(DEFAULT_MAPPING).join(", ")}).`);
+export const INSTRUMENT_BY_MAP = { ...DEFAULT_BY_MAP };
+for (const [scaleId, inst] of Object.entries(clean(section("instrumentoPorMapa")))) {
+  if (!(scaleId in DEFAULT_BY_MAP)) {
+    problem(`instrumentoPorMapa.${scaleId} não é um mapa conhecido (${Object.keys(DEFAULT_BY_MAP).join(", ")}).`);
     continue;
   }
   const id = resolveInstrument(inst);
-  if (id) MAPPING_CONFIG[variable] = id;
-  else problem(`mapeamento.${variable}: instrumento "${inst}" não existe; usando ${DEFAULT_MAPPING[variable]}. Disponíveis: ${SAMPLE_SET_NAMES.join(", ")}.`);
+  if (id) INSTRUMENT_BY_MAP[scaleId] = id;
+  else problem(`instrumentoPorMapa.${scaleId}: instrumento "${inst}" não existe; usando ${DEFAULT_BY_MAP[scaleId]}. Disponíveis: ${SAMPLE_SET_NAMES.join(", ")}.`);
 }
 
-// ---------------------------------------------------------------------------
-// Camadas da sonificação (config.json → "camadasPorEscala")
-// ---------------------------------------------------------------------------
-// A música tem 4 camadas fixas. Cada escala de cores decide quanto cada camada soa
-// (scales.js → roles); o mapeamento decide QUAL instrumento toca em cada camada.
-//
-//   low  → grave: frio, seco, calmo
-//   mid  → médio: valores intermediários
-//   high → agudo: úmido, quente, dossel alto, pixels claros
-//   arp  → arpejos: correntes, ventos fortes, frentes (gradientes)
+export const instrumentForScale = (scaleId) => INSTRUMENT_BY_MAP[scaleId] || DEFAULT_BY_MAP.temp;
+
+// O motor de áudio tem 4 vozes (usadas juntas pela sinfonia do mapa). Todas recebem o MESMO
+// instrumento do mapa: a exploração toca só a voz média; a sinfonia faz harmonia com ele.
 export const LAYER_ORDER = ["low", "mid", "high", "arp"];
-
-const DEFAULT_LAYERS = { low: "TEMPERATURE", mid: "ALTITUDE_ELEVATION", high: "HUMIDITY", arp: "OCEAN_CURRENTS" };
-export const SCALE_LAYER_MAPPING = { default: { ...DEFAULT_LAYERS } };
-for (const [scaleId, layers] of Object.entries(clean(section("camadasPorEscala")))) {
-  const target = (SCALE_LAYER_MAPPING[scaleId] ||= {});
-  for (const [layer, variable] of Object.entries(clean(layers))) {
-    if (!LAYER_ORDER.includes(layer)) problem(`camadasPorEscala.${scaleId}.${layer}: as camadas são ${LAYER_ORDER.join(", ")}.`);
-    else if (!(variable in MAPPING_CONFIG)) problem(`camadasPorEscala.${scaleId}.${layer}: característica "${variable}" desconhecida.`);
-    else target[layer] = variable;
-  }
-}
-
-// Característica (chave do mapeamento) de cada camada para uma escala
-export function layerVariable(scaleId, layer) {
-  return SCALE_LAYER_MAPPING[scaleId]?.[layer] || SCALE_LAYER_MAPPING.default[layer];
-}
-
-// Instrumento (chave do SAMPLE_SET) de cada camada para uma escala
 export function layerInstruments(scaleId) {
-  return Object.fromEntries(LAYER_ORDER.map((l) => [l, MAPPING_CONFIG[layerVariable(scaleId, l)]]));
+  const inst = instrumentForScale(scaleId);
+  return Object.fromEntries(LAYER_ORDER.map((l) => [l, inst]));
 }
 
 // ---------------------------------------------------------------------------
@@ -290,29 +260,18 @@ export const SETTINGS = {
     fronteira: { volumeDb: sub("paisagem", "fronteira", "volumeDb", -8, -60, 12) },
   },
   narration: {
-    onAtStart: bool("narracao", "ligadaAoAbrir", false),
+    onAtStart: bool("narracao", "vozLigadaAoAbrir", true),
+    readControls: bool("narracao", "lerControlesAoNavegar", false),
     pauseMusic: bool("narracao", "pausarMusica", true),
     duckDb: num("narracao", "reducaoDb", -15, -60, 0),
     fadeOutS: num("narracao", "tempoParaSilenciarS", 0.12, 0.01, 5),
     fadeInS: num("narracao", "tempoParaVoltarS", 0.5, 0.01, 5),
     rate: num("narracao", "velocidade", 1.05, 0.5, 2),
     volume: num("narracao", "volume", 1, 0, 1),
-    restMs: num("narracao", "esperaParadoMs", 700, 200, 10000),
-    readControls: bool("narracao", "lerControlesAoFocar", true),
     readLegend: bool("narracao", "lerLegendaAoAbrir", true),
   },
-  low: {
-    reduceDb: num("baixaSensibilidade", "reducaoDb", -10, -40, 0),
-    limiterDb: num("baixaSensibilidade", "limitadorDb", -16, -40, 0),
-    filterMinHz: num("baixaSensibilidade", "filtroMinHz", 700, 100, 20000),
-    filterMaxHz: num("baixaSensibilidade", "filtroMaxHz", 1700, 100, 20000),
-    voiceRate: num("baixaSensibilidade", "velocidadeVoz", 0.94, 0.5, 2),
-    voiceVolume: num("baixaSensibilidade", "volumeVoz", 0.7, 0, 1),
-    hapticStrength: num("baixaSensibilidade", "forcaVibracao", 0.45, 0, 1),
-  },
   keyboard: {
-    step: num("teclado", "passo", 0.0125, 0.001, 0.5),
-    bigStep: num("teclado", "passoComShift", 0.05, 0.001, 0.5),
+    step: num("teclado", "passo", 0.025, 0.001, 0.5),
   },
   haptics: {
     pulseColdMs: num("vibracao", "pulsoFrioMs", 240, 5, 2000),

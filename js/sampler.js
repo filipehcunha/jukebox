@@ -2,6 +2,7 @@
 
 import { luminance, paletteColor } from "./scales.js";
 import { project, regionName } from "./geo.js";
+import { t } from "./i18n.js";
 
 const MAX_WIDTH = 2048;
 const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
@@ -94,16 +95,16 @@ export class ImageSampler {
 
     const mask = scale.masks().find((m) => u >= m.u0 && u <= m.u1 && v >= m.v0 && v <= m.v1);
     if (mask) {
-      return { u, v, rgb, valid: false, reason: mask.label, geo, region, bright: luminance(...rgb), grad: 0, texture: 0 };
+      return { u, v, rgb, valid: false, reason: t(mask.key), geo, region, bright: luminance(...rgb), grad: 0, texture: 0 };
     }
     if ((projection?.type === "orthographic" || projection?.type === "perspective") && !geo) {
-      return { u, v, rgb, valid: false, reason: "Fora do globo", geo, region, bright: 0, grad: 0, texture: 0 };
+      return { u, v, rgb, valid: false, reason: t("reasons.offGlobe"), geo, region, bright: 0, grad: 0, texture: 0 };
     }
 
     let p = this.patch(scale, x, y, scale.patchRadius || 2, scale.chroma ? 0.08 : 0.3);
     if (!p.valid && scale.fallbackRadius) p = this.patch(scale, x, y, scale.fallbackRadius, 0.04);
     if (!p.valid) {
-      const reason = region?.land && scale.landLabel ? scale.landLabel : scale.invalidLabel || "Fora da escala (linha de costa, fronteira ou rótulo)";
+      const reason = region?.land && scale.landLabel ? scale.landLabel : scale.invalidLabel || t("reasons.offScale");
       return { u, v, rgb, valid: false, reason, geo, region, bright: p.bright, peak: p.peak, grad: 0, texture: clamp(p.texture / 0.15) };
     }
 

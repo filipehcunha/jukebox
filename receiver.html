@@ -1,10 +1,10 @@
 <!doctype html>
-<html lang="pt-BR">
+<html lang="en-US">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#03080f">
-  <title>Receptor Tátil · Sinfonia da Terra</title>
+  <title>Vibration receiver</title>
   <style>
     :root {
       color-scheme: dark;
@@ -56,21 +56,21 @@
 </head>
 <body>
   <main>
-    <h1>Receptor Tátil</h1>
-    <p>A Sinfonia da Terra · vibração sincronizada com o mapa do computador</p>
+    <h1 data-t="title">Vibration receiver</h1>
+    <p data-t="sub"></p>
     <div class="pulse" id="pulse" aria-hidden="true"></div>
-    <button id="enable" type="button">Toque para ativar a vibração</button>
+    <button id="enable" type="button" data-t="enable"></button>
     <div class="card">
-      <span class="status" id="status" role="status" aria-live="polite">Conectando…</span>
+      <span class="status" id="status" role="status" aria-live="polite" data-t="connecting"></span>
       <span class="value" id="value">—</span>
-      <span id="zone">Mova o mouse sobre o mapa no computador.</span>
-      <span class="rate" id="rate" title="Ritmo da vibração: cores quentes vibram curto e rápido, cores frias longo e lento">—</span>
+      <span id="zone" data-t="hint"></span>
+      <span class="rate" id="rate">—</span>
     </div>
-    <ol class="steps" id="steps" aria-label="Diagnóstico da conexão">
-      <li data-step="page" data-s="ok">Página do receptor aberta</li>
-      <li data-step="signal">Servidor de sinalização (PeerJS)</li>
-      <li data-step="peer">Conexão direta com o computador (WebRTC)</li>
-      <li data-step="vibe">Vibração</li>
+    <ol class="steps" id="steps">
+      <li data-step="page" data-s="ok" data-t="page"></li>
+      <li data-step="signal" data-t="signal"></li>
+      <li data-step="peer" data-t="peer"></li>
+      <li data-step="vibe" data-t="vibe"></li>
     </ol>
     <p id="support"></p>
   </main>

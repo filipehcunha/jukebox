@@ -1,0 +1,295 @@
+{
+  "_sobre": "English texts. lang/pt.json has the same keys in Portuguese. {name} is replaced by the code.",
+  "common": { "and": "and", "or": "or", "to": "to", "shortcut": "Shortcut: {key}" },
+  "keys": {
+    " ": "Space", "Enter": "Enter", "Home": "Home", "Escape": "Escape", "F1": "F1",
+    "+": "plus", "=": "equals", "-": "minus", "_": "underscore", "arrows": "Arrow keys"
+  },
+  "lang": {
+    "switchLabel": "Português",
+    "switchAria": "Mudar o idioma para português",
+    "otherCode": "pt-BR",
+    "changed": "Language: English."
+  },
+  "brand": { "title": "Earth Symphony", "subtitle": "Multisensory Earth Jukebox", "aria": "Earth Symphony, back to the maps" },
+  "skip": { "main": "Skip to main content", "tutorial": "Start the audio tutorial, recommended for blind users", "help": "Open help and keyboard shortcuts" },
+  "top": { "tutorial": "Audio tutorial", "help": "Help and shortcuts" },
+  "gallery": {
+    "kicker": "Choose a map",
+    "heading": "Listen to the planet, pixel by pixel",
+    "lead": "Pick a NASA map and explore it with the mouse or the keyboard. Each map is played by its own instrument: the higher the value, the higher the note. Click a place, or press Space, to hear the country and the value.",
+    "announce": "Maps. {n} NASA maps. Use Tab to choose a map and Enter to open it."
+  },
+  "maps": {
+    "ecco2": { "title": "Ocean Temperature · ECCO2", "description": "Sea surface temperature and currents (ECCO2 model, MIT/JPL).", "source": "NASA SVS · ECCO2" },
+    "gedi": { "title": "Forest Height · GEDI", "description": "Forest canopy height measured by a laser on board the ISS.", "source": "NASA SVS · GEDI" },
+    "gmao-temp": { "title": "Air Temperature · T2M", "description": "Temperature 2 m above the surface, from −40 °C to 40 °C.", "source": "NASA GMAO · GEOS" },
+    "gmao-humidity": { "title": "Air Humidity · Q2M", "description": "Grams of water vapor per kilogram of air, from 0 to 22 g/kg.", "source": "NASA GMAO · GEOS" },
+    "gmao-wind": { "title": "Wind Speed", "description": "Wind near the surface, from calm to hurricane force.", "source": "NASA GMAO · GEOS" },
+    "gmao-co": { "title": "Carbon Monoxide · CO", "description": "Parts per billion (ppbv): fires, industry and traffic.", "source": "NASA GMAO · GEOS" }
+  },
+  "instruments": {
+    "CELLO": "Cello", "DOUBLE_BASS": "Double bass", "GRAND_PIANO": "Grand piano", "MARIMBA": "Marimba",
+    "FLUTE": "Flute", "HARP": "Harp", "VIOLIN": "Violin", "CLARINET": "Clarinet", "SYNTH_PAD": "Synth pad", "STEEL_DRUM": "Steel drum"
+  },
+  "scales": {
+    "temp": {
+      "label": "Air temperature at 2 m (T2M)", "short": "Temperature",
+      "ends": ["very cold", "freezing point", "very hot"],
+      "zones": ["Polar, very cold", "Cold, below freezing", "Mild", "Hot", "Very hot"],
+      "sentence": "Temperature {v}", "invalid": "Outside the scale (coastline, border or label)",
+      "alert": "extreme heat, above {v} °C"
+    },
+    "humidity": {
+      "label": "Specific humidity at 2 m (Q2M)", "short": "Humidity",
+      "ends": ["dry", "moderate", "humid"],
+      "zones": ["Dry air", "Moderate humidity", "Humid", "Very humid, tropical"],
+      "sentence": "Humidity {v}", "invalid": "Outside the scale (coastline, border or label)"
+    },
+    "wind": {
+      "label": "Wind speed near the surface", "short": "Wind",
+      "ends": ["calm", "strong", "hurricane force"],
+      "zones": ["Calm or light breeze", "Moderate wind", "Strong wind", "Gale", "Storm", "Hurricane force"],
+      "sentence": "Wind {v}", "invalid": "Outside the scale (coastline, border or label)",
+      "alert": "storm winds, above {v} m/s"
+    },
+    "co": {
+      "label": "Carbon monoxide (CO)", "short": "Carbon monoxide",
+      "ends": ["low", "", "high"],
+      "zones": ["Clean air, background level", "Moderate CO", "High CO", "Very high CO, fires or industry"],
+      "sentence": "Carbon monoxide {v}", "invalid": "Outside the scale (coastline, border or label)",
+      "alert": "very high pollution, above {v} ppbv of carbon monoxide"
+    },
+    "sst": {
+      "label": "Sea surface temperature (ECCO2)", "short": "Ocean temperature",
+      "ends": ["cold water", "", "warm water"],
+      "zones": ["Cold, polar water", "Temperate water", "Mild water", "Warm, tropical water"],
+      "sentence": "Ocean temperature {v}", "invalid": "Ocean with no visible current",
+      "land": "Land (no ocean data)", "alert": "very warm sea, above {v} °C"
+    },
+    "gedi": {
+      "label": "Forest canopy height (GEDI)", "short": "Canopy height",
+      "ends": ["ground", "", "tall canopy"],
+      "zones": ["Ground or low vegetation", "Moderate vegetation", "Tall forest", "Very tall canopy"],
+      "sentence": "Canopy height {v}", "invalid": "Ocean or no canopy data"
+    }
+  },
+  "reasons": {
+    "logo": "NASA/GMAO logo", "stamp": "Date and time stamp", "offGlobe": "Outside the globe",
+    "offScale": "Outside the scale (coastline, border or label)"
+  },
+  "regions": {
+    "antarctica": "Antarctica", "greenland": "Greenland", "arctic": "Arctic", "amazon": "Amazon", "sahara": "Sahara",
+    "arabia": "Arabian Peninsula", "tibet": "Tibetan Plateau", "india": "India", "china": "China", "siberia": "Siberia",
+    "seAsia": "Southeast Asia", "australia": "Australia", "madagascar": "Madagascar", "congo": "Congo Basin", "sahel": "Sahel",
+    "mediterranean": "Mediterranean Sea", "gulfMexico": "Gulf of Mexico", "caribbean": "Caribbean Sea", "bengal": "Bay of Bengal",
+    "arabianSea": "Arabian Sea", "arcticOcean": "Arctic Ocean", "southernOcean": "Southern Ocean", "northAtlantic": "North Atlantic",
+    "southAtlantic": "South Atlantic", "indianOcean": "Indian Ocean", "northPacific": "North Pacific", "southPacific": "South Pacific",
+    "equatorialPacific": "Equatorial Pacific", "northAmerica": "North America", "centralAmerica": "Central America",
+    "southAmerica": "South America", "europe": "Europe", "middleEast": "Middle East", "africa": "Africa", "asia": "Asia",
+    "oceania": "Oceania", "northHemisphere": "Northern Hemisphere", "southHemisphere": "Southern Hemisphere"
+  },
+  "places": { "sea": "sea", "icySea": "icy sea", "ice": "ice", "forest": "forest", "desert": "desert" },
+  "geo": { "N": "N", "S": "S", "E": "E", "W": "W", "north": "North", "south": "South", "east": "East", "west": "West" },
+  "position": {
+    "center": "in the center of the map",
+    "top_left": "top left", "top_center": "top, in the center", "top_right": "top right",
+    "middle_left": "halfway down, on the left", "middle_right": "halfway down, on the right",
+    "bottom_left": "bottom left", "bottom_center": "bottom, in the center", "bottom_right": "bottom right",
+    "text": "{place}. {coord}Cursor {where}: {x}% across and {y}% down the map."
+  },
+  "overview": {
+    "none": "Overview of {title}: I found no readable data in this image.",
+    "text": "Overview of {title}. {hi} is the highest value, {hiWhere}. {lo} is the lowest, {loWhere}. Map average: {mean}. Use the keys 1 to 9 to jump between regions."
+  },
+  "explore": {
+    "back": "Maps", "roledesc": "interactive sound map", "loading": "Loading image…",
+    "scaleHint": "Hover over the scale, or use the arrow keys with it focused, to hear each value.",
+    "readingAria": "Current reading", "place": "Place", "instrument": "Instrument", "higherHigher": "Higher value, higher note",
+    "noData": "no data",
+    "placeNoData": "{place}. No data here: {reason}.",
+    "alert": "Alert: {label}.",
+    "opened": "Map open: {title}, played by the {inst}. Use the arrow keys to explore and {read} to hear the country and the value. Press {help} for every shortcut.",
+    "canvasAria": "Sound map of {title}, played by the {inst}. Arrow keys move the cursor, {read} tells the country and the value, {help} opens the help",
+    "help": "Move the mouse, or use the arrow keys with the map focused. Click or press {read} to hear the country and the value. {overview} overview, {symphony} map symphony, {legend} legend, {help} every shortcut.",
+    "loadError": "Could not open {title}.",
+    "noMapOpen": "No map is open. Choose a map first.",
+    "edge": { "ArrowLeft": "Left edge of the map.", "ArrowRight": "Right edge of the map.", "ArrowUp": "Top edge of the map.", "ArrowDown": "Bottom edge of the map." }
+  },
+  "panels": { "aria": "Control panels", "sound": "Sound", "volume": "Volume", "legend": "Hear the map legend" },
+  "audio": {
+    "start": "Turn sound on", "pause": "Pause sound", "resume": "Resume sound",
+    "playing": "Playing", "paused": "Sound paused", "waiting": "Sound waiting to start",
+    "pausedSay": "Sound paused.", "onSay": "Sound on.",
+    "noTone": "Tone.js did not load: the sound needs internet the first time.",
+    "unavailable": "Sound is not available in this browser.",
+    "volumeNow": "Volume {db} decibels"
+  },
+  "symphony": {
+    "play": "Play the map symphony", "stop": "Stop",
+    "hint": "A bar sweeps the map from left to right and turns the data into music with a beginning, middle and end.",
+    "sections": { "opening": "opening", "development": "development", "climax": "climax", "ending": "ending" }
+  },
+  "sweep": {
+    "title": "Symphony and walks",
+    "intro": "Listen to the map without moving anything. In the symphony, a bar sweeps the image and composes music. In the walks, the cursor travels along a path.",
+    "route": "Path", "duration": "Duration", "seconds": "{n} seconds",
+    "record": "Record the audio", "recordHint": "When it ends, the music becomes a WAV file to download (the voice is not recorded).",
+    "routes": { "sinfonia": "Map symphony", "volta": "Around the world", "polos": "Pole to pole", "mapa": "Whole map" },
+    "routeOptions": {
+      "sinfonia": "Map symphony (a bar sweeps the image)", "volta": "Around the world (west → east)",
+      "polos": "Pole to pole (north → south)", "mapa": "Whole map (zigzag)"
+    },
+    "playSymphony": "Play the symphony", "stopSymphony": "Stop the symphony", "startWalk": "Start the walk", "stopWalk": "Stop the walk",
+    "preparing": "Introducing…", "recording": "recording the audio", "saving": "Creating the audio file…",
+    "openFirst": "Open a map first.",
+    "cannotRecord": "This browser cannot record the audio; it will play without recording.",
+    "recordFailed": "Could not record the audio; it will play without recording.",
+    "cancelled": "Walk cancelled.",
+    "atEquator": "along the Equator", "atLat": "along latitude {n}° {h}", "atLon": "along longitude {n}° {h}",
+    "introSymphony": "Map symphony: a bar will sweep the map from left to right in {secs} seconds and turn each stretch into music, played by the {inst}. High notes come from the high values and low notes from the low values. The piece has an opening, development, climax and ending.",
+    "introVolta": "Sound walk around the world{where}: {secs} seconds from west to east. With headphones, the sound travels from left to right.",
+    "introPolos": "Sound walk from pole to pole{where}: {secs} seconds from north to south.",
+    "introMapa": "Sound walk across the whole map: {rows} rows from top to bottom, in {secs} seconds.",
+    "introPlaces": "Each place has its sound: waves at sea, insects and birds in the forest, dry wind in the desert, cold wind and crystals on ice, and a bell at borders.",
+    "introHeart": "If you hear a heartbeat, it is {label}.",
+    "introRec": "The audio will be recorded.",
+    "introStopSymphony": "The arrow keys, a click on the map or {key} stop the music.",
+    "introStopWalk": "The arrow keys, a click on the map or {key} stop the walk.",
+    "download": "Download audio ({ext}, {secs} s, {mb} MB)",
+    "downloadReady": "The audio is ready: use the Download audio button in the Symphony and walks panel.",
+    "saveFailed": "Could not save the audio ({err})."
+  },
+  "summary": {
+    "symphonyDone": "End of the symphony, {secs} seconds of music.", "symphonyStopped": "Symphony stopped after {secs} seconds.",
+    "walkDone": "Walk finished in {secs} seconds.", "walkStopped": "Walk stopped after {secs} seconds.",
+    "noCountry": "no country", "oneCountry": "1 country", "countries": "{n} countries",
+    "mapShows": "The map shows {lands}, and {ocean}% of it is ocean.",
+    "youCrossed": "You crossed {lands}, and {ocean}% of the path was over the ocean.",
+    "alsoThere": "There is also {list}.", "alsoPassed": "You also passed through {list}.",
+    "hiLo": "Highest: {hi}. Lowest: {lo}.",
+    "noData": "The path did not cross any readable data.",
+    "ofMap": "of the map", "ofPath": "of the path", "onMap": "on this map", "onPath": "on this path",
+    "shortStretch": "A short stretch",
+    "alertYes": "{part} with {label}: that was the heartbeat you heard.",
+    "alertNo": "No stretch with {label} {where}."
+  },
+  "phone": {
+    "title": "Connect a phone (vibration)",
+    "help": "Scan the QR code with the phone camera. The vibration follows the cursor through WebRTC, peer to peer.",
+    "connect": "Show QR code", "newQr": "Show a new QR code",
+    "openBy": "The phone opens the receiver through", "lan": "Local Wi-Fi (this computer)",
+    "public": "Internet: GitHub Pages (HTTPS)", "publicOff": "Internet: GitHub Pages (not published)",
+    "address": "This computer's network address", "typeAddress": "Type the address", "typeOther": "Type another address…",
+    "copy": "Copy the receiver link", "copyHelp": "Without seeing the QR code, copy the link and send it to the phone.",
+    "openHere": "Open the receiver on this device", "disconnect": "Disconnect",
+    "connecting": "Connecting to the PeerJS signaling server…",
+    "waiting": "Waiting for the phone to scan the QR code…",
+    "connected": "Phone connected ✓ · move over the map",
+    "connectedSay": "Phone connected for vibration.",
+    "reconnecting": "Reconnecting to the signaling service…",
+    "error": "WebRTC connection error ({err}).", "closed": "Disconnected.",
+    "noVibration": "The connected phone cannot vibrate (e.g. iPhone). It will show visual pulses.",
+    "noAddress": "I could not find this computer's network address. Type the IP (e.g. 192.168.0.10:8000) or run python3 servidor.py, which detects it.",
+    "internal": "This address is internal to this computer and the phone will not reach it.",
+    "fromServer": "Detected automatically by servidor.py.",
+    "fromServerMany": "Detected automatically by servidor.py. There is more than one network: choose the same one as the phone.",
+    "pageAddress": "This is the address of this page, which the phone can also open.",
+    "fromBrowser": "Detected by the browser. If the phone cannot open it, run python3 servidor.py or type the IP.",
+    "notDetected": "This browser could not detect the IP. Run python3 servidor.py or type the computer's local IP.",
+    "peerError": "Could not reach the PeerJS server ({err}). Is this computer online? Is an extension or antivirus blocking 0.peerjs.com?",
+    "peerMissing": "PeerJS did not load (no internet?).", "qrMissing": "QRCode.js did not load.",
+    "qrAria": "QR code to open the vibration receiver: {url}",
+    "thisPage": "this page's address", "byBrowser": "detected by the browser",
+    "noLinkYet": "There is no link yet: this computer's address was not found.",
+    "copied": "Receiver link copied. Send it to the phone and open it in the browser.",
+    "copyFailed": "Could not copy. The link is written just above this button."
+  },
+  "a11y": {
+    "title": "Accessibility",
+    "voice": "Site voice", "voiceHint": "Speaks the place you click, notices, the legend and the tutorial. Turn it off if you use a screen reader.",
+    "voiceOn": "Site voice on.", "voiceOff": "Site voice off.",
+    "reader": "Built-in reader", "readerHint": "Reads each button and control aloud as you move with Tab.",
+    "readerOn": "Built-in reader on: I will read each control as you move with Tab.", "readerOff": "Built-in reader off.",
+    "readerAfterTutorial": "The built-in reader stays on: I will read each button as you move with Tab. Press {key} for every shortcut.",
+    "contrast": "High contrast", "contrastHint": "Stronger borders, text and focus.",
+    "textSize": "Text size", "sizeNormal": "Normal", "sizeLarge": "Large", "sizeHuge": "Huge",
+    "color": "Color filter and color blindness", "colorNone": "Original colors",
+    "colorSafe": "Safe palettes (recolored from the data)", "cividis": "Cividis: safe for every type", "gray": "Grayscale",
+    "colorSim": "Color blindness simulation", "deuteranopia": "Deuteranopia", "protanopia": "Protanopia", "tritanopia": "Tritanopia"
+  },
+  "legend": {
+    "kicker": "Before exploring",
+    "title": "Legend: {title}",
+    "intro": "On this map, the {inst} plays the {what}: the higher the value, the higher the note.",
+    "pitchHint": "Lowest note: {low}. Highest note: {high}.",
+    "howToHear": "Hover over a card, or use Tab and Enter on the Listen buttons, to hear each sound. The voice pauses while the sound plays.",
+    "placesIntro": "The sounds of places, which play under the music.",
+    "placesTitle": "Sounds of places",
+    "hear": "Listen", "hearSweep": "Listen from low to high", "hearPlace": "Listen to the sound of {name}",
+    "readAloud": "Read the legend aloud", "stopReading": "Stop reading",
+    "whenReady": "When you are ready, press Start exploring at the end of the legend. {close} or a click outside closes it.",
+    "back": "Back to maps", "start": "Start exploring"
+  },
+  "soundsOfPlaces": {
+    "mar": { "name": "Sea", "text": "Waves coming and going: a low rumble and foam." },
+    "gelo": { "name": "Ice", "text": "Cold whistling wind and high crystals. Poles, Greenland and extreme cold." },
+    "floresta": { "name": "Forest", "text": "Insects trilling and birds singing in the notes of the scale." },
+    "deserto": { "name": "Desert", "text": "Gusts of dry wind, fine sand and a low drone: vastness." },
+    "fronteira": { "name": "Border", "text": "A soft bell rings when the cursor crosses from one country into another." },
+    "coracao": {
+      "name": "Heartbeat",
+      "textAlert": "Beats at the extreme values of this map ({label}), faster the more extreme.",
+      "textNone": "Beats at extreme values (extreme heat, very warm sea, high pollution, storms). This map has no alert range."
+    }
+  },
+  "shortcuts": {
+    "ajuda": "opens this help",
+    "tutorial": "opens the audio tutorial",
+    "idioma": "switches the site language between English and Portuguese",
+    "voz": "turns the site voice on or off",
+    "som": "turns the sound on or pauses it",
+    "mapa": "moves the focus to the map",
+    "galeria": "goes back to the list of maps",
+    "lerLugar": "says the country (or ocean) and the value of the map at the cursor. A click on the map does the same",
+    "visaoGeral": "overview of the map, with the highest and lowest values and where they are",
+    "posicao": "says the cursor position and its coordinates",
+    "centro": "goes back to the center of the map",
+    "sinfonia": "plays or stops the map symphony",
+    "legenda": "opens the map legend",
+    "volumeMais": "turns the volume up",
+    "volumeMenos": "turns the volume down",
+    "repetir": "repeats the current step",
+    "escape": "closes the open window (a click outside also works) or silences the voice",
+    "arrows": "move the cursor. The voice tells you when you reach an edge",
+    "digits": "jump to nine regions of the map, like a phone keypad: 1 is top left, 5 is the center and 9 is bottom right",
+    "scale": "go through the color scale and play each value"
+  },
+  "help": {
+    "kicker": "Accessibility", "title": "Help and keyboard shortcuts",
+    "intro": "Everything on this site works with the keyboard and sound alone. Every shortcut is a single key, with no Ctrl, Alt or Shift. Escape or a click outside closes this help.",
+    "speak": "Read the help aloud", "close": "Close the help",
+    "howTitle": "How it works",
+    "how": "Choose a map. Before exploring, the legend shows the map's scale and its instrument. On the map, a cursor travels across the planet: the higher the value of the place, the higher the note, and the position sets the side of the sound, left or right. Click on the map, or press {read}, to hear the country and the value.",
+    "anywhere": "Anywhere on the page", "onMap": "With the map focused", "inTutorial": "In the tutorial", "onScale": "On the color scale",
+    "srTitle": "Screen readers",
+    "sr": "If you use NVDA, JAWS, VoiceOver or TalkBack, turn off the site voice: everything it says also goes to the screen reader. On the map, the screen reader switches to focus mode by itself, and the keys above work directly."
+  },
+  "tutorial": {
+    "close": "Close the tutorial", "closed": "Tutorial closed.",
+    "voiceHint": "Turn it off if you already use a screen reader.",
+    "prev": "Previous", "next": "Next", "repeat": "Repeat", "skipChallenge": "Skip challenge", "finish": "Finish",
+    "start": "Start the tutorial", "skip": "Skip and go to the maps",
+    "welcomeKicker": "Welcome", "stepN": "Step {n} of {total}", "challengeN": "Challenge {n} of {total}",
+    "hearMap": "{map}: {inst}", "hearLowHigh": "Hear from cold to hot", "hearLeftRight": "Hear from left to right",
+    "openMap": "Open the temperature map", "openMapShort": "Open the map", "explore": "Explore the map freely"
+  },
+  "reader": {
+    "slider": "slider, {v}. Use the arrow keys to adjust", "app": "interactive area",
+    "switch": "switch, {state}. Space to toggle", "on": "on", "off": "off", "On": "On", "Off": "Off",
+    "fieldWith": "text field, {v}", "fieldEmpty": "text field, empty",
+    "select": "list, {v}. Use the arrow keys to change", "nothing": "nothing chosen",
+    "summary": "collapsible section, {state}", "open": "open", "closed": "closed", "Open": "Open", "Closed": "Closed",
+    "link": "link", "button": "button", "disabled": "unavailable", "heading": "heading"
+  }
+}

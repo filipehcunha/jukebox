@@ -1,19 +1,21 @@
-// Motor de sonificação polifônica em camadas (Tone.js).
+// Motor de sonificação (Tone.js).
 //
-//   low  (grave)    ─┐
-//   mid  (médio)    ─┤→ filtro passa-baixas (brilho) → panner (eixo X) → reverb → volume
-//   high (agudo)    ─┤     → pausa/ducking (voz) → compressor → limitador
-//   arp  (arpejos)  ─┘
+// Cada mapa tem UM instrumento (config.json → instrumentoPorMapa). Ao explorar, só a voz
+// média toca: o valor sob o cursor escolhe a nota (mais alto = mais agudo). A sinfonia do
+// mapa usa as quatro vozes, todas com o mesmo instrumento, para fazer harmonia.
 //
-// O instrumento de cada camada, o volume de cada instrumento (dB) e os demais parâmetros
-// vêm de config.json (lido por js/config.js). Todas as notas são quantizadas na escala pentatônica maior (Dó ou
+//   low  ─┐
+//   mid  ─┤→ filtro passa-baixas (brilho) → panner (eixo X) → reverb → volume
+//   high ─┤     → pausa/ducking (voz) → compressor → limitador
+//   arp  ─┘
+//
+// Volumes (dB), faixas de notas e os demais parâmetros vêm de config.json (js/config.js). Todas as notas são quantizadas na escala pentatônica maior (Dó ou
 // Sol), então qualquer combinação de camadas é consonante. Volumes, filtro e panorama mudam
 // sempre com rampas (rampTo) para evitar estalos.
 
 import { SAMPLE_SET, LAYER_ORDER, SETTINGS, dbToGain, layerInstruments } from "./config.js";
 
 const T = () => window.Tone;
-const NOTE_NAMES = ["Dó", "Dó♯", "Ré", "Ré♯", "Mi", "Fá", "Fá♯", "Sol", "Sol♯", "Lá", "Lá♯", "Si"];
 const PENTATONIC = [0, 2, 4, 7, 9];
 const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -23,13 +25,10 @@ const lerp = (a, b, t) => a + (b - a) * t;
 const duckedGain = () => (SETTINGS.narration.pauseMusic ? 0 : dbToGain(SETTINGS.narration.duckDb));
 
 export const MUSICAL_KEYS = {
-  C: { label: "Pentatônica Maior de Dó", root: 0 },
-  G: { label: "Pentatônica Maior de Sol", root: 7 },
+  C: { root: 0 }, // pentatônica maior de Dó
+  G: { root: 7 }, // pentatônica maior de Sol
 };
 
-export function midiName(midi) {
-  return `${NOTE_NAMES[((midi % 12) + 12) % 12]}${Math.floor(midi / 12) - 1}`;
-}
 const midiToNote = (m) => T().Frequency(m, "midi").toNote();
 const midiHz = (m) => 440 * 2 ** ((m - 69) / 12);
 
@@ -135,7 +134,6 @@ export class SonificationEngine {
   constructor() {
     this.started = false;
     this.paused = false;
-    this.low = false;
     this.key = SETTINGS.audio.key;
     this.userVolumeDb = SETTINGS.audio.volumeDb;
     this.useSamples = SETTINGS.audio.useSamples;
@@ -196,7 +194,6 @@ export class SonificationEngine {
     this.arpLoop = new Tone.Loop((time) => this._arp(time), 0.3).start(0);
     transport.start();
     this.transport = transport;
-    this._applyLow();
   }
 
   // ---------------- sons dos lugares (paisagem sonora) ----------------
@@ -346,9 +343,9 @@ export class SonificationEngine {
           for (const n of a.nodes) if (n.state !== "started") n.start();
           a.running = true;
         }
-        a.out.gain.rampTo(target * dbToGain(a.db), this.low ? 1.6 : 0.9, now);
+        a.out.gain.rampTo(target * dbToGain(a.db), 0.9, now);
       } else {
-        a.out.gain.rampTo(0, this.low ? 1.4 : 0.8, now);
+        a.out.gain.rampTo(0, 0.8, now);
         a.stopTimer = setTimeout(() => {
           if (a.level > 0) return;
           for (const n of a.nodes) if (n.state === "started") n.stop();
@@ -418,7 +415,7 @@ export class SonificationEngine {
     const preview = this._heartPreview && T().now() < this._heartPreview;
     const a = preview ? 0.6 : s.alert || 0;
     if (!this.heart || !this.started || this.paused || (!preview && (!s.active || a <= 0))) return;
-    const vel = (0.55 + 0.45 * a) * (this.low ? 0.6 : 1);
+    const vel = 0.55 + 0.45 * a;
     this.heart.triggerAttackRelease("A1", 0.12, time, vel);
     this.heart.triggerAttackRelease("G1", 0.1, time + 0.2, vel * 0.7);
   }
@@ -434,7 +431,7 @@ export class SonificationEngine {
     this.state = { ...this.state, active: true, weights: { low: 0, mid: 0, high: 0, arp: 0 }, alert: 0 };
     const mix = { low: 0.55, mid: 1.6, high: 0.6, arp: 1.15 }; // a melodia na frente, o baixo como chão
     for (const layer of LAYER_ORDER) this.layers[layer].out.gain.rampTo(this.layers[layer].cfg.level * mix[layer], 0.4);
-    this.filter.frequency.rampTo(this.low ? SETTINGS.low.filterMaxHz : 7000, 0.5);
+    this.filter.frequency.rampTo(7000, 0.5);
   }
 
   isPoly(layer) {
@@ -451,7 +448,7 @@ export class SonificationEngine {
     this.panner.pan.rampTo(clamp(pan, -1, 1) * 0.8, 0.3);
     this.setAmbience(amb);
     this.state.alert = alert;
-    if (this.heartLoop) this.heartLoop.interval = this.low ? lerp(1.25, 0.85, alert) : lerp(1.05, 0.55, alert);
+    if (this.heartLoop) this.heartLoop.interval = lerp(1.05, 0.55, alert);
   }
 
   // tail = segundos para o último acorde se apagar
@@ -581,13 +578,6 @@ export class SonificationEngine {
     return this._sampling(layer) ? L.sampler : L.voice;
   }
 
-  setUseSamples(on) {
-    this._releaseAll();
-    this.useSamples = on;
-    if (on && this.started) for (const l of LAYER_ORDER) this._loadSampler(l);
-    this._emitSamples();
-  }
-
   _releaseLayer(layer) {
     const L = this.layers[layer];
     if (!L) return;
@@ -628,28 +618,9 @@ export class SonificationEngine {
     return notes[i];
   }
 
-  setKey(key) {
-    if (!MUSICAL_KEYS[key]) return;
-    this.key = key;
-    this.idx = {};
-  }
-
   // ---------------- controles ----------------
-  setLowSensory(on) {
-    this.low = on;
-    if (this.started) this._applyLow();
-  }
-
-  _applyLow() {
-    const low = this.low;
-    this.limiter.threshold.rampTo(low ? SETTINGS.low.limiterDb : SETTINGS.audio.limiterDb, 0.3);
-    this.reverb.wet.rampTo(low ? Math.min(1, SETTINGS.audio.reverb + 0.12) : SETTINGS.audio.reverb, 0.5);
-    this.volume.volume.rampTo(this.paused ? -Infinity : this._outDb(), 0.4);
-  }
-
-  // volume de saída: controle do usuário + redução do modo de baixa sensibilidade
   _outDb() {
-    return this.userVolumeDb + (this.low ? SETTINGS.low.reduceDb : 0);
+    return this.userVolumeDb;
   }
 
   setVolume(db) {
@@ -687,14 +658,14 @@ export class SonificationEngine {
     if (!this.started || this.paused || this.scoring) return;
     const prev = this.state;
     this.state = { ...prev, ...s, alert: s.alert ?? 0 };
-    const ramp = this.low ? 0.6 : 0.12;
+    const ramp = 0.12;
     const now = T().now();
 
-    this.panner.pan.rampTo(clamp(s.pan ?? 0, -1, 1) * 0.85, this.low ? 0.4 : 0.08);
+    this.panner.pan.rampTo(clamp(s.pan ?? 0, -1, 1) * 0.85, 0.08);
     this.setAmbience(s.amb || {});
     const bright = clamp(s.bright ?? 0.5);
-    const cutoff = this.low ? lerp(SETTINGS.low.filterMinHz, SETTINGS.low.filterMaxHz, bright) : lerp(2000, 12000, bright ** 0.8);
-    this.filter.frequency.rampTo(cutoff, this.low ? 0.8 : 0.2);
+    const cutoff = lerp(2000, 12000, bright ** 0.8);
+    this.filter.frequency.rampTo(cutoff, 0.2);
 
     if (this._previewLayer && s.active) this.stopPreview();
     // teto para a soma das camadas: quando várias soam juntas, todas descem um pouco, e o
@@ -705,7 +676,7 @@ export class SonificationEngine {
     for (const layer of LAYER_ORDER) {
       if (layer === this._previewLayer) continue; // não abafa a pré-escuta em andamento
       const L = this.layers[layer];
-      L.out.gain.rampTo(ws[layer] * k * L.cfg.level * (this.low && layer === "arp" ? 0.6 : 1), s.active ? ramp : 0.5);
+      L.out.gain.rampTo(ws[layer] * k * L.cfg.level, s.active ? ramp : 0.5);
     }
 
     if (!s.active) {
@@ -723,20 +694,20 @@ export class SonificationEngine {
     // arpejo: o loop lê o estado; ajusta a velocidade
     if (this.heartLoop) {
       const al = clamp(s.alert ?? 0);
-      this.heartLoop.interval = this.low ? lerp(1.25, 0.85, al) : lerp(1.05, 0.55, al);
+      this.heartLoop.interval = lerp(1.05, 0.55, al);
     }
     const wa = clamp(s.weights.arp ?? 0);
-    this.arpLoop.interval = this.low ? lerp(0.75, 0.42, wa) : lerp(0.6, 0.17, wa);
+    this.arpLoop.interval = lerp(0.6, 0.17, wa);
   }
 
   // instrumentos percutidos/pinçados: toca quando a nota muda
   _strike(layer, midi, w, now) {
-    const minGap = this.low ? 0.28 : 0.09;
+    const minGap = 0.09;
     if (now - (this.lastStrike[layer] || 0) < minGap) return;
     this.lastStrike[layer] = now;
     this.notes[layer] = midi;
-    const vel = clamp((0.5 + 0.45 * w) * (this.low ? 0.6 : 1), 0.1, 1);
-    this._voice(layer).triggerAttackRelease(midiToNote(midi), this.low ? 2.2 : 1.4, now, vel);
+    const vel = clamp(0.5 + 0.45 * w, 0.1, 1);
+    this._voice(layer).triggerAttackRelease(midiToNote(midi), 1.4, now, vel);
   }
 
   // instrumentos sustentados: legato com amostras, glide com sintetizador
@@ -751,12 +722,12 @@ export class SonificationEngine {
       }
       return;
     }
-    const vel = clamp(0.55 + 0.4 * w, 0.2, 0.95) * (this.low ? 0.65 : 1);
+    const vel = clamp(0.55 + 0.4 * w, 0.2, 0.95);
     if (sampling) {
       // amostra: troca de nota com sobreposição (legato); re-arco periódico mantém o som vivo
       const restrike = now - (L.sustainTime || 0) > (layer === "low" ? 2.6 : 3.0);
       const changed = midi !== L.sustaining;
-      const gap = this.low ? 0.45 : 0.2;
+      const gap = 0.2;
       if ((changed && now - (L.sustainTime || 0) > gap) || restrike) {
         if (L.sustaining !== null) L.sampler.triggerRelease(midiToNote(L.sustaining), now + 0.05);
         L.sampler.triggerAttack(midiToNote(midi), now, vel);
@@ -783,7 +754,7 @@ export class SonificationEngine {
     const pattern = [0, 1, 2, 3, 4, 3, 2, 1];
     const n = notes[clamp(base + pattern[this.arpStep % pattern.length], 0, notes.length - 1)];
     this.arpStep += 1;
-    const vel = clamp((0.4 + 0.5 * w) * (this.low ? 0.55 : 1), 0.1, 0.9);
+    const vel = clamp((0.4 + 0.5 * w), 0.1, 0.9);
     this._voice("arp").triggerAttackRelease(midiToNote(n), 0.6, time, vel);
   }
 
@@ -798,7 +769,7 @@ export class SonificationEngine {
           if (this._sampling(layer)) this._sustain(layer, this._quantize(layer, s.norm), w, now);
         } else {
           // re-toque suave quando o cursor repousa (o mapa continua "cantando")
-          const rest = this.low ? 3.2 : 1.8;
+          const rest = 1.8;
           if (w > 0.12 && now - (this.lastStrike[layer] || 0) > rest) {
             this.notes[layer] = null;
             this._strike(layer, this._quantize(layer, s.norm), w * 0.85, now);
@@ -810,11 +781,6 @@ export class SonificationEngine {
       this._inactiveSince = null;
       this.notes = {};
     }
-  }
-
-  currentNoteName() {
-    const m = this.idx.mid !== undefined ? this.scaleNotes(...this._range("mid"))[this.idx.mid] : null;
-    return m ? midiName(m) : "—";
   }
 
   noteFor(layer, norm) {
@@ -851,6 +817,31 @@ export class SonificationEngine {
       }, t * 1000)
     );
     const total = phrase[phrase.length - 1][1] + phrase[phrase.length - 1][2] + 0.6;
+    this._previewTimers.push(setTimeout(() => this.stopPreview({ soft: true }), total * 1000));
+    return total;
+  }
+
+  // Escala do instrumento, do grave ao agudo (legenda e tutorial): mostra que valores
+  // maiores tocam notas mais agudas. Devolve a duração em segundos.
+  async previewSweep(layer = "mid", { steps = 8, stepS = 0.32 } = {}) {
+    await this.start();
+    if (this.paused) this.resume();
+    this.stopPreview();
+    const L = this.layers[layer];
+    const now = T().now();
+    L.out.gain.cancelScheduledValues(now);
+    L.out.gain.rampTo(L.cfg.level * (L.cfg.sustain ? 0.55 : 0.65), 0.15);
+    const scale = this.scaleNotes(...L.cfg.range);
+    const notes = Array.from({ length: steps }, (_, i) => scale[Math.round((i / (steps - 1)) * (scale.length - 1))]);
+    this._previewLayer = layer;
+    this._previewTimers = notes.map((m, i) =>
+      setTimeout(() => {
+        if (this._previewLayer !== layer || this.paused) return;
+        const mono = !this._sampling(layer) && L.mono;
+        this._voice(layer).triggerAttackRelease(midiToNote(m), mono ? stepS * 0.9 : stepS * 2.2, T().now(), 0.7);
+      }, i * stepS * 1000)
+    );
+    const total = steps * stepS + 1;
     this._previewTimers.push(setTimeout(() => this.stopPreview({ soft: true }), total * 1000));
     return total;
   }

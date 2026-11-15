@@ -1,6 +1,10 @@
-// Narrador único do app: fila de falas que toca gravações em MP3 (voz neural gerada por
-// tools/gerar_audio_tutorial.py) quando existem e, no resto, usa a voz mais natural
-// instalada no navegador (speechSynthesis, pt-BR).
+// Narrador único do app: UMA fala por vez. Toda descrição falada (tutorial, legenda, lugar
+// clicado, avisos, leitor embutido) passa por esta fila, então duas narrações nunca tocam ao
+// mesmo tempo: uma fala nova cancela a anterior, ou espera na fila (queue: true).
+// Toca gravações em MP3 (voz neural gerada por tools/gerar_audio_tutorial.py) quando existem
+// e, no resto, usa a voz mais natural instalada no navegador, no idioma do site.
+
+import { locale } from "./i18n.js";
 
 const synth = "speechSynthesis" in window ? window.speechSynthesis : null;
 let voices = [];
@@ -9,16 +13,18 @@ loadVoices();
 synth?.addEventListener?.("voiceschanged", loadVoices);
 
 // Prefere vozes neurais ("Natural"/"Online" no Edge, "Google" no Chrome) às vozes locais antigas.
-export function bestVoice() {
+// loc = "pt-BR" ou "en-US" (padrão: idioma do site).
+export function bestVoice(loc = locale()) {
   if (!voices.length) loadVoices();
-  let pt = voices.filter((v) => /^pt[-_]br/i.test(v.lang));
-  if (!pt.length) pt = voices.filter((v) => /^pt/i.test(v.lang));
+  const [base] = loc.toLowerCase().split("-");
+  let list = voices.filter((v) => v.lang?.toLowerCase().replace("_", "-") === loc.toLowerCase());
+  if (!list.length) list = voices.filter((v) => v.lang?.toLowerCase().startsWith(base));
   const score = (v) =>
     (/natural|neural/i.test(v.name) ? 8 : 0) +
     (/online/i.test(v.name) ? 4 : 0) +
     (/google/i.test(v.name) ? 3 : 0) +
-    (/francisca|thalita|antonio/i.test(v.name) ? 1 : 0);
-  return pt.sort((a, b) => score(b) - score(a))[0] || null;
+    (/francisca|thalita|antonio|jenny|aria|ava|guy/i.test(v.name) ? 1 : 0);
+  return list.sort((a, b) => score(b) - score(a))[0] || null;
 }
 
 // Junta frases em blocos de até ~220 caracteres: fala fluida, sem o corte de ~15 s
@@ -62,19 +68,20 @@ class Narrator {
 
   /** Fala um texto com a voz do navegador. onstart/onend: avisos quando ESTE item começa e
    *  quando termina por completo (não dispara se ele for cancelado). */
-  say(text, { queue = false, rate = 1, volume = 1, tag = null, onstart = null, onend = null } = {}) {
+  say(text, { queue = false, rate = 1, volume = 1, tag = null, onstart = null, onend = null, lang = null } = {}) {
     if (!text) return;
     if (!queue) this._clear();
-    this.queue.push({ kind: "tts", text, rate, volume, tag, onstart, onend });
+    this.queue.push({ kind: "tts", text, rate, volume, tag, onstart, onend, lang });
     this._next();
     this._emit();
   }
 
-  /** Toca a gravação `id` se ela corresponder ao texto; senão fala o texto. */
-  clip(id, text, { queue = false, rate = 1, volume = 1, tag = null } = {}) {
-    if (!this.hasClip(id, text)) return this.say(text, { queue, rate, volume, tag });
+  /** Toca a gravação `id` se ela corresponder ao texto; senão fala o texto.
+   *  lang: idioma da fala, quando não é o do site (ex.: o aviso "Para português, aperte I"). */
+  clip(id, text, { queue = false, rate = 1, volume = 1, tag = null, lang = null } = {}) {
+    if (!this.hasClip(id, text)) return this.say(text, { queue, rate, volume, tag, lang });
     if (!queue) this._clear();
-    this.queue.push({ kind: "clip", src: this.clips[id].src, text, rate, volume, tag });
+    this.queue.push({ kind: "clip", src: this.clips[id].src, text, rate, volume, tag, lang });
     this._next();
     this._emit();
   }
@@ -131,11 +138,12 @@ class Narrator {
     if (!synth) { setTimeout(done, 0); return; }
     const parts = chunks(item.text);
     if (!parts.length) { setTimeout(done, 0); return; }
-    const voice = bestVoice();
+    const loc = item.lang || locale();
+    const voice = bestVoice(loc);
     let left = parts.length;
     parts.forEach((part) => {
       const u = new SpeechSynthesisUtterance(part);
-      u.lang = "pt-BR";
+      u.lang = loc;
       if (voice) u.voice = voice;
       u.rate = item.rate;
       u.volume = item.volume;
