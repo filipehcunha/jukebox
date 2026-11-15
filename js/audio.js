@@ -142,6 +142,7 @@ export class SonificationEngine {
     this.lastStrike = 0;
     this.lastNote = null;
     this.ducked = false;
+    this.timelineMode = false; // linha do tempo tocando: só as mudanças tocam
     this._previewTimers = [];
   }
 
@@ -320,10 +321,48 @@ export class SonificationEngine {
     if (this.live) this.live.sustaining = null;
   }
 
+  // ---------------- som da linha do tempo ----------------
+  // Com a linha do tempo tocando, o som do cursor cala: o instrumento só toca as notas das
+  // mudanças de uma hora para a outra (timelineNote), e update()/_tick() não mexem na voz.
+  startTimelineSound() {
+    if (this.timelineMode) return;
+    this.timelineMode = true;
+    if (!this.started) return;
+    this._release(this.live);
+    this.setAmbience({});
+    this.state = { ...this.state, active: false };
+    this._inactiveSince = null;
+  }
+
+  stopTimelineSound() {
+    if (!this.timelineMode) return;
+    this.timelineMode = false;
+    this.idx = null;
+    this.lastNote = null;
+    this.lastStrike = 0;
+    if (!this.started) return;
+    this.live.out.gain.rampTo(0, 0.4);
+  }
+
+  /**
+   * Uma nota da linha do tempo: valor 0..1 → nota, pan -1..1, duração (s), força 0..1.
+   * offset desloca em degraus da escala (-1 = um degrau abaixo: a nota de apoio).
+   */
+  timelineNote(norm, pan = 0, dur = 0.6, vel = 0.7, offset = 0) {
+    if (!this.started || this.paused || !this.timelineMode) return;
+    const V = this.live;
+    const now = T().now();
+    const notes = this.scaleNotes(...SAMPLE_SET[this.instrument].range);
+    const i = clamp(Math.round(clamp(norm) * (notes.length - 1)) + offset, 0, notes.length - 1);
+    this.panner.pan.rampTo(clamp(pan, -1, 1) * 0.85, 0.03);
+    V.out.gain.rampTo(V.cfg.level, 0.05);
+    this._player(V).triggerAttackRelease(midiToNote(notes[i]), dur, now, vel);
+  }
+
   // ---------------- atualização contínua ----------------
   // s = { active, pan (-1..1), norm (0..1: posição do valor na barra), amb }
   update(s) {
-    if (!this.started || this.paused) return;
+    if (!this.started || this.paused || this.timelineMode) return;
     const prev = this.state;
     this.state = { ...prev, ...s };
     const now = T().now();
@@ -375,7 +414,7 @@ export class SonificationEngine {
   }
 
   _tick() {
-    if (!this.started || this.paused) return;
+    if (!this.started || this.paused || this.timelineMode) return;
     const s = this.state;
     const V = this.live;
     const now = T().now();

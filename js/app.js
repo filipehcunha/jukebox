@@ -584,6 +584,7 @@ async function loadFrame(index, { initial = false } = {}) {
     if (initial) setupExplorerFor(g);
     rebuildBase();
     updateTimelineUI();
+    if (state.playing && !initial) sonifyChanges(index === 0); // as mudanças desta hora viram som
     state.readingDirty = true;
   } catch (err) {
     if (token !== state.loadToken) return;
@@ -776,7 +777,21 @@ let playTimer = null;
 function startTimeline() {
   const g = state.group;
   if (!g || g.frames.length < 2) return;
+  stopScale();
+  stopTour({ silent: true }); // um de cada vez: com a linha do tempo tocando, só as mudanças tocam
+  // uma fala em andamento deixaria a música pausada: cala a voz
+  narrator.cancel();
+  // o clique é um gesto do usuário: liga o som para ouvir as horas mudarem
+  if (!engine.started) {
+    engine.start().then(updateAudioUI).catch(() => toast(t("audio.noTone")));
+  } else if (engine.paused) {
+    engine.resume();
+    updateAudioUI();
+  }
   state.playing = true;
+  state.readingDirty = true;
+  engine.startTimelineSound(); // o som do cursor cala: só as mudanças tocam
+  resetChanges();
   $("playTimeline").setAttribute("aria-pressed", "true");
   $("playTimeline").setAttribute("aria-label", t("time.pause"));
   const step = async () => {
@@ -797,12 +812,16 @@ function toggleTimeline() {
     stopTimeline();
     announce(t("time.paused", { when: frameTimeText(state.group.frames[state.index]) }));
   } else {
-    announce(t("time.playing", { n: $("speedSelect").value, key: keyName(SHORTCUTS.timeline.key) }));
+    // só o leitor de tela recebe o aviso: a voz pausaria a música que acabou de começar
+    announce(t("time.playing", { n: $("speedSelect").value, key: keyName(SHORTCUTS.timeline.key) }), { speak: false });
     startTimeline();
   }
 }
 function stopTimeline() {
   state.playing = false;
+  state.readingDirty = true;
+  engine.stopTimelineSound();
+  clearChangeSound();
   clearTimeout(playTimer);
   $("playTimeline").setAttribute("aria-pressed", "false");
   $("playTimeline").setAttribute("aria-label", t("time.play"));
@@ -818,6 +837,85 @@ function stepFrame(delta) {
   loadFrame((state.index + delta + g.frames.length) % g.frames.length).then(() => {
     announce(frameTimeText(g.frames[state.index]));
     tutorial.notify("frame");
+  });
+}
+
+// Som da linha do tempo: AS MUDANÇAS DE UMA HORA PARA A OUTRA geram os sons. Não é um
+// passeio: o cursor fica parado e não influencia o som (o som do cursor cala).
+// A cada hora nova, o mapa é lido numa grade e comparado com a hora anterior. Os pontos que
+// mais mudaram tocam, da esquerda para a direita (o estéreo diz onde ficam). A nota é a do
+// valor novo (grave = baixo, agudo = alto), chegando por uma nota de apoio: de um degrau
+// ABAIXO quando o valor aumentou (ex.: esquentou) e de um degrau ACIMA quando diminuiu.
+// Mudança maior toca mais forte; hora sem mudança (acima do ruído da leitura) fica em
+// silêncio. No mapa, um anel marca cada ponto (laranja = aumentou, azul = diminuiu).
+const CHANGE_COLS = 24;
+const CHANGE_ROWS = 12;
+const CHANGE_NOTE_MS = 110; // espaço mínimo entre dois pontos dentro de uma hora
+const CHANGE_MAX = 5; // no máximo 5 pontos por hora
+const CHANGE_MIN = 0.006; // mudança mínima (fração da barra de cores), acima do ruído do JPEG
+const changes = { prev: null, timers: [], marks: [] };
+
+function changeGrid() {
+  const { sampler, scale, projection } = state;
+  const grid = new Float32Array(CHANGE_COLS * CHANGE_ROWS).fill(NaN);
+  if (!sampler || !scale) return grid;
+  for (let j = 0; j < CHANGE_ROWS; j += 1) {
+    for (let i = 0; i < CHANGE_COLS; i += 1) {
+      const r = sampler.read((i + 0.5) / CHANGE_COLS, (j + 0.5) / CHANGE_ROWS, scale, projection);
+      if (r.valid) grid[j * CHANGE_COLS + i] = r.norm;
+    }
+  }
+  return grid;
+}
+
+function clearChangeSound() {
+  changes.timers.forEach(clearTimeout);
+  changes.timers = [];
+}
+
+function resetChanges() {
+  clearChangeSound();
+  changes.prev = state.sampler ? changeGrid() : null;
+  changes.marks = [];
+}
+
+// chamada a cada hora nova com a linha do tempo tocando
+function sonifyChanges(wrapped) {
+  const grid = changeGrid();
+  const prev = changes.prev;
+  changes.prev = grid;
+  clearChangeSound();
+  // a volta do fim ao começo (15 dias de diferença) não é uma mudança de uma hora
+  if (!prev || wrapped) return;
+  // som pausado, janela aberta ou pré-escuta da barra de cores: as horas passam em silêncio
+  if (!engine.started || engine.paused || $("legendDialog").open || $("helpDialog").open || state.legendHover !== null) return;
+  const found = [];
+  for (let k = 0; k < grid.length; k += 1) {
+    const a = prev[k];
+    const b = grid[k];
+    if (Number.isNaN(a) || Number.isNaN(b) || Math.abs(b - a) < CHANGE_MIN) continue;
+    found.push({ u: ((k % CHANGE_COLS) + 0.5) / CHANGE_COLS, v: (Math.floor(k / CHANGE_COLS) + 0.5) / CHANGE_ROWS, a, b, d: Math.abs(b - a) });
+  }
+  if (!found.length) return;
+  const interval = 1000 / Number($("speedSelect").value);
+  const n = clamp(Math.floor(interval / CHANGE_NOTE_MS), 1, CHANGE_MAX);
+  const top = found.sort((x, y) => y.d - x.d).slice(0, n).sort((x, y) => x.u - y.u);
+  const slot = interval / top.length;
+  const grace = slot >= 180; // dá tempo de tocar a nota de apoio antes da nota
+  const dMax = top.reduce((m, c) => Math.max(m, c.d), 0);
+  top.forEach((c, i) => {
+    const vel = 0.45 + 0.4 * (c.d / dMax);
+    const pan = c.u * 2 - 1;
+    const at = i * slot;
+    const up = c.b > c.a;
+    if (grace) changes.timers.push(setTimeout(() => engine.timelineNote(c.b, pan, 0.25, vel * 0.55, up ? -1 : 1), at));
+    changes.timers.push(setTimeout(() => {
+      engine.timelineNote(c.b, pan, Math.min(1.2, (slot / 1000) * 2.2), vel);
+      changes.marks.push({ u: c.u, v: c.v, up, t: performance.now() });
+      if (changes.marks.length > 24) changes.marks.shift();
+      const r = state.sampler?.read(c.u, c.v, state.scale, state.projection);
+      if (r?.valid) haptics.send(r, { active: true });
+    }, at + (grace ? 90 : 0)));
   });
 }
 
@@ -860,7 +958,7 @@ function processReading() {
     // sons dos lugares: mar, gelo, floresta, deserto (valem mesmo sem dado)
     amb: active ? r.env?.levels ?? {} : {},
   });
-  haptics.send(r, { active });
+  if (!state.playing) haptics.send(r, { active }); // com a linha do tempo tocando, vale a varredura
   updateReadingUI(r);
 }
 
@@ -991,6 +1089,7 @@ function startTour() {
     return;
   }
   stopScale();
+  stopTimeline(); // um de cada vez: o passeio é o som do cursor
   // uma fala em andamento (ex.: a leitura do botão) deixaria a música pausada: cala a voz
   narrator.cancel();
   // o clique é um gesto do usuário: liga o som sem esperar (o passeio já começa a andar)
@@ -1089,8 +1188,21 @@ function draw(time) {
   const x = state.u * w;
   const y = state.v * h;
 
-  // rastro
   const now = performance.now();
+
+  // linha do tempo: anéis nos pontos que mudaram (laranja = aumentou, azul = diminuiu)
+  for (const m of changes.marks) {
+    const age = (now - m.t) / 1100;
+    if (age > 1) continue;
+    const rr = (8 + 22 * age) * dpr;
+    ctx.strokeStyle = hc ? `rgba(255,255,0,${1 - age})` : m.up ? `rgba(255,150,60,${0.95 * (1 - age)})` : `rgba(90,200,255,${0.95 * (1 - age)})`;
+    ctx.lineWidth = 3 * dpr * (1 - age * 0.6);
+    ctx.beginPath();
+    ctx.arc(m.u * w, m.v * h, rr, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+
+  // rastro
   ctx.lineCap = "round";
   for (let i = 1; i < state.trail.length; i += 1) {
     const a = state.trail[i - 1];
