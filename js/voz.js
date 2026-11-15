@@ -33,13 +33,33 @@ export function bestVoice(lang = "pt-BR") {
   return list.sort((a, b) => score(b) - score(a))[0] || null;
 }
 
-// Junta frases em blocos de até ~220 caracteres: fala fluida, sem o corte de ~15 s
-// que o Chrome aplica a falas longas em algumas vozes.
-function chunks(text, max = 220) {
+// Junta frases em blocos de até ~150 caracteres (uns 10 segundos de fala): o Chrome corta
+// em ~15 s as falas longas das vozes do Google, e o resto da fila morre junto. Uma frase
+// maior que o limite é quebrada nas vírgulas, dois-pontos ou ponto e vírgula (ou, em último
+// caso, entre palavras).
+const MAX_CHUNK = 150;
+
+function splitLong(sentence, max) {
+  if (sentence.length <= max) return [sentence];
+  const pieces = sentence.match(/[^,;:]+[,;:]?/g)?.map((p) => p.trim()).filter(Boolean) || [sentence];
+  const out = [];
+  let cur = "";
+  const push = (p) => {
+    if (cur && (cur + " " + p).length > max) { out.push(cur); cur = p; } else cur = cur ? `${cur} ${p}` : p;
+  };
+  for (const p of pieces) {
+    if (p.length <= max) { push(p); continue; }
+    for (const w of p.split(" ")) push(w);
+  }
+  if (cur) out.push(cur);
+  return out;
+}
+
+function chunks(text, max = MAX_CHUNK) {
   const sentences = text.replace(/\s+/g, " ").match(/[^.!?]+[.!?]*/g)?.map((s) => s.trim()).filter(Boolean) || [];
   const out = [];
   let cur = "";
-  for (const s of sentences) {
+  for (const s of sentences.flatMap((x) => splitLong(x, max))) {
     if (cur && (cur + " " + s).length > max) { out.push(cur); cur = s; } else cur = cur ? `${cur} ${s}` : s;
   }
   if (cur) out.push(cur);
@@ -199,43 +219,64 @@ class Narrator {
     });
   }
 
+  // Fala os blocos UM DE CADA VEZ: o próximo só entra quando o anterior terminou. (Enfileirar
+  // todos de uma vez no speechSynthesis fazia o Chrome descartar o fim de textos longos, como
+  // a ajuda de atalhos.)
   _speak(item, token, done, blocked) {
     if (!synth) { setTimeout(done, 0); return; }
     const parts = chunks(item.text);
     if (!parts.length) { setTimeout(done, 0); return; }
     const voice = bestVoice(item.lang);
-    let left = parts.length;
-    let failed = false;
-    parts.forEach((part) => {
+    // vozes remotas do Google no Chrome param sozinhas depois de ~15 s: um pause/resume
+    // periódico mantém a fala viva (vozes locais e as do Edge não precisam e não recebem)
+    const keepAlive = !!voice && voice.localService === false && /google/i.test(voice.name);
+    let i = 0;
+    const speakNext = () => {
+      if (token !== this._token) return;
+      if (i >= parts.length) { done(); return; }
+      const part = parts[i++];
       const u = new SpeechSynthesisUtterance(part);
       u.lang = item.lang;
       if (voice) u.voice = voice;
       u.rate = item.rate;
       u.volume = item.volume;
       let over = false;
-      const fin = () => {
-        if (over) return;
+      let alive = 0;
+      const end = () => {
+        if (over) return false;
         over = true;
-        if (--left === 0) done();
+        clearInterval(alive);
+        return true;
       };
+      const fin = () => { if (end()) speakNext(); };
       u.onend = fin;
       u.onerror = (e) => {
-        if (e.error === "not-allowed" && !failed) { failed = true; blocked(); return; }
-        if (e.error === "interrupted" || e.error === "canceled") return; // cancelado de propósito
+        if (e.error === "not-allowed") { if (end()) blocked(); return; }
+        if (e.error === "interrupted" || e.error === "canceled") { end(); return; } // cancelado de propósito
         fin();
       };
-      // segurança: alguns navegadores não disparam onend. Só encerra quando a voz realmente
-      // parou de falar, para a próxima fala não começar por cima desta.
+      if (keepAlive) {
+        alive = setInterval(() => {
+          if (over || token !== this._token) { clearInterval(alive); return; }
+          if (synth.speaking && !synth.paused) { synth.pause(); synth.resume(); }
+        }, 9000);
+      }
+      // segurança: alguns navegadores não disparam onend. Só passa ao próximo bloco quando a
+      // voz realmente parou; travada além do limite, ela é cancelada antes de seguir.
       const limit = performance.now() + 8000 + part.length * 260;
       const watch = () => {
         if (over || token !== this._token) return;
         if (!synth.speaking && !synth.pending) fin();
-        else if (performance.now() > limit) fin();
-        else setTimeout(watch, 400);
+        else if (performance.now() > limit) {
+          if (!end()) return;
+          synth.cancel();
+          speakNext();
+        } else setTimeout(watch, 400);
       };
       setTimeout(watch, 2500 + part.length * 70);
       synth.speak(u);
-    });
+    };
+    speakNext();
   }
 }
 

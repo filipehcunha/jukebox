@@ -215,6 +215,9 @@ select { appearance: none; background-image: linear-gradient(45deg, transparent 
 .timeline__labels { display: flex; justify-content: space-between; gap: 10px; font-size: 0.78rem; color: var(--muted); }
 .timeline__labels { flex-wrap: wrap; }
 .timeline__labels span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.timeline__load { display: flex; align-items: center; gap: 8px; font-size: 0.74rem; color: var(--muted); }
+.timeline__load[hidden] { display: none; }
+.timeline__load progress { flex: 0 1 140px; height: 6px; accent-color: var(--accent); }
 #frameTime { color: var(--text); font-weight: 600; }
 input[type="range"] { width: 100%; accent-color: var(--accent); min-height: 28px; }
 
@@ -313,8 +316,12 @@ html.hc .legend-bar__tip { background: #000; border-color: #ffff00; color: #ffff
 .legend-dialog__scale-head { display: flex; justify-content: space-between; gap: 10px; font-size: 0.86rem; color: var(--text-soft); }
 .legend-dialog__read { justify-self: start; margin-top: 4px; }
 .legend-dialog__read[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
-.place-list__title { font-size: 0.95rem; margin: 6px 0 -4px; color: var(--text-soft); }
-.place-list { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.place-list__toggle { justify-self: start; }
+.place-list__toggle[aria-expanded="true"] { border-color: var(--accent); color: var(--accent); }
+.place-list__section { display: grid; gap: 14px; }
+.place-list__section[hidden] { display: none; }
+.place-list__title { font-size: 0.95rem; margin: 0; color: var(--text-soft); }
+.place-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .instrument-list.instrument-list--single { grid-template-columns: minmax(0, 1fr); }
 .instrument--place .instrument__icon svg { width: 26px; height: 26px; }
 .instrument-list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
@@ -432,4 +439,5 @@ html.hc .tutorial__status { background: #000; border: 2px solid #ffff00; color: 
 @media (max-width: 460px) {
   .reading-grid { grid-template-columns: 1fr; }
   .legend-dialog__foot .button { width: 100%; }
+  .place-list { grid-template-columns: minmax(0, 1fr); }
 }

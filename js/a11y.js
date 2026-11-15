@@ -3,6 +3,8 @@
 // Com a voz do site ligada, este módulo lê em voz alta cada controle que recebe o foco PELO
 // TECLADO (nome, tipo, estado e descrição), como um leitor de tela faria, e lê o novo estado
 // quando uma caixa, lista ou controle deslizante muda. Cliques com o mouse não são lidos.
+// Quando o foco chega por Tab (ou Shift+Tab), a leitura é marcada como "navegação": o app
+// interrompe qualquer outra fala para ler o controle selecionado na hora.
 // Quem já usa NVDA, JAWS, VoiceOver ou TalkBack desliga a voz do site e usa o ARIA da página.
 // As palavras ("botão", "ligado"...) saem no idioma escolhido (js/i18n.js).
 
@@ -64,7 +66,9 @@ function roleAndState(el) {
   if (tag === "A") return t("a11y.link");
   if (tag === "BUTTON" || role === "button") {
     const pressed = el.getAttribute("aria-pressed");
-    const state = pressed === "true" ? t("a11y.pressedOn") : pressed === "false" ? t("a11y.pressedOff") : "";
+    const expanded = el.getAttribute("aria-expanded");
+    const state = pressed === "true" ? t("a11y.pressedOn") : pressed === "false" ? t("a11y.pressedOff")
+      : expanded === "true" ? t("a11y.expanded") : expanded === "false" ? t("a11y.collapsed") : "";
     return `${t("a11y.button")}${state}${el.disabled ? t("a11y.disabled") : ""}`;
   }
   if (/^H[1-6]$/.test(tag)) return t("a11y.heading");
@@ -91,10 +95,15 @@ export function describeElement(el) {
 /**
  * Liga a leitura em voz alta dos controles.
  * @param {() => boolean} opts.enabled  a narração está ligada?
- * @param {(text: string) => void} opts.speak
+ * @param {(text: string, info?: { navigating: boolean }) => void} opts.speak
+ *        navigating = o foco chegou por Tab: a pessoa escolheu este controle agora
  * @param {(el: Element) => boolean} [opts.skip]  elementos que o app anuncia por conta própria
  */
 export function initFocusEcho({ enabled, speak, skip = () => false }) {
+  // última vez que Tab foi apertado (fase de captura: antes de o foco mudar)
+  let lastTab = -Infinity;
+  document.addEventListener("keydown", (e) => { if (e.key === "Tab") lastTab = performance.now(); }, true);
+
   document.addEventListener("focusin", (e) => {
     const el = e.target;
     if (!enabled() || !(el instanceof Element) || skip(el)) return;
@@ -103,7 +112,7 @@ export function initFocusEcho({ enabled, speak, skip = () => false }) {
     try { keyboard = el.matches(":focus-visible"); } catch { /* navegador antigo */ }
     if (!keyboard) return;
     const sentence = describeElement(el);
-    if (sentence) speak(sentence);
+    if (sentence) speak(sentence, { navigating: performance.now() - lastTab < 250 });
   });
 
   // mudança de estado: interruptor, lista ou controle deslizante

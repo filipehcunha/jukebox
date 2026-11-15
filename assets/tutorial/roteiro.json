@@ -55,9 +55,8 @@
       "lugares": {
         "titulo": "The sounds of places",
         "texto": [
-          "Below the instrument, each kind of place has a sound of its own, so you know where you are. At sea, you hear waves. On ice, a cold wind with crystals. In the forest, insects and birds. In the desert, a dry wind. And a soft bell rings when you move from one country to another.",
-          "There is also a heartbeat. It beats when the value is extreme, like heat above thirty-five degrees, and beats faster the more extreme it is.",
-          "Use the buttons below to hear each sound."
+          "Below the instrument, each kind of place has a sound of its own, so you know where you are. At sea, you hear waves. On ice, a cold wind with crystals. In the forest, insects and birds. In the desert, a dry wind.",
+          "Use the buttons below to hear each sound. Later, in each map's legend, the button Review the sounds of places tutorial plays them again."
         ]
       },
       "praticar": {
@@ -105,8 +104,8 @@
         "titulo": "Well done, you finished!",
         "texto": [
           "Remember: {tecla:read} tells you the country and the value, {tecla:help} opens the list of shortcuts, and {tecla:legend} opens the map legend, which is read aloud.",
-          "Try the {tecla:tour} key too: the cursor crosses the map from west to east by itself while you listen, and at the end the voice tells you what was on the way.",
-          "The gallery has other maps to explore: ocean temperature, tree height, humidity, wind and carbon monoxide. You can also connect a phone and feel the map as vibrations.",
+          "Try the {tecla:tour} key too: the cursor wanders around the map by itself, in continuous random movements, while you listen. Press {tecla:tour} again, an arrow or Escape to stop.",
+          "The gallery has other maps to explore: humidity, wind and carbon monoxide. You can also connect a phone and feel the map as vibrations.",
           "To hear this tutorial again, press {tecla:tutorial}."
         ]
       }
@@ -173,9 +172,8 @@
       "lugares": {
         "titulo": "Os sons dos lugares",
         "texto": [
-          "Por baixo do instrumento, cada tipo de lugar tem um som próprio, para você saber onde está. No mar, você ouve ondas. No gelo, um vento gelado com cristais. Na floresta, insetos e pássaros. No deserto, um vento seco. E um sino suave toca quando você passa de um país para outro.",
-          "Há também um coração. Ele bate quando o valor é extremo, como um calor acima de trinta e cinco graus, e bate mais rápido quanto mais extremo for.",
-          "Use os botões abaixo para ouvir cada som."
+          "Por baixo do instrumento, cada tipo de lugar tem um som próprio, para você saber onde está. No mar, você ouve ondas. No gelo, um vento gelado com cristais. Na floresta, insetos e pássaros. No deserto, um vento seco.",
+          "Use os botões abaixo para ouvir cada som. Depois, na legenda de cada mapa, o botão Rever o tutorial dos sons dos lugares toca esses sons de novo."
         ]
       },
       "praticar": {
@@ -223,8 +221,8 @@
         "titulo": "Pronto, você terminou!",
         "texto": [
           "Lembre-se: {tecla:read} diz o país e o valor, {tecla:help} abre a lista de atalhos, e {tecla:legend} abre a legenda do mapa, que é lida em voz alta.",
-          "Experimente também a tecla {tecla:tour}: o cursor atravessa o mapa sozinho, de oeste para leste, enquanto você escuta, e no fim a voz conta o que havia no caminho.",
-          "Na galeria há outros mapas para explorar: a temperatura dos oceanos, a altura das florestas, a umidade, o vento e o monóxido de carbono. Também dá para conectar um celular e sentir o mapa em vibrações.",
+          "Experimente também a tecla {tecla:tour}: o cursor passeia sozinho pelo mapa, em movimentos aleatórios e contínuos, enquanto você escuta. Aperte {tecla:tour} de novo, uma seta ou Escape para parar.",
+          "Na galeria há outros mapas para explorar: a umidade, o vento e o monóxido de carbono. Também dá para conectar um celular e sentir o mapa em vibrações.",
           "Para ouvir este tutorial de novo, aperte {tecla:tutorial}."
         ]
       }

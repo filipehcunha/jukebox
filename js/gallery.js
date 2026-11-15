@@ -1,4 +1,4 @@
-// Galeria de escolha: mapas da NASA pré-carregados. Cada mapa tem a sua escala própria e fixa.
+// Galeria de escolha: mapas da NASA (GMAO) pré-carregados. Cada mapa tem a sua escala própria e fixa.
 // Títulos e descrições ficam em js/i18n.js → "map.<id>.title" e "map.<id>.desc".
 
 import { SCALES } from "./scales.js";
@@ -18,25 +18,6 @@ export function presetGroups() {
     frames: [{ name: `gmao_${key}.jpg`, src: `assets/gmao_${key}.jpg`, gmaoIndex: 100 }],
   });
   return [
-    {
-      id: "ecco2",
-      scaleId: "sst",
-      projection: { type: "equirectangular" },
-      source: "NASA SVS · ECCO2",
-      sample: "assets/ecco2_sst.jpg",
-      frames: [{ name: "ecco2_sst.jpg", src: "assets/ecco2_sst.jpg" }],
-    },
-    {
-      id: "gedi",
-      scaleId: "gedi",
-      // globo renderizado com câmera em perspectiva (a ~3,5 raios da Terra). Parâmetros
-      // ajustados comparando terra/oceano da imagem com o countries.geojson: erro de 4,4%
-      // dos pixels (a ortográfica antiga errava 36%, sobretudo perto da borda do globo).
-      projection: { type: "perspective", cx: 0.5022, cy: 0.4999, r: 0.4772, aspect: 1024 / 576, lon0: 37.76, lat0: 0.13, dist: 3.53 },
-      source: "NASA SVS · GEDI",
-      sample: "assets/gedi_forest.jpg",
-      frames: [{ name: "gedi_forest.jpg", src: "assets/gedi_forest.jpg" }],
-    },
     gmao("temp"),
     gmao("humidity"),
     gmao("wind"),

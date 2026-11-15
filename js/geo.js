@@ -335,7 +335,7 @@ export function regionName(lat, lon) {
 // Paisagem sonora: que tipo de lugar está sob o cursor (mar, gelo, floresta, deserto)
 // ---------------------------------------------------------------------------
 // Caixas aproximadas [latMín, latMáx, lonMín, lonMáx]. Quando o mapa tem um dado que diz
-// mais (altura do dossel no GEDI, temperatura, umidade, temperatura do mar), o dado manda.
+// mais (temperatura, umidade), o dado manda.
 const DESERTS = [
   [15, 32, -17, 33], // Saara
   [13, 31, 36, 59], // Península Arábica
@@ -368,8 +368,8 @@ export function landscapeAt(lat, lon, region, data = {}) {
 
   if (region.land === false) {
     L.mar = 1;
-    // mar gelado: perto do ponto de congelamento (ECCO2) ou nas latitudes do gelo marinho
-    L.gelo = has("sst") ? 0.7 * ramp(4, 0, v) : Math.abs(lat) >= 66 ? 0.5 : 0;
+    // mar gelado: latitudes do gelo marinho
+    L.gelo = Math.abs(lat) >= 66 ? 0.5 : 0;
   } else {
     L.gelo = lat <= -60 || lat >= 70 || region.iso === "GL" ? 1 : 0;
     if (has("temp")) L.gelo = Math.max(L.gelo * ramp(5, -5, v), ramp(-5, -18, v));
@@ -379,7 +379,6 @@ export function landscapeAt(lat, lon, region, data = {}) {
       L.deserto = Math.max(L.deserto, ramp(5, 2, v));
       L.floresta = Math.max(L.floresta, 0.8 * ramp(15, 19, v));
     }
-    if (has("gedi")) L.floresta = ramp(6, 25, v); // altura do dossel: o dado manda
     // o gelo prevalece sobre os outros
     L.deserto *= 1 - L.gelo;
     L.floresta *= 1 - L.gelo;

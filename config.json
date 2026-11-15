@@ -2,12 +2,11 @@
   "_sobre": "Configuração da Sinfonia da Terra. Edite este arquivo à mão, salve e recarregue a página: nada aqui é alterado pela interface. Chaves que começam com _ são só comentários. Volumes em decibéis (dB): 0 = volume cheio, -6 = metade, valores positivos amplificam.",
 
   "mapeamento": {
-    "_comentario": "Um instrumento para cada característica do planeta. Em todos os mapas, quanto mais intensa a característica (mais quente, mais úmido, mais vento, mais CO, árvores mais altas), mais aguda é a nota. Use um nome da seção 'instrumentos': CELLO, DOUBLE_BASS, GRAND_PIANO, MARIMBA, FLUTE, HARP, VIOLIN, CLARINET, SYNTH_PAD, STEEL_DRUM. Use instrumentos diferentes para cada característica, para que cada uma tenha um som próprio.",
+    "_comentario": "Um instrumento para cada característica do planeta. Em todos os mapas, quanto mais intensa a característica (mais quente, mais úmido, mais vento, mais CO), mais aguda é a nota. Use um nome da seção 'instrumentos': CELLO, DOUBLE_BASS, GRAND_PIANO, MARIMBA, FLUTE, HARP, VIOLIN, CLARINET, SYNTH_PAD, STEEL_DRUM. Use instrumentos diferentes para cada característica, para que cada uma tenha um som próprio.",
     "TEMPERATURE": "GRAND_PIANO",
     "HUMIDITY": "FLUTE",
     "WIND_SPEED": "HARP",
-    "CARBON_MONOXIDE": "CELLO",
-    "VEGETATION_HEIGHT": "MARIMBA"
+    "CARBON_MONOXIDE": "CELLO"
   },
 
   "instrumentos": {
@@ -33,26 +32,18 @@
     "reverberacao": 0.3
   },
 
-  "alerta": {
-    "_comentario": "Batimento de coração que soa nos valores extremos. ativo = false desliga. volumeDb = volume do batimento. limites = a partir de que valor bate, por mapa: temp (temperatura do ar, °C), sst (temperatura do mar, °C), co (monóxido de carbono, ppbv), wind (vento, m/s). Quanto mais além do limite, mais rápido o coração.",
-    "ativo": true,
-    "volumeDb": -19,
-    "limites": { "temp": 35, "sst": 30, "co": 200, "wind": 25 }
-  },
-
   "passeio": {
-    "_comentario": "Passeio sonoro (tecla V): o cursor atravessa o mapa sozinho, de oeste para leste, na altura em que está. duracaoS = duração em segundos.",
+    "_comentario": "Passeio sonoro (tecla V): o cursor passeia sozinho pelo mapa, em movimentos aleatórios e contínuos, e o som começa na hora. duracaoS = duração em segundos.",
     "duracaoS": 30
   },
 
   "paisagem": {
-    "_comentario": "Sons dos lugares, que tocam por baixo do instrumento: mar (ondas), gelo (vento gelado e cristais), floresta (insetos e pássaros), deserto (vento seco) e fronteira (sino suave ao passar de um país para outro). ativo = false desliga tudo. volumeDb = volume de cada som. periodoOndaS = segundos entre uma onda e outra.",
+    "_comentario": "Sons dos lugares, que tocam por baixo do instrumento: mar (ondas), gelo (vento gelado e cristais), floresta (insetos e pássaros) e deserto (vento seco). ativo = false desliga tudo. volumeDb = volume de cada som. periodoOndaS = segundos entre uma onda e outra.",
     "ativo": true,
     "mar":       { "volumeDb": -5, "periodoOndaS": 7 },
     "gelo":      { "volumeDb": 5 },
     "floresta":  { "volumeDb": 0 },
-    "deserto":   { "volumeDb": -13 },
-    "fronteira": { "volumeDb": -8 }
+    "deserto":   { "volumeDb": -13 }
   },
 
   "narracao": {

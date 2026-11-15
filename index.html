@@ -86,12 +86,12 @@
               <svg class="icon icon--pause" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 6h10v12H7z" fill="currentColor"/></svg>
               <span id="tourLabel" data-i18n="tour.play">Play a tour</span>
             </button>
-            <span class="sr-only" id="tourHint" data-i18n="tour.hint">The cursor crosses the map from west to east by itself while you listen.</span>
+            <span class="sr-only" id="tourHint" data-i18n="tour.hint">The cursor wanders around the map by itself while you listen.</span>
           </div>
 
           <div class="canvas-shell" id="canvasShell">
             <canvas id="mapCanvas" width="1200" height="600" tabindex="0" role="application"
-              data-i18n-attr="aria-roledescription:map.roledesc" aria-describedby="canvasHelp"></canvas>
+              data-i18n-attr="aria-roledescription:map.roledesc"></canvas>
             <div class="loading-veil" id="loadingVeil" hidden><span class="spinner" aria-hidden="true"></span><span data-i18n="map.loading">Loading image…</span></div>
           </div>
 
@@ -104,6 +104,10 @@
               <label class="sr-only" for="frameSlider" data-i18n="time.slider">Hour of the sequence</label>
               <input type="range" id="frameSlider" min="0" max="0" value="0" step="1" data-no-echo>
               <div class="timeline__labels"><span id="frameLabel">—</span><span id="frameTime">—</span></div>
+              <div class="timeline__load" id="framesLoad" hidden>
+                <progress id="framesProgress" max="1" value="0" aria-labelledby="framesText"></progress>
+                <span id="framesText"></span>
+              </div>
             </div>
             <label class="compact-field compact-field--small">
               <span data-i18n="time.speed">Speed</span>
@@ -263,8 +267,12 @@
 
       <ul class="instrument-list instrument-list--single" id="instrumentList"></ul>
 
-      <h3 class="place-list__title" data-i18n="legend.places">Sounds of places</h3>
-      <ul class="instrument-list place-list" id="placeList" data-i18n-attr="aria-label:legend.places"></ul>
+      <!-- Os sons dos lugares só aparecem quando a pessoa pede para rever essa parte do tutorial -->
+      <button class="button button--ghost place-list__toggle" id="placesToggle" type="button" aria-expanded="false" aria-controls="placesSection" data-i18n="legend.reviewPlaces">Review the sounds of places tutorial</button>
+      <div class="place-list__section" id="placesSection" hidden>
+        <h3 class="place-list__title" data-i18n="legend.places">Sounds of places</h3>
+        <ul class="instrument-list place-list" id="placeList" data-i18n-attr="aria-label:legend.places"></ul>
+      </div>
 
       <footer class="legend-dialog__foot">
         <button class="button button--ghost" value="back" id="dlgBack" type="submit" data-i18n="legend.back">Back to the gallery</button>

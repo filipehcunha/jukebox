@@ -22,12 +22,12 @@ O site abre em **inglês**; o botão **Português** no topo (ou a tecla `I`) tro
 
 ### Dados GMAO (pasta `dados/`)
 
-Descompacte `dados.zip` na raiz para obter `dados/{temp,humidity,wind,co}_frames/frame_000000.jpg … frame_000371.jpg`. São 372 frames horários, de 30/out/2026 09:00 UTC a 14/nov/2026 20:00 UTC. Se a pasta existir, os cartões GMAO da galeria abrem a **sequência completa com linha do tempo**. Sem ela, abrem um frame de amostra (`assets/gmao_*.jpg`). A pasta e o zip ficam fora do git por causa do tamanho.
+Descompacte `dados.zip` na raiz para obter `dados/{temp,humidity,wind,co}_frames/frame_000000.jpg … frame_000371.jpg`. São 372 frames horários, de 30/out/2026 09:00 UTC a 14/nov/2026 20:00 UTC. Se a pasta existir, os cartões GMAO da galeria abrem a **sequência completa com linha do tempo**. Ao escolher um mapa, **todos os 372 frames começam a baixar** (6 por vez, a partir da hora inicial, com uma barra de progresso na linha do tempo). Eles ficam na memória como JPEG comprimido (~200 a 400 MB por mapa) e cada um só é decodificado quando aparece na tela; trocar de mapa libera os frames do anterior. Sem ela, abrem um frame de amostra (`assets/gmao_*.jpg`). A pasta e o zip ficam fora do git por causa do tamanho.
 
 ## Fluxo da experiência
 
-1. **Galeria:** 6 mapas pré-carregados: ECCO2 (temperatura dos oceanos), GEDI (altura das florestas) e quatro mapas GMAO (temperatura, umidade, vento e CO). Cada mapa tem a **sua escala de cores própria e fixa** (não há como trocar a escala: a de um mapa não faria sentido em outro).
-2. **Legenda:** diálogo modal com a barra de cores, o **instrumento do mapa** e os sons dos lugares. Passar o mouse sobre um cartão toca o som na hora; pelo teclado, cada cartão tem um botão **Ouvir**. Passar o mouse sobre a barra de cores toca o valor daquela posição. Fecha com `Escape` ou **clicando fora da janela** (volta à galeria); **Começar a explorar** abre o mapa.
+1. **Galeria:** quatro mapas GMAO pré-carregados (temperatura, umidade, vento e CO). Cada mapa tem a **sua escala de cores própria e fixa** (não há como trocar a escala: a de um mapa não faria sentido em outro).
+2. **Legenda:** diálogo modal com a barra de cores e o **instrumento do mapa**. Os sons dos lugares ficam escondidos e só aparecem (e são lidos) quando a pessoa aperta **Rever o tutorial dos sons dos lugares**. Passar o mouse sobre um cartão toca o som na hora; pelo teclado, cada cartão tem um botão **Ouvir**. Passar o mouse sobre a barra de cores toca o valor daquela posição. Fecha com `Escape` ou **clicando fora da janela** (volta à galeria); **Começar a explorar** abre o mapa.
 3. **Exploração:** mouse, toque ou teclado sobre o mapa. **Clicar no mapa ou apertar Espaço fala o país e o valor da característica do mapa** (ex.: "Brasil. Temperatura 27,3 graus Celsius"). Em sequências, a linha do tempo permite escutar o tempo passar com o cursor parado.
 
 ## Das cores aos números
@@ -46,8 +46,6 @@ No navegador, cada pixel é convertido para CIELAB e associado à cor mais próx
 Casos especiais:
 
 - **Vento:** a faixa calma é transparente. No frame ela aparece como relevo cinza nos continentes ou fundo escuro no oceano. Pixels quase neutros contam como calmaria (< 4 m/s), e a transição púrpura sobre o oceano foi medida empiricamente.
-- **ECCO2:** as correntes são estrias brilhantes. A **matiz** dá a temperatura (decodificada pela cromaticidade, ignorando o brilho) e o **brilho** dá a intensidade da corrente.
-- **GEDI:** o oceano azul é descartado. O globo foi renderizado por uma câmera em perspectiva, a ~3,5 raios da Terra, e por isso usa a projeção `perspective` (perspectiva vertical) de `js/geo.js`. Os parâmetros foram ajustados comparando terra e oceano da imagem com `assets/countries.geojson`: discordam em 4,4% dos pixels, contra 36% da projeção ortográfica usada antes, que errava sobretudo perto da borda do globo.
 
 Validação (`python3 tools/extrair_escalas.py --validar`, 12 mil pixels por variável): ΔE mediano de 1,0 a 2,3. O Pacífico equatorial lê 28,8 °C, a Antártida −39,7 °C, a umidade da Amazônia 19 g/kg e o CO no leste da China 311 ppbv.
 
@@ -60,8 +58,7 @@ Tudo o que é ajustável fica em **`config.json`**, na raiz do projeto. O arquiv
 | `mapeamento` | **Um instrumento por característica**: `TEMPERATURE` (piano), `HUMIDITY` (flauta), `WIND_SPEED` (harpa), `CARBON_MONOXIDE` (violoncelo), `VEGETATION_HEIGHT` (marimba). O app avisa se duas características usarem o mesmo instrumento. |
 | `instrumentos` | Para cada um dos 10 instrumentos: **`volumeDb`** (volume na mixagem) e a faixa de notas MIDI (`notaMaisGrave`, `notaMaisAguda`). O valor mais baixo do mapa toca a nota mais grave e o mais alto, a mais aguda. |
 | `audio` | Volume geral inicial, tonalidade (`C` ou `G`), amostras gravadas (`usarAmostrasGravadas`), limitador e reverberação. |
-| `paisagem` | Sons dos lugares: `ativo` e o `volumeDb` de `mar` (mais `periodoOndaS`), `gelo`, `floresta`, `deserto` e `fronteira`. |
-| `alerta` | Batimento de coração nos valores extremos: `ativo`, `volumeDb` e `limites` por mapa (`temp` 35 °C, `sst` 30 °C, `co` 200 ppbv, `wind` 25 m/s). |
+| `paisagem` | Sons dos lugares: `ativo` e o `volumeDb` de `mar` (mais `periodoOndaS`), `gelo`, `floresta` e `deserto`. |
 | `passeio` | Duração do passeio sonoro (`duracaoS`). |
 | `narracao` | Voz do site ligada ao abrir, pausa da música durante a fala, rampas, velocidade e volume da voz, leitura dos controles e leitura da legenda ao abrir. |
 | `teclado` | Passo do cursor por toque de seta e passo com a seta segurada (sem Shift). |
@@ -91,7 +88,7 @@ read:     { key: " ", alt: ["Enter"], button: null,        scope: "map" },
 
 | Tecla | Ação |
 | --- | --- |
-| `H` (ou `F1`) | ajuda com todos os atalhos (pode ser ouvida em voz alta) |
+| `H` (ou `F1`) | ajuda com todos os atalhos (com a voz ligada, é lida inteira ao abrir) |
 | `T` | tutorial em áudio |
 | `I` | troca o idioma (inglês ↔ português) |
 | `Espaço` (ou `Enter`), no mapa | fala o país e o valor sob o cursor (o clique faz o mesmo) |
@@ -99,7 +96,7 @@ read:     { key: " ", alt: ["Enter"], button: null,        scope: "map" },
 | `M` | liga ou pausa o som |
 | `G` | volta à galeria |
 | `L` | legenda do mapa |
-| `V` | passeio sonoro: o cursor atravessa o mapa de oeste para leste |
+| `V` | passeio sonoro: o cursor passeia sozinho pelo mapa |
 | `O` | visão geral: valores mais alto e mais baixo, onde ficam, e a média |
 | `C` | posição do cursor e coordenadas |
 | `Home`, no mapa | volta ao centro |
@@ -113,19 +110,18 @@ Os atalhos valem na página toda, menos dentro de campos de texto e listas. Com 
 
 ## Sonificação (Tone.js)
 
-**Um instrumento por característica.** Cada mapa representa uma característica do planeta e é tocado só pelo instrumento dela: temperatura (do ar ou do mar) no piano, umidade na flauta, velocidade do vento na harpa, monóxido de carbono no violoncelo e altura das árvores na marimba. **Quanto mais intensa a característica, mais aguda a nota**, e vice-versa: a posição do valor na barra de cores escolhe a nota dentro da faixa do instrumento (`config.json` → `instrumentos`).
+**Um instrumento por característica.** Cada mapa representa uma característica do planeta e é tocado só pelo instrumento dela: temperatura no piano, umidade na flauta, velocidade do vento na harpa e monóxido de carbono no violoncelo. **Quanto mais intensa a característica, mais aguda a nota**, e vice-versa: a posição do valor na barra de cores escolhe a nota dentro da faixa do instrumento (`config.json` → `instrumentos`).
 
 - **Eixo X → panorama estéreo** (`Panner`, com rampa).
-- As notas são quantizadas na **pentatônica maior de Dó ou Sol**, com histerese para não oscilar na fronteira entre duas notas. Violoncelo e flauta fazem legato ou glide; piano, harpa e marimba tocam quando a nota muda e re-tocam suavemente com o cursor parado.
+- As notas são quantizadas na **pentatônica maior de Dó ou Sol**, com histerese para não oscilar na fronteira entre duas notas. Violoncelo e flauta fazem legato ou glide; piano e harpa tocam quando a nota muda e re-tocam suavemente com o cursor parado.
 - As amostras são gravações reais (piano Salamander; violoncelo, contrabaixo, violino, clarinete, flauta e harpa do *tonejs-instruments*), carregadas só para o instrumento em uso, com fallback sintetizado. Para usar só os sintetizadores, `audio.usarAmostrasGravadas: false`.
-- **Coração nos extremos:** quando o valor passa do limite de alerta (calor extremo acima de 35 °C, mar acima de 30 °C, CO acima de 200 ppbv, ventos acima de 25 m/s), soa um coração grave que acelera conforme o valor se afasta do limite.
-- **Sons dos lugares** (por baixo do instrumento, para saber onde se está): ondas no mar, vento gelado e cristais no gelo, insetos e pássaros na floresta, vento seco no deserto e um sino ao cruzar uma fronteira. O lugar vem de `landscapeAt` (`js/geo.js`).
+- **Sons dos lugares** (por baixo do instrumento, para saber onde se está): ondas no mar, vento gelado e cristais no gelo, insetos e pássaros na floresta, e vento seco no deserto. O lugar vem de `landscapeAt` (`js/geo.js`).
 - **Barra de cores tocável:** passar o mouse (ou usar as setas, `Page Up`/`Page Down` para passos maiores) toca exatamente o que um pixel daquela cor tocaria no mapa.
 - **A voz tem prioridade:** enquanto a voz fala, a música para e volta sozinha ao fim da fala (`narracao.pausarMusica`).
 
 ### Passeio sonoro
 
-O botão **Fazer um passeio** (tecla `V`) faz o cursor atravessar o mapa sozinho, de oeste para leste, na altura em que estava, em `passeio.duracaoS` segundos. A voz apresenta o passeio, fica quieta durante o percurso e, no fim, resume a travessia: países, quanto foi oceano, os valores mais alto e mais baixo e quanto estava em alerta. As setas, um clique no mapa, `V` ou `Escape` param. Código: `js/passeio.js`.
+O botão **Fazer um passeio** (tecla `V`) faz o cursor passear sozinho pelo mapa por `passeio.duracaoS` segundos, em **movimentos aleatórios e contínuos**: velocidade constante, curvas suaves que mudam de tempos em tempos e um "quique" ao chegar à borda. O som começa na hora (não há fala antes, que pausaria a música, nem relatório no fim); o leitor de tela recebe um aviso curto pela região ARIA. As setas, um clique no mapa, `V` ou `Escape` param. Código: `js/passeio.js`.
 
 ## Voz e narração
 
@@ -133,9 +129,11 @@ Só existe **uma** narração por vez (`js/voz.js`): antes de começar uma fala,
 
 - **A voz fala quando a pessoa pede:** clique no mapa ou `Espaço` (país e valor), respostas aos atalhos, legenda, ajuda e tutorial. **Não há narração automática ao passar o mouse.**
 - A opção **Voz do site** (painel Acessibilidade e tutorial) liga ou desliga a voz. Quem usa leitor de tela deve desligá-la: tudo o que ela diz também vai para regiões ARIA live.
-- Com a voz ligada, os controles são lidos ao navegar **pelo teclado** (Tab); cliques com o mouse não são lidos (`js/a11y.js`). Essa leitura nunca corta uma descrição importante (tutorial, legenda, ajuda): ela espera na fila.
+- Com a voz ligada, os controles são lidos ao navegar **pelo teclado** (Tab); cliques com o mouse não são lidos (`js/a11y.js`). Ao navegar com **Tab**, o controle selecionado é **sempre lido na hora**, interrompendo qualquer outra fala (legenda, ajuda, tutorial), como faz um leitor de tela. Um foco movido pelo próprio app (abrir uma janela) espera as descrições importantes terminarem.
 - **Primeira visita:** os navegadores bloqueiam som antes do primeiro gesto. A janela de boas-vindas fica guardada e é lida **do início ao fim** a partir do primeiro clique ou tecla. Para leitores de tela, o foco vai para o título da janela, que tem o texto inteiro como descrição (`aria-describedby`), então o leitor lê a janela completa.
 - A voz usa o idioma escolhido (a melhor voz `en-US` ou `pt-BR` instalada: "Natural/Online" no Edge, "Google" no Chrome).
+- Textos longos (ajuda, legenda, tutorial) são falados em blocos de até ~150 caracteres, **um de cada vez**: o Chrome corta em ~15 s as falas longas das vozes do Google e descartava o fim da fila. Com essas vozes, um `pause()`/`resume()` periódico mantém a fala viva.
+- Abrir um mapa não fala mais as instruções de uso: elas ficam só no tutorial (tecla `T`) e na ajuda (tecla `H`).
 
 ### Legenda falada, sem atropelo
 
@@ -158,7 +156,7 @@ O painel **Vibração no celular** gera um peer PeerJS com ID aleatório e um QR
 Um guia de uns cinco minutos que funciona só com teclado e som. Na primeira visita ele abre sozinho com as boas-vindas: `Enter` começa e `Escape` pula. Depois de fechado, não abre mais sozinho (use o botão **Tutorial em áudio** ou a tecla `T`; para testar de novo, apague `sinfonia-tutorial-visto` do `localStorage`).
 
 1. **Atalhos de teclado — a primeira informação do tutorial**, montada a partir de `js/shortcuts.js`.
-2. **Ouvir:** como funciona; um botão para ouvir o instrumento de cada característica (do valor mais baixo ao mais alto); "quanto maior o valor, mais aguda a nota" (o piano sobe do mais frio ao mais quente); esquerda e direita (com fones); os sons dos lugares e o coração.
+2. **Ouvir:** como funciona; um botão para ouvir o instrumento de cada característica (do valor mais baixo ao mais alto); "quanto maior o valor, mais aguda a nota" (o piano sobe do mais frio ao mais quente); esquerda e direita (com fones); os sons dos lugares.
 3. **Praticar** no mapa de temperatura: mover o cursor; apertar `Espaço` para ouvir onde está; encontrar o frio da Antártida, onde o piano toca as notas mais graves; voltar ao centro com `Home`; avançar uma hora com `]`, se a pasta `dados/` existir.
 
 `R` repete a instrução e `Escape` fecha o tutorial. Trocar o idioma no meio do tutorial redesenha e fala o passo atual no novo idioma.
@@ -188,12 +186,12 @@ js/scales.js     escalas fixas de cada mapa, cor → valor, paletas acessíveis
 js/colormaps.js  barras GMAO amostradas (gerado)
 js/sampler.js    leitura robusta de pixels, gradiente, recoloração
 js/geo.js        projeções, máscara terra/oceano, países, regiões e paisagem sonora (landscapeAt)
-js/audio.js      motor Tone.js: um instrumento por característica, lugares, coração, pré-escutas, pausa durante a voz
+js/audio.js      motor Tone.js: um instrumento por característica, lugares, pré-escutas, pausa durante a voz
 js/haptics.js    PeerJS + QR Code
 js/receiver.js   página do celular
 js/gallery.js    mapas pré-carregados
 js/tutorial.js   tutorial guiado em áudio e teclado (atalhos + demonstrações + desafios no mapa)
-js/passeio.js    passeio sonoro: caminho e resumo da travessia
+js/passeio.js    passeio sonoro: caminho aleatório e contínuo do cursor
 js/voz.js        narrador: uma fala por vez, MP3 neural ou a melhor voz do navegador no idioma escolhido
 assets/tutorial/ roteiro.json (textos do tutorial em en e pt) + MP3 gravados (opcionais)
 assets/countries.geojson  fronteiras dos países (Natural Earth, 1:50m) usadas para dizer o país sob o cursor
@@ -205,4 +203,4 @@ referencias/escalas/         legendas oficiais usadas como referência
 
 ## Créditos
 
-NASA GMAO (GEOS), NASA Scientific Visualization Studio (ECCO2 <https://svs.gsfc.nasa.gov/3912>, GEDI <https://svs.gsfc.nasa.gov/4950>). Fronteiras dos países (`assets/countries.geojson`, camada *Admin 0 – Countries* 1:50m): Natural Earth <https://www.naturalearthdata.com/>, domínio público. Amostras: Salamander Grand Piano (Alexander Holm, CC-BY 3.0) e *tonejs-instruments* (Nicholaus Brosowsky).
+NASA GMAO (GEOS). Fronteiras dos países (`assets/countries.geojson`, camada *Admin 0 – Countries* 1:50m): Natural Earth <https://www.naturalearthdata.com/>, domínio público. Amostras: Salamander Grand Piano (Alexander Holm, CC-BY 3.0) e *tonejs-instruments* (Nicholaus Brosowsky).

@@ -39,22 +39,6 @@ function num(sec, key, fallback, min = -Infinity, max = Infinity) {
   }
   return v;
 }
-// objeto { escala: número } (ex.: alerta.limites); chaves desconhecidas ou não numéricas são avisadas
-function limits(sec, key, allowed) {
-  const v = section(sec)[key];
-  if (v === undefined) return {};
-  if (!v || typeof v !== "object") {
-    problem(`${sec}.${key} deve ser um objeto como { "temp": 35 }; usando os limites padrão.`);
-    return {};
-  }
-  const out = {};
-  for (const [k, n] of Object.entries(clean(v))) {
-    if (!allowed.includes(k)) problem(`${sec}.${key}.${k}: escala desconhecida (use ${allowed.join(", ")}).`);
-    else if (typeof n !== "number" || !Number.isFinite(n)) problem(`${sec}.${key}.${k} deve ser um número.`);
-    else out[k] = n;
-  }
-  return out;
-}
 // número dentro de um subobjeto (ex.: paisagem.mar.volumeDb)
 function sub(sec, key, field, fallback, min, max) {
   const o = section(sec)[key];
@@ -209,7 +193,6 @@ const DEFAULT_MAPPING = {
   HUMIDITY: "FLUTE",
   WIND_SPEED: "HARP",
   CARBON_MONOXIDE: "CELLO",
-  VEGETATION_HEIGHT: "MARIMBA",
 };
 export const CHARACTERISTICS = Object.keys(DEFAULT_MAPPING);
 
@@ -247,11 +230,6 @@ export const SETTINGS = {
     limiterDb: num("audio", "limitadorDb", -3, -40, 0),
     reverb: num("audio", "reverberacao", 0.3, 0, 1),
   },
-  alert: {
-    enabled: bool("alerta", "ativo", true),
-    volumeDb: num("alerta", "volumeDb", -19, -60, 6),
-    limits: limits("alerta", "limites", ["temp", "sst", "co", "wind"]),
-  },
   sweep: {
     durationS: num("passeio", "duracaoS", 30, 10, 600),
   },
@@ -261,7 +239,6 @@ export const SETTINGS = {
     gelo: { volumeDb: sub("paisagem", "gelo", "volumeDb", 5, -60, 12) },
     floresta: { volumeDb: sub("paisagem", "floresta", "volumeDb", 0, -60, 12) },
     deserto: { volumeDb: sub("paisagem", "deserto", "volumeDb", -13, -60, 12) },
-    fronteira: { volumeDb: sub("paisagem", "fronteira", "volumeDb", -8, -60, 12) },
   },
   narration: {
     onAtStart: bool("narracao", "vozLigadaAoAbrir", true),

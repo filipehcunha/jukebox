@@ -170,7 +170,7 @@ export function createTutorial(api) {
       { id: "esquerda-direita", actions: () => [button(t("tut.hearLeftRight"), demoLeftRight, "button button--primary")] },
       {
         id: "lugares",
-        actions: () => ["mar", "gelo", "floresta", "deserto", "coracao"].map((id) =>
+        actions: () => ["mar", "gelo", "floresta", "deserto"].map((id) =>
           button(t("tut.hearPlace", { place: t(`placeName.${id}`) }), (b) => demo(b, () => api.engine.previewPlace(id, 5)))),
       },
       {

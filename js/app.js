@@ -11,21 +11,20 @@
 import { SCALES, GMAO_T0_UTC, paletteColor } from "./scales.js";
 import { MAPPING_CONFIG, SAMPLE_SET, SETTINGS, CONFIG_PROBLEMS, instrumentFor } from "./config.js";
 import { loadLandMask, loadCountries, formatCoord, landscapeAt } from "./geo.js";
-import { ImageSampler, loadBitmap } from "./sampler.js";
+import { ImageSampler } from "./sampler.js";
 import { SonificationEngine } from "./audio.js";
 import { HapticBridge, renderQr, guessReceiverBase, checkPublicReceiver, PUBLIC_RECEIVER_BASE } from "./haptics.js";
 import { presetGroups, upgradeGmaoSequences, renderPresets, groupTitle } from "./gallery.js";
 import { createTutorial } from "./tutorial.js";
 import { narrator } from "./voz.js";
 import { initFocusEcho } from "./a11y.js";
-import { routePoint, createStats, addReading, summarize } from "./passeio.js";
+import { createWander, stepWander } from "./passeio.js";
 import { SHORTCUTS, SHORTCUT_ORDER, matches, ariaKey } from "./shortcuts.js";
 import { t, getLang, setLang, onLangChange, applyI18n, speechLang, locale, keyName } from "./i18n.js";
 
 const $ = (id) => document.getElementById(id);
 const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
 const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
-const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const canvas = $("mapCanvas");
 const ctx = canvas.getContext("2d");
@@ -133,7 +132,7 @@ const state = {
 };
 
 // passeio sonoro (tecla V): ver a seção "Passeio sonoro" mais abaixo
-const tour = { on: false, preparing: false, origin: null, t0: 0, dur: 0, stats: null, token: 0 };
+const tour = { on: false, t0: 0, last: 0, dur: 0, wander: null };
 
 const title = () => (state.group ? groupTitle(state.group) : "");
 
@@ -152,7 +151,7 @@ function showView(name) {
   document.body.dataset.view = name;
   updateDocTitle();
   if (gallery) {
-    stopTour(false, { silent: true });
+    stopTour({ silent: true });
     stopTimeline();
     engine.update({ active: false });
     haptics.send(null, { active: false });
@@ -185,10 +184,11 @@ async function selectGroup(group, index = 0, { skipLegend = false } = {}) {
   state.v = 0.5;
   state.trail = [];
   engine.setInstrument(instrumentFor(state.scale.characteristic));
+  preloadFrames(group, index); // todos os quadros do mapa começam a baixar já
   const loading = loadFrame(index, { initial: true });
   if (skipLegend) {
     await loading;
-    await startExperience({ quiet: true });
+    await startExperience();
     return;
   }
   openLegend();
@@ -206,14 +206,7 @@ const PLACES = [
   { id: "gelo", color: "#bae6fd", icon: '<path d="M12 2v20M4.9 6l14.2 12M19.1 6 4.9 18"/><path d="m9 4 3 2 3-2M9 20l3-2 3 2"/>' },
   { id: "floresta", color: "#4ade80", icon: '<path d="M12 22v-6"/><path d="M12 2 6 11h3l-4 6h14l-4-6h3Z"/>' },
   { id: "deserto", color: "#fbbf24", icon: '<circle cx="17" cy="7" r="3"/><path d="M2 19c3-4 6-5 9-3s6 1 11-3"/>' },
-  { id: "fronteira", color: "#c4b5fd", icon: '<path d="M6 16V11a6 6 0 0 1 12 0v5l2 2H4Z"/><path d="M10 21h4"/>' },
-  { id: "coracao", color: "#fb7185", icon: '<path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10Z"/>' },
 ];
-
-function placeText(id, scale) {
-  if (id !== "coracao") return t(`placeText.${id}`);
-  return scale.alert ? t("placeText.heart", { label: scale.alert.label }) : t("placeText.heartNone");
-}
 
 const INSTRUMENT_ICONS = {
   bowed: `<svg viewBox="0 0 48 48"><path d="M24 4v10M20 6h8" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/><path d="M24 14c-5 0-8 3-7 8 .6 2.6-3 3.5-3 9 0 6.5 4.5 11 10 11s10-4.5 10-11c0-5.5-3.6-6.4-3-9 1-5-2-8-7-8Z" fill="none" stroke="currentColor" stroke-width="2.4"/><path d="M21 27c1 1 5 1 6 0M21 33c1-1 5-1 6 0" stroke="currentColor" stroke-width="2"/><path d="M24 14v28" stroke="currentColor" stroke-width="1.6"/></svg>`,
@@ -257,6 +250,7 @@ function makeCard({ id, color, iconSvg, register, name, text, aria, play, stop }
 function openLegend() {
   const scale = state.scale;
   if (!scale) return;
+  const dlg = $("legendDialog");
   engine.update({ active: false });
   const instId = instrumentFor(scale.characteristic);
   const inst = SAMPLE_SET[instId];
@@ -283,6 +277,9 @@ function openLegend() {
 
   const places = $("placeList");
   places.innerHTML = "";
+  // os sons dos lugares ficam escondidos até a pessoa pedir para rever essa parte do tutorial
+  // (redesenhar a legenda aberta, ao trocar o idioma, mantém o que estava aberto)
+  setPlacesOpen(dlg.open && placesOpen());
   for (const p of PLACES) {
     const name = t(`placeName.${p.id}`);
     places.append(makeCard({
@@ -290,14 +287,13 @@ function openLegend() {
       color: p.color,
       iconSvg: PLACE_ICON(p.icon),
       name,
-      text: placeText(p.id, scale),
+      text: t(`placeText.${p.id}`),
       aria: t("legend.placeAria", { place: name.toLowerCase() }),
       play: () => engine.previewPlace(p.id),
       stop: () => engine.stopPlacePreview(),
     }));
   }
 
-  const dlg = $("legendDialog");
   engine.stopPreview();
   engine.stopPlacePreview();
   legendHover.current = null;
@@ -325,11 +321,40 @@ function legendSpeechParts() {
     $("legendDialogIntro").textContent,
     t("legend.speakHow"),
     t("legend.instText", { char: scale.characteristicName.toLowerCase(), lo: scale.spoken(scale.min), hi: scale.spoken(scale.max) }),
-    t("legend.speakPlaces"),
   ];
-  for (const p of PLACES) parts.push(`${t(`placeName.${p.id}`)}: ${placeText(p.id, scale)}`);
+  if (placesOpen()) parts.push(...placesSpeechParts());
+  else parts.push(t("legend.speakReview"));
   parts.push(t("legend.speakEnd"));
   return parts.map((s) => s.replace(/\.(\s*\.)+/g, "."));
+}
+
+const placesSpeechParts = () => [t("legend.speakPlaces"), ...PLACES.map((p) => `${t(`placeName.${p.id}`)}: ${t(`placeText.${p.id}`)}`)];
+
+// ---------------------------------------------------------------------------
+// "Rever o tutorial dos sons dos lugares": mostra (e lê) os cartões dos lugares na legenda
+// ---------------------------------------------------------------------------
+const placesOpen = () => $("placesToggle").getAttribute("aria-expanded") === "true";
+
+function setPlacesOpen(open) {
+  $("placesToggle").setAttribute("aria-expanded", String(open));
+  $("placesToggle").textContent = t(open ? "legend.hidePlaces" : "legend.reviewPlaces");
+  $("placesSection").hidden = !open;
+}
+
+function togglePlaces() {
+  const open = !placesOpen();
+  stopLegendVoice();
+  endLegendPreview({ resume: false });
+  engine.stopPlacePreview();
+  setPlacesOpen(open);
+  if (!open || !voiceOn()) return;
+  // com a voz ligada, ela explica os sons dos lugares, como no tutorial
+  legendVoice.parts = placesSpeechParts();
+  legendVoice.idx = 0;
+  legendVoice.active = true;
+  legendVoice.held = false;
+  queueLegendFrom(0);
+  updateReadAloudBtn();
 }
 
 function updateReadAloudBtn() {
@@ -458,7 +483,7 @@ function bindLegendCard(li, btn, { play, stop }) {
   btn.addEventListener("click", begin);
 }
 
-async function startExperience({ quiet = false } = {}) {
+async function startExperience() {
   showView("explore");
   try {
     await engine.start();
@@ -471,7 +496,7 @@ async function startExperience({ quiet = false } = {}) {
   state.keyboardActive = true;
   state.readingDirty = true;
   layoutCanvas();
-  if (!quiet) announce(t("map.opened", { map: title(), read: keyName(SHORTCUTS.read.key), help: keyName(SHORTCUTS.help.key) }));
+  // sem instruções faladas a cada mapa aberto: como usar o mapa é ensinado no tutorial (tecla T)
 }
 
 // Tutorial: abre o mapa de temperatura direto (a legenda é ensinada pelo próprio tutorial)
@@ -483,14 +508,62 @@ async function openPractice() {
 
 // ---------------------------------------------------------------------------
 // Carregamento de quadros
+// Ao escolher um mapa, TODOS os quadros dele começam a baixar (6 por vez, a partir da hora
+// inicial). Eles ficam na memória como JPEG comprimido (~200 a 400 MB por mapa) e cada um só
+// é decodificado quando aparece na tela: decodificar os 372 de uma vez passaria de 3 GB.
+// Trocar de mapa libera os quadros do anterior e cancela os downloads pendentes.
 // ---------------------------------------------------------------------------
-const frameCache = new Map(); // src -> Promise<bitmap> (pré-busca da linha do tempo)
-function fetchBitmap(src) {
-  if (!frameCache.has(src)) {
-    frameCache.set(src, loadBitmap(src).catch((e) => { frameCache.delete(src); throw e; }));
-    if (frameCache.size > 8) frameCache.delete(frameCache.keys().next().value);
+const PRELOAD_WORKERS = 6;
+const store = { key: null, group: null, blobs: [], done: 0, abort: null };
+
+function preloadFrames(g, first = 0) {
+  const key = `${g.id}:${g.frames.length}`;
+  if (store.key === key) return;
+  store.abort?.abort();
+  const abort = new AbortController();
+  Object.assign(store, { key, group: g, blobs: new Array(g.frames.length), done: 0, abort });
+  updateFramesUI();
+  const n = g.frames.length;
+  const queue = Array.from({ length: n }, (_, k) => (first + k) % n);
+  const worker = async () => {
+    while (!abort.signal.aborted && queue.length) {
+      const i = queue.shift();
+      try { await frameBlob(g, i); } catch { /* tenta de novo quando o quadro for pedido */ }
+    }
+  };
+  for (let k = 0; k < Math.min(PRELOAD_WORKERS, n); k += 1) worker();
+}
+
+// JPEG (Blob) do quadro i: já baixado, baixando, ou começa agora (pedido da tela tem a vez)
+function frameBlob(g, i) {
+  if (store.group !== g) preloadFrames(g, i);
+  if (!store.blobs[i]) {
+    const { abort } = store;
+    store.blobs[i] = fetch(g.frames[i].src, { signal: abort.signal })
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.blob();
+      })
+      .then((blob) => {
+        if (store.abort === abort) { store.done += 1; updateFramesUI(); }
+        return blob;
+      })
+      .catch((err) => {
+        if (store.abort === abort) store.blobs[i] = null;
+        throw err;
+      });
   }
-  return frameCache.get(src);
+  return store.blobs[i];
+}
+
+function updateFramesUI() {
+  const g = store.group;
+  const total = g?.frames.length ?? 0;
+  const box = $("framesLoad");
+  box.hidden = total < 2 || store.done >= total;
+  $("framesProgress").max = total || 1;
+  $("framesProgress").value = store.done;
+  $("framesText").textContent = t("time.loading", { done: store.done, n: total });
 }
 
 async function loadFrame(index, { initial = false } = {}) {
@@ -500,20 +573,20 @@ async function loadFrame(index, { initial = false } = {}) {
   const frame = g.frames[index];
   if (initial || !state.playing) $("loadingVeil").hidden = false;
   try {
-    const bmp = await fetchBitmap(frame.src);
+    const blob = await frameBlob(g, index);
     if (token !== state.loadToken) return;
+    const bmp = await createImageBitmap(blob);
+    if (token !== state.loadToken) { bmp.close?.(); return; }
     state.sampler = new ImageSampler(bmp);
+    bmp.close?.(); // o sampler guardou a sua cópia em canvas
     state.index = index;
     state.projection = g.projection;
     if (initial) setupExplorerFor(g);
     rebuildBase();
     updateTimelineUI();
     state.readingDirty = true;
-    // pré-busca dos próximos quadros
-    if (g.frames.length > 1) {
-      for (let k = 1; k <= 3; k += 1) fetchBitmap(g.frames[(index + k) % g.frames.length].src).catch(() => {});
-    }
   } catch (err) {
+    if (token !== state.loadToken) return;
     console.error(err);
     toast(t("map.loadError", { name: frame.name }));
   } finally {
@@ -583,7 +656,7 @@ async function playScaleAt(pos) {
   if (state.legendHover === null || !state.scale) return null;
   const r = legendReading(state.scale, state.legendHover);
   engine.stopPreview();
-  engine.update({ active: true, pan: state.legendHover * 2 - 1, norm: state.legendHover, alert: state.scale.alertLevel(r.value) });
+  engine.update({ active: true, pan: state.legendHover * 2 - 1, norm: state.legendHover });
   haptics.send(r, { active: true });
   return r;
 }
@@ -769,7 +842,6 @@ function readAt(u, v) {
 function processReading() {
   const r = readAt(state.u, state.v);
   if (!r) return;
-  const prev = state.reading;
   state.reading = r;
   const active = isActive();
   tutorial.notify("reading", r);
@@ -782,16 +854,9 @@ function processReading() {
     active: active && r.valid,
     pan: state.u * 2 - 1,
     norm: r.valid ? r.norm : 0.5,
-    // sons dos lugares: mar, gelo, floresta, deserto (valem mesmo sem dado, como o oceano do GEDI)
+    // sons dos lugares: mar, gelo, floresta, deserto (valem mesmo sem dado)
     amb: active ? r.env?.levels ?? {} : {},
-    // batimento de coração nos valores extremos
-    alert: r.valid ? state.scale.alertLevel(r.value) : 0,
   });
-  if (tour.on && tour.stats) addReading(tour.stats, r, state.scale);
-  // sino suave ao passar de um país para outro
-  const c0 = prev?.region?.country;
-  const c1 = r.region?.country;
-  if (active && c0 && c1 && c0 !== c1) engine.borderCue();
   haptics.send(r, { active });
   updateReadingUI(r);
 }
@@ -901,7 +966,9 @@ function setVolume(db) {
 }
 
 // ---------------------------------------------------------------------------
-// Passeio sonoro: o cursor atravessa o mapa sozinho, de oeste para leste
+// Passeio sonoro: o cursor passeia sozinho pelo mapa, em movimentos aleatórios e contínuos
+// (js/passeio.js). O som começa NA HORA: nenhuma fala antes (a voz pausaria a música) e
+// nenhum relatório no fim. Quem usa leitor de tela recebe o aviso pela região ARIA.
 // ---------------------------------------------------------------------------
 function setTourUI(running) {
   const btn = $("tourButton");
@@ -911,81 +978,61 @@ function setTourUI(running) {
 }
 
 function toggleTour() {
-  if (tour.on || tour.preparing) stopTour(false);
+  if (tour.on) stopTour();
   else startTour();
 }
 
-async function startTour() {
+function startTour() {
   if ($("exploreView").hidden || !state.sampler) {
     announce(t("map.none"));
     return;
   }
-  const token = ++tour.token;
   stopScale();
-  tour.preparing = true;
-  tour.dur = SETTINGS.sweep.durationS * 1000;
-  tour.origin = { u: state.u, v: state.v };
-  setTourUI(true);
-  try {
-    if (!engine.started) await engine.start();
-    else if (engine.paused) engine.resume();
+  // uma fala em andamento (ex.: a leitura do botão) deixaria a música pausada: cala a voz
+  narrator.cancel();
+  // o clique é um gesto do usuário: liga o som sem esperar (o passeio já começa a andar)
+  if (!engine.started) {
+    engine.start().then(updateAudioUI).catch(() => { toast(t("audio.noTone")); stopTour({ silent: true }); });
+  } else if (engine.paused) {
+    engine.resume();
     updateAudioUI();
-  } catch {
-    toast(t("audio.noTone"));
-    tour.preparing = false;
-    setTourUI(false);
-    return;
   }
-  placeTour(0);
-  announce(t("tour.intro", { s: SETTINGS.sweep.durationS, key: keyName(SHORTCUTS.tour.key) }));
-  // espera a voz terminar a apresentação
-  await wait(200);
-  const t0 = performance.now();
-  while (narrator.busy() && performance.now() - t0 < 20000) {
-    await wait(100);
-    if (token !== tour.token) return;
-  }
-  if (token !== tour.token) return;
-  tour.preparing = false;
-  tour.stats = createStats();
+  const aspect = state.sampler.width / state.sampler.height;
+  tour.wander = createWander({ u: state.u, v: state.v }, { aspect });
+  tour.dur = SETTINGS.sweep.durationS * 1000;
+  tour.t0 = tour.last = performance.now();
   tour.on = true;
-  tour.t0 = performance.now();
+  state.readingDirty = true;
+  setTourUI(true);
+  announce(t("tour.started", { key: keyName(SHORTCUTS.tour.key) }), { speak: false });
 }
 
-function placeTour(p) {
-  const pt = routePoint(p, tour.origin);
-  state.u = pt.u;
-  state.v = pt.v;
-  state.lastMove = performance.now();
+function tickTour(now) {
+  if (engine.paused || $("legendDialog").open || $("helpDialog").open) {
+    stopTour({ silent: true });
+    return;
+  }
+  if (now - tour.t0 >= tour.dur) {
+    stopTour({ completed: true });
+    return;
+  }
+  const { u, v } = stepWander(tour.wander, (now - tour.last) / 1000);
+  tour.last = now;
+  state.u = u;
+  state.v = v;
+  state.lastMove = now;
   state.readingDirty = true;
-  state.trail.push({ u: state.u, v: state.v, t: state.lastMove });
+  state.trail.push({ u, v, t: now });
   if (state.trail.length > 28) state.trail.shift();
 }
 
-function tickTour() {
-  if (engine.paused || $("legendDialog").open || $("helpDialog").open) {
-    stopTour(false);
-    return;
-  }
-  const p = (performance.now() - tour.t0) / tour.dur;
-  if (p >= 1) stopTour(true);
-  else placeTour(p);
-}
-
-function stopTour(completed = false, { silent = false } = {}) {
-  if (!tour.on && !tour.preparing) return;
-  const wasRunning = tour.on;
-  const secs = wasRunning ? Math.round(Math.min(performance.now() - tour.t0, tour.dur) / 1000) : 0;
-  const stats = tour.stats;
-  tour.token += 1;
+function stopTour({ completed = false, silent = false } = {}) {
+  if (!tour.on) return;
   tour.on = false;
-  tour.preparing = false;
-  tour.stats = null;
+  tour.wander = null;
   state.readingDirty = true;
   setTourUI(false);
-  if (silent) return;
-  if (!wasRunning) { announce(t("tour.cancelled")); return; }
-  if (stats) announce(summarize(stats, state.scale, { secs, completed }));
+  if (!silent) announce(t(completed ? "tour.done" : "tour.stopped"));
 }
 
 // ---------------------------------------------------------------------------
@@ -1006,7 +1053,7 @@ function layoutCanvas() {
 }
 
 function setFromPointer(e) {
-  if (tour.on || tour.preparing) return; // durante o passeio o cursor anda sozinho
+  if (tour.on) return; // durante o passeio o cursor anda sozinho
   const rect = canvas.getBoundingClientRect();
   state.u = clamp((e.clientX - rect.left) / rect.width);
   state.v = clamp((e.clientY - rect.top) / rect.height);
@@ -1110,7 +1157,7 @@ function draw(time) {
 let lastReadingTime = 0;
 function frame(time) {
   if (!$("exploreView").hidden) {
-    if (tour.on) tickTour();
+    if (tour.on) tickTour(performance.now());
     if (state.readingDirty || time - lastReadingTime > 250) {
       state.readingDirty = false;
       lastReadingTime = time;
@@ -1313,7 +1360,8 @@ onLangChange(() => {
   renderHelp();
   renderGallery();
   updateAudioUI();
-  setTourUI(tour.on || tour.preparing);
+  setTourUI(tour.on);
+  updateFramesUI();
   stopTimeline();
   if (state.group && state.scale) {
     setupExplorerFor(state.group);
@@ -1373,18 +1421,33 @@ function renderHelp() {
   section(t("help.srTitle"), (s) => s.append(para(t("help.srText"))));
 }
 
-// texto da ajuda para a voz: nomes das teclas por extenso
-function helpSpeech() {
-  const parts = [t("help.intro"), t("help.howText"), `${t("help.keys")}.`];
-  for (const n of SHORTCUT_ORDER) parts.push(`${keyName(SHORTCUTS[n].key)}: ${t(`sc.${n}`)}.`);
-  parts.push(t("help.arrows") + ".", t("help.digits") + ".", t("help.escape") + ".", t("help.scaleText"), t("help.srText"));
-  return parts.join(" ");
+// Texto da ajuda para a voz, com os nomes das teclas por extenso. Cada parte é uma fala
+// separada na fila do narrador (js/voz.js), então a leitura vai até o fim sem cortes.
+function helpSpeechParts() {
+  const sentence = (s) => s.replace(/[.\s]*$/, ".");
+  const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+  const parts = [sentence(t("help.title")), t("help.intro"), sentence(t("help.how")), t("help.howText"), sentence(t("help.keys"))];
+  for (const n of SHORTCUT_ORDER) parts.push(`${keyName(SHORTCUTS[n].key)}: ${sentence(t(`sc.${n}`))}`);
+  parts.push(
+    `${t("key.arrows")}: ${sentence(t("help.arrows"))}`,
+    `${t("key.digits")}: ${sentence(t("help.digits"))}`,
+    `${keyName("Escape")}: ${sentence(t("help.escape"))}`,
+    sentence(t("help.scaleTitle")), t("help.scaleText"),
+    sentence(t("help.srTitle")), t("help.srText"),
+  );
+  return parts.map(cap);
+}
+
+function readHelp() {
+  helpSpeechParts().forEach((text, k) => narrator.say(text, { ...voiceOpts(), queue: k > 0, tag: "ajuda", priority: true }));
 }
 
 function openHelp() {
   const dlg = $("helpDialog");
   if (!dlg.open) dlg.showModal();
   $("helpTitle").focus();
+  // com a voz ligada, a ajuda é lida inteira ao abrir (como a legenda)
+  if (voiceOn()) readHelp();
 }
 
 // dica <kbd> e aria-keyshortcuts em cada botão que tem atalho
@@ -1491,8 +1554,11 @@ function setupEvents() {
   // ajuda
   $("helpOpen").addEventListener("click", openHelp);
   $("helpClose").addEventListener("click", () => $("helpDialog").close());
-  $("helpDialog").addEventListener("close", () => { if (narrator.current?.tag === "ajuda") narrator.cancel(); });
-  $("helpSpeak").addEventListener("click", () => narrator.say(helpSpeech(), { ...voiceOpts(), tag: "ajuda", priority: true }));
+  $("helpDialog").addEventListener("close", () => {
+    narrator.drop("ajuda");
+    if (narrator.current?.tag === "ajuda") narrator.cancel();
+  });
+  $("helpSpeak").addEventListener("click", readHelp);
   closeOnBackdrop($("helpDialog"));
 
   // ATALHOS: nenhuma tecla modificadora. O dicionário tecla → botão está em js/shortcuts.js.
@@ -1500,7 +1566,7 @@ function setupEvents() {
     if (e.defaultPrevented) return;
     // Escape: para o passeio; senão, cala a voz (diálogos e tutorial tratam o próprio Escape)
     if (e.key === "Escape") {
-      if ((tour.on || tour.preparing) && !document.querySelector("dialog[open]:modal")) { e.preventDefault(); stopTour(false); return; }
+      if (tour.on && !document.querySelector("dialog[open]:modal")) { e.preventDefault(); stopTour(); return; }
       if (narrator.busy() && !tutorial.isActive() && !document.querySelector("dialog[open]:modal")) narrator.cancel();
       return;
     }
@@ -1527,6 +1593,7 @@ function setupEvents() {
   dlg.addEventListener("scroll", markScroll, { passive: true, capture: true });
   dlg.addEventListener("wheel", markScroll, { passive: true });
   $("dlgReadAloud").addEventListener("click", () => (legendVoice.active ? stopLegendVoice() : startLegendVoice()));
+  $("placesToggle").addEventListener("click", togglePlaces);
   dlg.addEventListener("close", () => {
     stopLegendVoice();
     endLegendPreview({ resume: false });
@@ -1549,7 +1616,7 @@ function setupEvents() {
     setFromPointer(events[events.length - 1] || e);
   });
   canvas.addEventListener("pointerdown", (e) => {
-    if (tour.on || tour.preparing) stopTour(false, { silent: true });
+    if (tour.on) stopTour({ silent: true });
     canvas.focus({ preventScroll: true });
     if (!engine.started) engine.start().then(updateAudioUI).catch(() => {});
     if (e.pointerType !== "mouse") canvas.setPointerCapture(e.pointerId);
@@ -1569,7 +1636,7 @@ function setupEvents() {
     const map = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step * 2], ArrowDown: [0, step * 2] };
     if (map[e.key]) {
       e.preventDefault();
-      if (tour.on || tour.preparing) stopTour(false, { silent: true }); // a pessoa retoma o controle
+      if (tour.on) stopTour({ silent: true }); // a pessoa retoma o controle
       const [u0, v0] = [state.u, state.v];
       moveFocal(...map[e.key]);
       tutorial.notify("move");
@@ -1660,12 +1727,18 @@ async function init() {
   if (prefs.color) { $("colorMode").value = prefs.color; state.colorMode = prefs.color; }
   if (prefs.lan) $("lanInput").value = prefs.lan;
 
-  // com a voz do site ligada, ela lê cada controle que recebe o foco pelo teclado (js/a11y.js),
-  // sem cortar as descrições importantes (tutorial, legenda, ajuda): essas leituras esperam
+  // com a voz do site ligada, ela lê cada controle que recebe o foco pelo teclado (js/a11y.js).
+  // Ao navegar com Tab, o botão selecionado é SEMPRE lido na hora, interrompendo qualquer fala
+  // (legenda, ajuda, tutorial), como faz um leitor de tela. Um foco movido pelo próprio app
+  // (abrir uma janela, por exemplo) espera as descrições importantes terminarem.
   initFocusEcho({
     enabled: () => SETTINGS.narration.readControls && voiceOn(),
-    speak: (text) => narrator.sayLow(text, voiceOpts()),
-    skip: (el) => el.id === "tutorialTitle" || el.id === "legendDialogTitle" || el.tagName === "DIALOG",
+    speak: (text, { navigating = false } = {}) => {
+      if (!navigating) { narrator.sayLow(text, voiceOpts()); return; }
+      if (legendVoice.active) stopLegendVoice();
+      narrator.say(text, voiceOpts());
+    },
+    skip: (el) => ["tutorialTitle", "legendDialogTitle", "helpTitle"].includes(el.id) || el.tagName === "DIALOG",
   });
 
   renderShortcutHints();

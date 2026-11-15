@@ -2,7 +2,6 @@
 //
 //   instrumento do mapa ─→ filtro → panner (eixo X) → reverb → volume
 //   sons dos lugares   ─┘                                       → pausa/ducking (voz) → compressor → limitador
-//   coração (alerta)   ──────────────────────────────────────────┘
 //
 // Cada mapa representa uma característica (temperatura, umidade, vento, CO...) e é tocado só
 // pelo instrumento dela (config.json → mapeamento). Quanto mais intensa a característica no
@@ -17,7 +16,6 @@ import { SAMPLE_SET, SETTINGS, dbToGain } from "./config.js";
 const T = () => window.Tone;
 const PENTATONIC = [0, 2, 4, 7, 9];
 const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
-const lerp = (a, b, t) => a + (b - a) * t;
 
 // Ganho dos instrumentos enquanto a narração fala: silêncio total (narracao.pausarMusica)
 // ou só uma redução de narracao.reducaoDb decibéis.
@@ -178,7 +176,6 @@ export class SonificationEngine {
 
     this.live = this._makeVoice(this.instrument, this.filter);
     this._buildAmbience();
-    this._buildHeart();
     const transport = Tone.getTransport ? Tone.getTransport() : Tone.Transport;
     transport.start();
   }
@@ -318,19 +315,17 @@ export class SonificationEngine {
   }
 
   // ---------------- atualização contínua ----------------
-  // s = { active, pan (-1..1), norm (0..1: posição do valor na barra), amb, alert }
+  // s = { active, pan (-1..1), norm (0..1: posição do valor na barra), amb }
   update(s) {
     if (!this.started || this.paused) return;
     const prev = this.state;
-    this.state = { ...prev, ...s, alert: s.alert ?? 0 };
+    this.state = { ...prev, ...s };
     const now = T().now();
     const V = this.live;
 
     this.panner.pan.rampTo(clamp(s.pan ?? 0, -1, 1) * 0.85, 0.08);
     this.setAmbience(s.amb || {});
     V.out.gain.rampTo(s.active ? V.cfg.level : 0, s.active ? 0.12 : 0.5);
-
-    if (this.heartLoop) this.heartLoop.interval = lerp(1.05, 0.55, clamp(s.alert ?? 0));
 
     if (!s.active) {
       if (prev.active) this._inactiveSince = now;
@@ -563,13 +558,6 @@ export class SonificationEngine {
         ],
       };
     });
-
-    // fronteira: sino suave (tônica e quinta) ao passar de um país para outro
-    this.borderBell = new Tone.PolySynth(Tone.FMSynth, {
-      harmonicity: 2, modulationIndex: 2.5, oscillator: { type: "sine" }, modulation: { type: "sine" },
-      envelope: { attack: 0.002, decay: 1.0, sustain: 0, release: 0.8 },
-      modulationEnvelope: { attack: 0.002, decay: 0.2, sustain: 0, release: 0.2 },
-    }).connect(new Tone.Volume(A.fronteira.volumeDb).connect(this.panner));
   }
 
   // levels = { mar, gelo, floresta, deserto } de 0 a 1; o que não vier vai a zero
@@ -600,69 +588,19 @@ export class SonificationEngine {
     }
   }
 
-  borderCue() {
-    if (!this.borderBell || !this.started || this.paused) return;
-    const now = T().now();
-    if (now - (this._lastBorder || 0) < 0.6) return;
-    this._lastBorder = now;
-    const root = 72 + MUSICAL_KEYS[this.key].root;
-    this.borderBell.triggerAttackRelease(midiToNote(root), 0.2, now, 0.5);
-    this.borderBell.triggerAttackRelease(midiToNote(root + 7), 0.3, now + 0.12, 0.4);
-  }
-
-  // pré-escuta na legenda: "mar", "gelo", "floresta", "deserto", "coracao" ou "fronteira"
+  // pré-escuta na legenda e no tutorial: "mar", "gelo", "floresta" ou "deserto"
   async previewPlace(name, secs = 5) {
     await this.start();
     if (this.paused) this.resume();
     this.stopPlacePreview();
-    if (name === "coracao") {
-      this._heartPreview = T().now() + secs;
-      if (this.heartLoop) this.heartLoop.interval = 0.85;
-    } else if (name === "fronteira") {
-      this._lastBorder = 0;
-      this.borderCue();
-      this._placeTimers = [setTimeout(() => { this._lastBorder = 0; this.borderCue(); }, 1300)];
-      secs = 2.8;
-    } else {
-      this.setAmbience({ [name]: 1 });
-    }
-    (this._placeTimers ||= []).push(setTimeout(() => this.stopPlacePreview(), secs * 1000));
+    this.setAmbience({ [name]: 1 });
+    this._placeTimers = [setTimeout(() => this.stopPlacePreview(), secs * 1000)];
     return secs;
   }
 
   stopPlacePreview() {
     (this._placeTimers || []).forEach(clearTimeout);
     this._placeTimers = [];
-    this._heartPreview = 0;
     if (this.started && !this.state.active) this.setAmbience({});
   }
-
-  // ---------------- batimento de alerta ----------------
-  // Nos valores extremos (calor extremo, mar muito quente, CO muito alto, tempestade) soa um
-  // coração grave, "tum-tum", no centro e sem eco: de ~57 bpm no limite a ~110 bpm no máximo
-  // da escala. É a urgência dos dados dita sem palavras. Limites: scales.js / config.json.
-  _buildHeart() {
-    const Tone = T();
-    if (!SETTINGS.alert.enabled) return;
-    this.heartOut = new Tone.Volume(SETTINGS.alert.volumeDb).connect(this.volume);
-    const lp = new Tone.Filter({ type: "lowpass", frequency: 420, rolloff: -24 }).connect(this.heartOut);
-    this.heart = new Tone.MembraneSynth({
-      pitchDecay: 0.05,
-      octaves: 2.5,
-      oscillator: { type: "sine" },
-      envelope: { attack: 0.002, decay: 0.3, sustain: 0, release: 0.12 },
-    }).connect(lp);
-    this.heartLoop = new Tone.Loop((time) => this._beat(time), 1).start(0);
-  }
-
-  _beat(time) {
-    const s = this.state;
-    const preview = this._heartPreview && T().now() < this._heartPreview;
-    const a = preview ? 0.6 : s.alert || 0;
-    if (!this.heart || !this.started || this.paused || (!preview && (!s.active || a <= 0))) return;
-    const vel = 0.55 + 0.45 * a;
-    this.heart.triggerAttackRelease("A1", 0.12, time, vel);
-    this.heart.triggerAttackRelease("G1", 0.1, time + 0.2, vel * 0.7);
-  }
-
 }

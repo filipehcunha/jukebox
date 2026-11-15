@@ -14,7 +14,6 @@
 // (referencias/escalas/*.jpeg) por tools/extrair_escalas.py -> js/colormaps.js.
 
 import { GMAO_COLORMAPS } from "./colormaps.js";
-import { SETTINGS } from "./config.js";
 import { t, num } from "./i18n.js";
 
 // ---------------------------------------------------------------------------
@@ -42,58 +41,9 @@ export function rgbToLab(r, g, b) {
   return [116 * fy - 16, 500 * (fx - fy), 200 * (fy - fz)];
 }
 
-// remove o brilho: escala o RGB para que o maior canal seja 255
-function chromaNorm(r, g, b) {
-  const m = Math.max(r, g, b) || 1;
-  return [(r * 255) / m, (g * 255) / m, (b * 255) / m];
-}
-
 export function luminance(r, g, b) {
   return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
 }
-
-// Interpola uma paleta grosseira [{value, color}] em N passos para decodificação fina.
-function densify(palette, steps = 120) {
-  const out = [];
-  const min = palette[0].value;
-  const max = palette[palette.length - 1].value;
-  for (let i = 0; i <= steps; i += 1) {
-    const v = min + ((max - min) * i) / steps;
-    let k = 0;
-    while (k < palette.length - 2 && palette[k + 1].value < v) k += 1;
-    const a = palette[k];
-    const b = palette[k + 1];
-    const t = clamp((v - a.value) / (b.value - a.value));
-    out.push([v, ...a.color.map((c, j) => Math.round(c + (b.color[j] - c) * t))]);
-  }
-  return out;
-}
-
-// ---------------------------------------------------------------------------
-// Paletas das imagens NASA pré-carregadas (ECCO2 e GEDI), herdadas da versão inicial
-// ---------------------------------------------------------------------------
-const SST_PALETTE = [
-  { value: 0, color: [52, 92, 250] }, { value: 2, color: [50, 125, 227] },
-  { value: 4, color: [50, 154, 204] }, { value: 6, color: [51, 182, 181] },
-  { value: 8, color: [53, 208, 159] }, { value: 10, color: [56, 230, 137] },
-  { value: 12, color: [58, 250, 116] }, { value: 14, color: [61, 255, 95] },
-  { value: 16, color: [76, 255, 74] }, { value: 18, color: [115, 255, 54] },
-  { value: 20, color: [169, 255, 40] }, { value: 22, color: [221, 255, 34] },
-  { value: 24, color: [251, 255, 33] }, { value: 26, color: [250, 215, 31] },
-  { value: 28, color: [248, 157, 28] }, { value: 30, color: [247, 88, 25] },
-  { value: 32, color: [247, 0, 24] },
-];
-
-const GEDI_PALETTE = [
-  { value: 0, color: [77, 70, 42] }, { value: 9.4, color: [77, 83, 45] },
-  { value: 14.1, color: [77, 99, 52] }, { value: 18.8, color: [84, 111, 56] },
-  { value: 23.4, color: [96, 122, 59] }, { value: 28.1, color: [105, 131, 60] },
-  { value: 32.8, color: [119, 142, 62] }, { value: 37.5, color: [133, 151, 67] },
-  { value: 42.2, color: [148, 162, 75] }, { value: 46.9, color: [161, 170, 87] },
-  { value: 51.6, color: [182, 186, 110] }, { value: 56.2, color: [203, 203, 143] },
-  { value: 60.9, color: [223, 218, 178] }, { value: 65.6, color: [241, 230, 208] },
-  { value: 70.3, color: [253, 239, 228] }, { value: 75, color: [255, 250, 241] },
-];
 
 // Áreas sobrepostas pelo logotipo GMAO e pelo carimbo de data/hora (coordenadas 0..1)
 const GMAO_MASKS = [
@@ -173,39 +123,6 @@ const RAW = {
     maxDist: 14,
     zoneMax: [80, 130, 200, Infinity],
   },
-  sst: {
-    characteristic: "TEMPERATURE",
-    family: "nasa",
-    unit: "°C",
-    decimals: 1,
-    min: 0,
-    max: 32,
-    stops: densify(SST_PALETTE),
-    ticks: linearTicks(0, 32, [0, 8, 16, 24, 32]),
-    maxDist: 22,
-    // ECCO2 desenha as correntes como estrias: a matiz é a temperatura e o brilho é a
-    // velocidade da corrente. Decodifica só a cromaticidade (RGB normalizado pelo maior canal).
-    chroma: { minMax: 40, minSat: 0.4 },
-    patchRadius: 4,
-    fallbackRadius: 9,
-    invalidKey: "reason.noCurrent",
-    landKey: "reason.landNoOcean",
-    zoneMax: [8, 18, 26, Infinity],
-  },
-  gedi: {
-    characteristic: "VEGETATION_HEIGHT",
-    family: "nasa",
-    unit: "m",
-    decimals: 0,
-    min: 0,
-    max: 75,
-    stops: densify(GEDI_PALETTE),
-    ticks: linearTicks(0, 75, [0, 15, 30, 45, 60, 75]),
-    maxDist: 18,
-    rejectBlue: true, // oceano e lagos azuis do globo não têm dado de dossel
-    invalidKey: "reason.noCanopy",
-    zoneMax: [5, 25, 45, Infinity],
-  },
 };
 
 // ---------------------------------------------------------------------------
@@ -215,7 +132,7 @@ export class Scale {
   constructor(id, def) {
     Object.assign(this, def);
     this.id = id;
-    this.labs = this.stops.map(([, r, g, b]) => (this.chroma ? rgbToLab(...chromaNorm(r, g, b)) : rgbToLab(r, g, b)));
+    this.labs = this.stops.map(([, r, g, b]) => rgbToLab(r, g, b));
     this._lut = null;
   }
 
@@ -260,17 +177,7 @@ export class Scale {
     if (this.neutralChroma && Math.max(r, g, b) - Math.min(r, g, b) < this.neutralChroma) {
       return { value: this.calmValue, dist: 0, valid: true, calm: true };
     }
-    if (this.rejectBlue && b > g * 0.95) return { value: NaN, dist: 99, valid: false };
-    let L, A, B;
-    if (this.chroma) {
-      const max = Math.max(r, g, b);
-      if (max < this.chroma.minMax || (max - Math.min(r, g, b)) / max < this.chroma.minSat) {
-        return { value: NaN, dist: 99, valid: false };
-      }
-      [L, A, B] = rgbToLab(...chromaNorm(r, g, b));
-    } else {
-      [L, A, B] = rgbToLab(r, g, b);
-    }
+    const [L, A, B] = rgbToLab(r, g, b);
     const labs = this.labs;
     let best = Infinity;
     let bi = 0;
@@ -370,35 +277,6 @@ export class Scale {
   masks() {
     return this.family === "gmao" ? GMAO_MASKS : [];
   }
-
-  // Quão extremo é o valor (0 = normal; 0,15 a 1 = dentro da faixa de alerta). O motor de
-  // áudio transforma isso num batimento de coração, mais rápido quanto mais extremo.
-  alertLevel(value) {
-    const a = this.alert;
-    if (!a || !Number.isFinite(value) || value < a.from) return 0;
-    return clamp(0.15 + (0.85 * (value - a.from)) / Math.max(a.full - a.from, 1e-6));
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Alertas: valores extremos ganham um batimento de coração (a urgência dos dados).
-// Os limites podem ser trocados em config.json → alerta.limites.
-// ---------------------------------------------------------------------------
-const ALERTS = {
-  temp: { from: 35, full: 40 },
-  sst: { from: 30, full: 32 },
-  co: { from: 200, full: 500 },
-  wind: { from: 25, full: 40 },
-};
-for (const [id, a] of Object.entries(ALERTS)) {
-  if (!SETTINGS.alert.enabled) break;
-  const from = SETTINGS.alert.limits[id] ?? a.from;
-  RAW[id].alert = {
-    from,
-    full: Math.max(a.full, from + 1e-6),
-    // texto no idioma atual: "calor extremo, acima de 35 °C"
-    get label() { return t(`alert.${id}`, { v: num(from, from % 1 ? 1 : 0) }); },
-  };
 }
 
 export const SCALE_LIST = Object.entries(RAW).map(([id, def]) => new Scale(id, def));
