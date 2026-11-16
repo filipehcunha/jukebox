@@ -454,3 +454,20 @@ html.hc .tutorial__status { background: #000; border: 2px solid #ffff00; color: 
   .legend-dialog__foot .button { width: 100%; }
   .place-list { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* Rodapé com o link para o código do projeto */
+.site-footer {
+  max-width: 1560px; margin: 0 auto; padding: 24px clamp(16px, 3vw, 36px) 36px;
+  border-top: 1px solid var(--border);
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 10px 14px;
+  color: var(--text-soft); font-size: 0.95rem;
+}
+.site-footer__link {
+  display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 8px 16px;
+  border: 1px solid var(--border-strong); border-radius: 999px;
+  color: var(--text); font-weight: 600; text-decoration: none;
+  transition: border-color 0.2s var(--ease), background-color 0.2s var(--ease);
+}
+.site-footer__link .icon { width: 20px; height: 20px; }
+.site-footer__link:hover { border-color: var(--accent); background: rgba(103, 232, 249, 0.08); }
+.site-footer__link:focus-visible { outline: none; box-shadow: var(--focus); }
